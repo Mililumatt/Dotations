@@ -1457,6 +1457,10 @@ function buildPdfWaitingHtml() {
 </html>`;
 }
 
+function getDocumentPagePath(docType) {
+  return normalizeText(docType) === "EXIT" ? "document-sortie.html" : "document-arrivee.html";
+}
+
 async function openPdfDocument(docType, personId) {
   if (state.isDirty) {
     showDataStatus("SAUVEGARDER AVANT OUVERTURE DU PDF");
@@ -1490,6 +1494,14 @@ async function openPdfDocument(docType, personId) {
     if (reusableArchive) {
       popup.location.href = getDocumentArchiveOpenPath(reusableArchive);
       showActionStatus("update", "PDF ARCHIVE REUTILISE");
+      return;
+    }
+
+    if (getDataBackendMode() !== "LOCAL_API") {
+      const pagePath = getDocumentPagePath(docType);
+      const hostedUrl = `${pagePath}?personId=${encodeURIComponent(personId)}&pdf=1&ts=${Date.now()}`;
+      popup.location.href = hostedUrl;
+      showDataStatus("DOCUMENT OUVERT - UTILISER IMPRIMER POUR GENERER LE PDF");
       return;
     }
 
