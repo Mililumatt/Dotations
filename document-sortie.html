@@ -220,6 +220,7 @@
                       type="button"
                       class="button button--secondary js-open-mobile-signature"
                       data-doc-type="exit"
+                      data-signer="personnel"
                     >
                       SIGNER SUR TELEPHONE
                     </button>
@@ -241,7 +242,7 @@
                     </button>
                   </div>
                   <p class="signature-box__status" id="exit-signature-personnel-status">AUCUNE SIGNATURE</p>
-                  <p class="signature-box__mobile-link" id="exit-mobile-signature-link" hidden></p>
+                  <p class="signature-box__mobile-link" id="exit-mobile-signature-link-personnel" hidden></p>
                   <div class="signature-box__meta-grid">
                     <div class="signature-box__meta-row signature-box__meta-row--hidden" aria-hidden="true">
                       <span class="signature-box__meta-label">NOM</span>
@@ -269,6 +270,14 @@
                   <div class="signature-box__actions">
                     <button
                       type="button"
+                      class="button button--secondary js-open-mobile-signature"
+                      data-doc-type="exit"
+                      data-signer="representant"
+                    >
+                      SIGNER SUR TELEPHONE
+                    </button>
+                    <button
+                      type="button"
                       class="button button--primary js-signature-save"
                       data-doc-type="exit"
                       data-signer="representant"
@@ -285,6 +294,7 @@
                     </button>
                   </div>
                   <p class="signature-box__status" id="exit-signature-representant-status">AUCUNE SIGNATURE</p>
+                  <p class="signature-box__mobile-link" id="exit-mobile-signature-link-representant" hidden></p>
                   <div class="signature-box__meta-grid">
                     <div class="signature-box__meta-row">
                       <span class="signature-box__meta-label">NOM</span>
