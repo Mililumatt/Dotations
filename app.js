@@ -402,6 +402,11 @@ function getCurrentMobileSignatureDocType() {
   return new URLSearchParams(window.location.search).get("docType") || "";
 }
 
+function getCurrentMobileSignatureSigner() {
+  const signer = normalizeText(new URLSearchParams(window.location.search).get("signer") || "personnel");
+  return signer === "REPRESENTANT" ? "representant" : "personnel";
+}
+
 function generateMobileSignatureToken() {
   return `SIG-${Date.now()}-${Math.random().toString(36).slice(2, 12).toUpperCase()}`;
 }
@@ -410,18 +415,19 @@ function findMobileSignatureRequestByToken(token) {
   return (state.data?.demandesSignatureMobile || []).find((entry) => entry.token === token) || null;
 }
 
-function getActiveMobileSignatureRequest(personId, docType) {
+function getActiveMobileSignatureRequest(personId, docType, signer = "personnel") {
   cleanupExpiredMobileSignatureRequests();
   return (state.data?.demandesSignatureMobile || []).find(
     (entry) =>
       entry.personId === personId &&
       entry.docType === normalizeText(docType) &&
+      normalizeText(entry.signer || "PERSONNEL") === normalizeText(signer) &&
       entry.status === "EN ATTENTE" &&
       Date.parse(entry.expiresAt || "") > Date.now()
   ) || null;
 }
 
-function createMobileSignatureRequest(personId, docType) {
+function createMobileSignatureRequest(personId, docType, signer = "personnel") {
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + MOBILE_SIGNATURE_REQUEST_TTL_MS);
   const request = {
@@ -429,6 +435,7 @@ function createMobileSignatureRequest(personId, docType) {
     token: generateMobileSignatureToken(),
     personId: String(personId || ""),
     docType: normalizeText(docType),
+    signer: normalizeText(signer) === "REPRESENTANT" ? "REPRESENTANT" : "PERSONNEL",
     createdAt: createdAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
     status: "EN ATTENTE",
@@ -440,7 +447,8 @@ function createMobileSignatureRequest(personId, docType) {
 
 function getMobileSignaturePageUrl(request) {
   const docType = normalizeText(request?.docType) === "EXIT" ? "exit" : "arrival";
-  return `signature-mobile.html?personId=${encodeURIComponent(request?.personId || "")}&docType=${encodeURIComponent(docType)}&token=${encodeURIComponent(request?.token || "")}`;
+  const signer = normalizeText(request?.signer || "PERSONNEL") === "REPRESENTANT" ? "representant" : "personnel";
+  return `signature-mobile.html?personId=${encodeURIComponent(request?.personId || "")}&docType=${encodeURIComponent(docType)}&signer=${encodeURIComponent(signer)}&token=${encodeURIComponent(request?.token || "")}`;
 }
 
 async function getMobileSignatureBaseUrl() {
@@ -571,8 +579,13 @@ async function fillMobileSignatureShareLink(request) {
   };
 }
 
-function renderMobileSignatureLink(docType, absoluteUrl) {
-  const linkNode = document.getElementById(`${docType}-mobile-signature-link`);
+function getMobileSignatureLinkNodeId(docType, signer = "personnel") {
+  const suffix = normalizeText(signer) === "REPRESENTANT" ? "representant" : "personnel";
+  return `${docType}-mobile-signature-link-${suffix}`;
+}
+
+function renderMobileSignatureLink(docType, signer, absoluteUrl) {
+  const linkNode = document.getElementById(getMobileSignatureLinkNodeId(docType, signer));
   if (!linkNode) {
     return;
   }
@@ -589,36 +602,36 @@ function renderMobileSignatureLink(docType, absoluteUrl) {
   `;
 }
 
-async function syncDocumentMobileSignatureLink(docType, personId) {
+async function syncDocumentMobileSignatureLink(docType, personId, signer = "personnel") {
   if (!personId || !state.data) {
-    renderMobileSignatureLink(docType, "");
+    renderMobileSignatureLink(docType, signer, "");
     return;
   }
-  const request = getActiveMobileSignatureRequest(personId, docType);
+  const request = getActiveMobileSignatureRequest(personId, docType, signer);
   if (!request) {
-    renderMobileSignatureLink(docType, "");
+    renderMobileSignatureLink(docType, signer, "");
     return;
   }
   const absoluteUrl = await getAbsoluteMobileSignatureUrl(request);
-  renderMobileSignatureLink(docType, absoluteUrl);
+  renderMobileSignatureLink(docType, signer, absoluteUrl);
 }
 
-async function openMobileSignatureRequest(docType, personId) {
+async function openMobileSignatureRequest(docType, personId, signer = "personnel") {
   if (!state.data) {
     showDataStatus("DONNEES NON CHARGEES");
     return;
   }
 
-  let request = getActiveMobileSignatureRequest(personId, docType);
+  let request = getActiveMobileSignatureRequest(personId, docType, signer);
   if (!request) {
-    request = createMobileSignatureRequest(personId, docType);
+    request = createMobileSignatureRequest(personId, docType, signer);
     markDirty();
     await saveDataToFile({ silent: true });
   }
 
   const absoluteUrl = await getAbsoluteMobileSignatureUrl(request);
   window.open(absoluteUrl, "_blank", "noopener");
-  renderMobileSignatureLink(docType, absoluteUrl);
+  renderMobileSignatureLink(docType, signer, absoluteUrl);
 
   showDataStatus("PAGE DE SIGNATURE MOBILE OUVERTE");
   syncMobileSignaturePolling();
@@ -840,6 +853,7 @@ function migrateDataModel() {
       token: String(entry.token || ""),
       personId: String(entry.personId || ""),
       docType: normalizeText(entry.docType),
+      signer: normalizeText(entry.signer) === "REPRESENTANT" ? "REPRESENTANT" : "PERSONNEL",
       createdAt: String(entry.createdAt || ""),
       expiresAt: String(entry.expiresAt || ""),
       status: normalizeText(entry.status) || "EN ATTENTE",
@@ -1080,7 +1094,11 @@ function getActiveDocumentMobileSignatureRequest() {
     return null;
   }
   const docType = page === "exit-document" ? "exit" : "arrival";
-  return getActiveMobileSignatureRequest(personId, docType);
+  return (
+    getActiveMobileSignatureRequest(personId, docType, "personnel") ||
+    getActiveMobileSignatureRequest(personId, docType, "representant") ||
+    null
+  );
 }
 
 async function pollMobileSignatureRequest() {
@@ -1106,25 +1124,30 @@ async function pollMobileSignatureRequest() {
     const currentPage = document.body.dataset.page || "";
     const docType = currentPage === "exit-document" ? "exit" : "arrival";
     const previousPerson = getCurrentPerson();
-    const previousSignature = getSignatureValue(previousPerson, docType, "personnel");
-    const previousValidatedAt = getSignatureValidationDate(previousPerson, docType, "personnel");
+    const signer = normalizeText(activeRequest.signer || "PERSONNEL") === "REPRESENTANT" ? "representant" : "personnel";
+    const previousSignature = getSignatureValue(previousPerson, docType, signer);
+    const previousValidatedAt = getSignatureValidationDate(previousPerson, docType, signer);
 
     state.data = json;
     migrateDataModel();
 
     if (nextRequest.status !== "EN ATTENTE") {
-      renderMobileSignatureLink(docType, "");
+      renderMobileSignatureLink(docType, signer, "");
       stopMobileSignaturePolling();
     }
 
     const updatedPerson = getCurrentPerson();
-    const nextSignature = getSignatureValue(updatedPerson, docType, "personnel");
-    const nextValidatedAt = getSignatureValidationDate(updatedPerson, docType, "personnel");
+    const nextSignature = getSignatureValue(updatedPerson, docType, signer);
+    const nextValidatedAt = getSignatureValidationDate(updatedPerson, docType, signer);
 
     if (previousSignature !== nextSignature || previousValidatedAt !== nextValidatedAt || nextRequest.status !== "EN ATTENTE") {
       renderPage();
       if (nextRequest.status === "SIGNEE") {
-        showDataStatus("SIGNATURE MOBILE DU PERSONNEL ENREGISTREE");
+        showDataStatus(
+          signer === "representant"
+            ? "SIGNATURE MOBILE DU REPRESENTANT ENREGISTREE"
+            : "SIGNATURE MOBILE DU PERSONNEL ENREGISTREE"
+        );
       }
     }
   } catch (error) {
@@ -1172,12 +1195,13 @@ function bindMobileSignatureButtons() {
   document.querySelectorAll(".js-open-mobile-signature").forEach((button) => {
     button.onclick = async () => {
       const docType = String(button.getAttribute("data-doc-type") || "");
+      const signer = String(button.getAttribute("data-signer") || "personnel");
       const personId = getCurrentPersonId();
       if (!docType || !personId) {
         showDataStatus("AUCUNE PERSONNE SELECTIONNEE");
         return;
       }
-      await openMobileSignatureRequest(docType, personId);
+      await openMobileSignatureRequest(docType, personId, signer);
     };
   });
 }
@@ -3725,9 +3749,13 @@ function bindSignatureCanvases() {
       const wasFullySigned = isDocumentFullySigned(person, docType);
       const nextValue = stateRef.pendingDataUrl || "";
       setSignatureValue(person, docType, signer, nextValue, nextValue ? getCurrentSignatureTimestamp() : "");
-      if (document.body.dataset.page === "mobile-signature" && signer === "personnel" && nextValue) {
+      if (document.body.dataset.page === "mobile-signature" && nextValue) {
         const request = getCurrentMobileSignatureRequest();
-        if (request && normalizeText(request.docType) === normalizeText(docType)) {
+        if (
+          request &&
+          normalizeText(request.docType) === normalizeText(docType) &&
+          normalizeText(request.signer || "PERSONNEL") === normalizeText(signer)
+        ) {
           markMobileSignatureRequestSigned(request);
         }
       }
@@ -3837,9 +3865,9 @@ function bindSignatureCanvases() {
         stateRef.pendingDataUrl = "";
         clearSignatureCanvas(canvas);
         setSignatureValue(person, docType, signer, "", "");
-        if (document.body.dataset.page === "mobile-signature" && signer === "personnel") {
+        if (document.body.dataset.page === "mobile-signature") {
           const request = getCurrentMobileSignatureRequest();
-          if (request) {
+          if (request && normalizeText(request.signer || "PERSONNEL") === normalizeText(signer)) {
             request.status = "EN ATTENTE";
             request.validatedAt = "";
           }
@@ -3887,29 +3915,34 @@ function renderMobileSignaturePage() {
   const request = getCurrentMobileSignatureRequest();
   const person = getCurrentPerson();
   const docType = getCurrentMobileSignatureDocType();
+  const signer = getCurrentMobileSignatureSigner();
   const titleNode = document.getElementById("mobile-signature-title");
   const subtitleNode = document.getElementById("mobile-signature-subtitle");
   const personNode = document.getElementById("mobile-signature-person");
   const dateNode = document.getElementById("mobile-signature-date");
   const statusNode = document.getElementById("mobile-signature-request-status");
   const panelNode = document.getElementById("mobile-signature-panel");
-  const saveButton = document.querySelector('.js-signature-save[data-signer="personnel"]');
-  const clearButton = document.querySelector('.js-signature-clear[data-signer="personnel"]');
-  const canvas = document.querySelector('.js-signature-canvas[data-signer="personnel"]');
+  const saveButton = document.querySelector('.js-signature-save');
+  const clearButton = document.querySelector('.js-signature-clear');
+  const canvas = document.querySelector('.js-signature-canvas');
   const docLabel = normalizeText(docType) === "EXIT" ? "DOCUMENT DE SORTIE" : "DOCUMENT D'ARRIVEE";
 
   if (canvas) {
     canvas.setAttribute("data-doc-type", normalizeText(docType) === "EXIT" ? "exit" : "arrival");
+    canvas.setAttribute("data-signer", signer);
   }
   if (saveButton) {
     saveButton.setAttribute("data-doc-type", normalizeText(docType) === "EXIT" ? "exit" : "arrival");
+    saveButton.setAttribute("data-signer", signer);
   }
   if (clearButton) {
     clearButton.setAttribute("data-doc-type", normalizeText(docType) === "EXIT" ? "exit" : "arrival");
+    clearButton.setAttribute("data-signer", signer);
   }
 
   if (titleNode) {
-    titleNode.textContent = "SIGNATURE DU PERSONNEL";
+    titleNode.textContent =
+      signer === "representant" ? "SIGNATURE DU REPRESENTANT DE L'ETABLISSEMENT" : "SIGNATURE DU PERSONNEL";
   }
   if (subtitleNode) {
     subtitleNode.textContent = docLabel;
@@ -3921,7 +3954,13 @@ function renderMobileSignaturePage() {
     dateNode.textContent = docType === "exit" ? formatDate(person?.dateSortieReelle || person?.dateSortiePrevue) || "-" : formatDate(person?.dateEntree) || "-";
   }
 
-  const valid = Boolean(person && request && isMobileSignatureRequestValid(request) && normalizeText(request.docType) === normalizeText(docType));
+  const valid = Boolean(
+    person &&
+      request &&
+      isMobileSignatureRequestValid(request) &&
+      normalizeText(request.docType) === normalizeText(docType) &&
+      normalizeText(request.signer || "PERSONNEL") === normalizeText(signer)
+  );
   if (panelNode) {
     panelNode.hidden = !valid;
   }
@@ -4769,7 +4808,8 @@ function renderArrivalDocument(personId) {
     representantNameNode.textContent = "-";
     representantFunctionNode.textContent = "-";
     updateRepresentativeSignatureActionState("arrival");
-    syncDocumentMobileSignatureLink("arrival", "");
+    syncDocumentMobileSignatureLink("arrival", "", "personnel");
+    syncDocumentMobileSignatureLink("arrival", "", "representant");
     return;
   }
 
@@ -4827,7 +4867,8 @@ function renderArrivalDocument(personId) {
   totalEffectsNode.textContent = String(effects.length);
   totalValueNode.textContent = formatAmountWithEuro(totalValue);
   updateSortableHeaders("arrivalEffects");
-  syncDocumentMobileSignatureLink("arrival", person.id);
+  syncDocumentMobileSignatureLink("arrival", person.id, "personnel");
+  syncDocumentMobileSignatureLink("arrival", person.id, "representant");
 }
 
 function renderArrivalCostsTable(headNode, bodyNode) {
@@ -4965,7 +5006,8 @@ function renderExitDocument(personId) {
     representantFunctionNode.textContent = "-";
     renderDocumentCostsTable(costsHead, costsBody);
     updateRepresentativeSignatureActionState("exit");
-    syncDocumentMobileSignatureLink("exit", "");
+    syncDocumentMobileSignatureLink("exit", "", "personnel");
+    syncDocumentMobileSignatureLink("exit", "", "representant");
     return;
   }
 
@@ -5025,7 +5067,8 @@ function renderExitDocument(personId) {
   totalValueNode.textContent = formatAmountWithEuro(totalValue);
   renderDocumentCostsTable(costsHead, costsBody);
   updateSortableHeaders("exitEffects");
-  syncDocumentMobileSignatureLink("exit", person.id);
+  syncDocumentMobileSignatureLink("exit", person.id, "personnel");
+  syncDocumentMobileSignatureLink("exit", person.id, "representant");
 }
 
 function getAvailableReferenceSites(person) {
