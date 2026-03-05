@@ -3325,7 +3325,7 @@ function renderDocumentsArchivePage() {
   }
 
   if (!archives.length) {
-    body.innerHTML = buildEmptyTableRow(body, "AUCUN DOCUMENT ARCHIVE", 10);
+    body.innerHTML = buildEmptyTableRow(body, "AUCUN DOCUMENT ARCHIVE", 11);
     return;
   }
 
@@ -3338,6 +3338,7 @@ function renderDocumentsArchivePage() {
         <td>${escapeHtml(entry.prenom || "-")}</td>
         <td>${escapeHtml(entry.typeDocument || "-")}</td>
         <td>${escapeHtml(formatDate(entry.dateDocument) || "-")}</td>
+        <td>${escapeHtml(formatTime(entry.dateArchivage) || "-")}</td>
         <td>${escapeHtml(entry.sites || "-")}</td>
         <td>${escapeHtml(getDocumentArchiveSignatureStatus(entry))}</td>
         <td>${escapeHtml(String(entry.totalEffets ?? "-"))}</td>
@@ -3348,7 +3349,7 @@ function renderDocumentsArchivePage() {
       }
     );
 
-  renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUN DOCUMENT ARCHIVE", 10), 24);
+  renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUN DOCUMENT ARCHIVE", 11), 24);
 }
 
 function getSignatureValue(person, docType, signer) {
@@ -5277,6 +5278,20 @@ function formatDate(value) {
   const [year, month, day] = value.split("-");
   if (!year || !month || !day) return value;
   return `${day}/${month}/${year}`;
+}
+
+function formatTime(value) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatDateForDocument(value) {
