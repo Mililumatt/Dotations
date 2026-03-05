@@ -3570,7 +3570,14 @@ function drawSignatureFromDataUrl(canvas, dataUrl) {
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     context.clearRect(0, 0, width, height);
-    context.drawImage(image, 0, 0, width, height);
+    const sourceWidth = Math.max(1, image.naturalWidth || image.width || 1);
+    const sourceHeight = Math.max(1, image.naturalHeight || image.height || 1);
+    const scale = Math.min(width / sourceWidth, height / sourceHeight);
+    const drawWidth = sourceWidth * scale;
+    const drawHeight = sourceHeight * scale;
+    const offsetX = (width - drawWidth) / 2;
+    const offsetY = (height - drawHeight) / 2;
+    context.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
   };
   image.src = dataUrl;
 }
@@ -3715,6 +3722,7 @@ function bindSignatureCanvases() {
       if (!person || !docType || !signer) {
         return;
       }
+      const wasFullySigned = isDocumentFullySigned(person, docType);
       const nextValue = stateRef.pendingDataUrl || "";
       setSignatureValue(person, docType, signer, nextValue, nextValue ? getCurrentSignatureTimestamp() : "");
       if (document.body.dataset.page === "mobile-signature" && signer === "personnel" && nextValue) {
@@ -3726,9 +3734,19 @@ function bindSignatureCanvases() {
       if (nextValue && docType === "exit") {
         applySignedExitCompletion(person);
       }
+      const isNowFullySigned = isDocumentFullySigned(person, docType);
       markDirty();
-      showActionStatus(nextValue ? "update" : "delete", nextValue ? "SIGNATURE VALIDEE" : "SIGNATURE SUPPRIMEE");
-      await saveDataToFile();
+      const saveText =
+        isNowFullySigned && !wasFullySigned
+          ? "DOCUMENT SIGNE - SAUVEGARDE AUTOMATIQUE"
+          : nextValue
+            ? "SIGNATURE VALIDEE"
+            : "SIGNATURE SUPPRIMEE";
+      showActionStatus(nextValue ? "update" : "delete", saveText);
+      await saveDataToFile({
+        silent: true,
+        successText: saveText,
+      });
       if (document.body.dataset.page === "mobile-signature") {
         renderMobileSignaturePage();
       }

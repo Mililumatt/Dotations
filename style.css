@@ -2146,6 +2146,13 @@ body[data-pdf-mode="true"] .document-field--total-facturable strong {
   justify-content: center;
 }
 
+body[data-page="arrival-document"] .signature-grid,
+body[data-page="exit-document"] .signature-grid {
+  max-width: 1160px;
+  margin: 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 560px));
+}
+
 .signature-box {
   display: grid;
   gap: 6px;
