@@ -1461,6 +1461,11 @@ function getDocumentPagePath(docType) {
   return normalizeText(docType) === "EXIT" ? "document-sortie.html" : "document-arrivee.html";
 }
 
+function getHostedPdfDocumentPath(docType, personId) {
+  const pagePath = getDocumentPagePath(docType);
+  return `${pagePath}?personId=${encodeURIComponent(personId)}&pdf=1`;
+}
+
 async function openPdfDocument(docType, personId) {
   if (state.isDirty) {
     showDataStatus("SAUVEGARDER AVANT OUVERTURE DU PDF");
@@ -1498,9 +1503,12 @@ async function openPdfDocument(docType, personId) {
     }
 
     if (getDataBackendMode() !== "LOCAL_API") {
-      const pagePath = getDocumentPagePath(docType);
-      const hostedUrl = `${pagePath}?personId=${encodeURIComponent(personId)}&pdf=1&ts=${Date.now()}`;
+      const hostedPath = getHostedPdfDocumentPath(docType, personId);
+      const hostedUrl = `${hostedPath}&ts=${Date.now()}`;
       popup.location.href = hostedUrl;
+      if (person) {
+        await registerArchivedDocument(person, docType, hostedPath, "", archiveMode);
+      }
       showDataStatus("DOCUMENT OUVERT - UTILISER IMPRIMER POUR GENERER LE PDF");
       return;
     }
@@ -3141,7 +3149,14 @@ function getDocumentFingerprint(person, docType) {
 }
 
 function getDocumentArchiveOpenPath(entry) {
-  return entry?.pdfPath ? `/${String(entry.pdfPath).replace(/^\/+/, "")}` : "";
+  const raw = String(entry?.pdfPath || "").trim();
+  if (!raw) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(raw)) {
+    return raw;
+  }
+  return `/${raw.replace(/^\/+/, "")}`;
 }
 
 function getArchiveEntrySites(entry) {
