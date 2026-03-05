@@ -570,6 +570,28 @@ body[data-pdf-mode="true"] .data-table td:nth-child(8) {
   width: 8%;
 }
 
+@media screen {
+  body[data-pdf-mode="true"] {
+    background: #d6d9dc !important;
+    padding: 10px 0 18px !important;
+  }
+
+  body[data-pdf-mode="true"] .main-content {
+    width: 210mm !important;
+    max-width: calc(100vw - 24px) !important;
+    margin: 0 auto !important;
+    padding: 8mm 10mm 10mm !important;
+    background: #ffffff !important;
+    box-shadow: 0 6px 24px rgba(24, 40, 52, 0.18) !important;
+    overflow: visible !important;
+  }
+
+  body[data-pdf-mode="true"] .card.arrival-document {
+    max-width: 100% !important;
+    margin: 0 !important;
+  }
+}
+
 .page-header,
 .section__heading,
 .person-sheet__header,
