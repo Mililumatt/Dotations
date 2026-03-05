@@ -38,6 +38,10 @@ const MAX_UNDO_STACK = 30;
 const ALL_SITES_VALUE = "TOUS SITES";
 const CHARGED_REPLACEMENT_CAUSES = ["PERTE", "CASSE", "NON RENDU", "VOL"];
 const MOBILE_SIGNATURE_REQUEST_TTL_MS = 10 * 60 * 1000;
+const SUPABASE_PROJECT_URL = "https://dphrvdhqhgycmllietuk.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_2wYXnIDj4-c8daQZW8D5hA_2Py6k7z6";
+const SUPABASE_APP_STATE_TABLE = "app_state";
+const SUPABASE_APP_STATE_ID = "main";
 let pdfModalCleanupBound = false;
 const signatureCanvases = new WeakMap();
 
@@ -86,6 +90,94 @@ function normalizeHttpUrl(value) {
   } catch (error) {
     return "";
   }
+}
+
+function isLocalRuntime() {
+  const host = String(window.location.hostname || "").toLowerCase();
+  return (
+    window.location.protocol === "file:" ||
+    host === "localhost" ||
+    host === "127.0.0.1"
+  );
+}
+
+function isSupabaseConfigured() {
+  const url = normalizeHttpUrl(SUPABASE_PROJECT_URL);
+  const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
+  return Boolean(url && key && key.startsWith("sb_"));
+}
+
+function getDataBackendMode() {
+  if (isLocalRuntime()) {
+    return "LOCAL_API";
+  }
+  if (isSupabaseConfigured()) {
+    return "SUPABASE";
+  }
+  return "HOSTED_NO_BACKEND";
+}
+
+function getSupabaseRestEndpoint() {
+  const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
+  return `${baseUrl}/rest/v1/${SUPABASE_APP_STATE_TABLE}`;
+}
+
+function getSupabaseHeaders(extra = {}) {
+  const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
+  return {
+    apikey: key,
+    Authorization: `Bearer ${key}`,
+    ...extra,
+  };
+}
+
+async function fetchSupabaseStateData() {
+  const endpoint = `${getSupabaseRestEndpoint()}?id=eq.${encodeURIComponent(
+    SUPABASE_APP_STATE_ID
+  )}&select=payload&limit=1`;
+  const response = await fetch(endpoint, {
+    headers: getSupabaseHeaders(),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error("SUPABASE LOAD FAILED");
+  }
+  const rows = await response.json();
+  if (!Array.isArray(rows) || !rows.length || !rows[0]?.payload) {
+    throw new Error("SUPABASE EMPTY PAYLOAD");
+  }
+  return rows[0].payload;
+}
+
+async function saveSupabaseStateData(payload) {
+  const response = await fetch(getSupabaseRestEndpoint(), {
+    method: "POST",
+    headers: getSupabaseHeaders({
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=representation",
+    }),
+    body: JSON.stringify([
+      {
+        id: SUPABASE_APP_STATE_ID,
+        payload,
+      },
+    ]),
+  });
+  if (!response.ok) {
+    throw new Error("SUPABASE SAVE FAILED");
+  }
+}
+
+async function fetchLatestDataSnapshot() {
+  const mode = getDataBackendMode();
+  if (mode === "SUPABASE") {
+    return fetchSupabaseStateData();
+  }
+  const response = await fetch(`/api/data?ts=${Date.now()}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("LOCAL LOAD FAILED");
+  }
+  return response.json();
 }
 
 function isLikelyLocalUrl(value) {
@@ -583,12 +675,7 @@ async function reloadData(statusText = "RECHARGEMENT DES DONNEES...") {
   showDataStatus(statusText);
 
   try {
-    const response = await fetch(`/api/data?ts=${Date.now()}`, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error("Chargement impossible");
-    }
-
-    const json = await response.json();
+    const json = await fetchLatestDataSnapshot();
     state.data = json;
     migrateDataModel();
     clearWorkingData();
@@ -597,12 +684,18 @@ async function reloadData(statusText = "RECHARGEMENT DES DONNEES...") {
     applyMeta();
     hydrateStaticLists();
     renderPage();
-    showDataStatus("DONNEES LOCALES CHARGEES");
+    showDataStatus(
+      getDataBackendMode() === "SUPABASE" ? "DONNEES SUPABASE CHARGEES" : "DONNEES LOCALES CHARGEES"
+    );
   } catch (error) {
     console.error(error);
     state.data = null;
     resetUiWithoutData();
-    showDataStatus("OUVRIR L'APPLICATION VIA LE SERVEUR LOCAL");
+    if (getDataBackendMode() === "HOSTED_NO_BACKEND") {
+      showDataStatus("CONFIGURATION SUPABASE INCOMPLETE");
+    } else {
+      showDataStatus("OUVRIR L'APPLICATION VIA LE SERVEUR LOCAL");
+    }
   }
 }
 
@@ -998,11 +1091,7 @@ async function pollMobileSignatureRequest() {
   }
 
   try {
-    const response = await fetch(`/api/data?ts=${Date.now()}`, { cache: "no-store" });
-    if (!response.ok) {
-      return;
-    }
-    const json = await response.json();
+    const json = await fetchLatestDataSnapshot();
     const requests = Array.isArray(json?.demandesSignatureMobile) ? json.demandesSignatureMobile : [];
     const nextRequest = requests.find((entry) => entry.token === activeRequest.token) || null;
     const person = Array.isArray(json?.personnes)
@@ -6014,28 +6103,35 @@ async function saveDataToFile(options = {}) {
   } = options;
 
   try {
-    const response = await fetch("/api/save", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(state.data),
-    });
+    const mode = getDataBackendMode();
+    if (mode === "SUPABASE") {
+      await saveSupabaseStateData(state.data);
+    } else if (mode === "LOCAL_API") {
+      const response = await fetch("/api/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(state.data),
+      });
 
-    if (!response.ok) {
-      throw new Error("Sauvegarde impossible");
+      if (!response.ok) {
+        throw new Error("Sauvegarde locale impossible");
+      }
+    } else {
+      throw new Error("SUPABASE NON CONFIGURE");
     }
 
     clearWorkingData();
     state.isDirty = false;
     clearUndoStack();
     renderDirtyState();
-    showDataStatus(successText);
+    showDataStatus(mode === "SUPABASE" ? "DONNEES SUPABASE SAUVEGARDEES" : successText);
     if (!silent) {
-      window.alert("data.json A ETE MIS A JOUR");
+      window.alert(mode === "SUPABASE" ? "DONNEES SUPABASE MISES A JOUR" : "data.json A ETE MIS A JOUR");
     }
     if (reloadAfter) {
-      await reloadData("RELECTURE DE data.json...");
+      await reloadData(mode === "SUPABASE" ? "RELECTURE DES DONNEES SUPABASE..." : "RELECTURE DE data.json...");
     }
   } catch (error) {
     console.error(error);
