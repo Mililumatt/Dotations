@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Documents / Archives</title>
+    <link rel="stylesheet" href="style.css?v=20260304-004" />
+  </head>
+  <body data-page="documents-archives">
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="sidebar__brand-banner-wrap">
+            <img src="assets/images/sidebar/bandeau-nextboard-sidebar-detoure.png" alt="NextBoard" class="sidebar__brand-banner" />
+          </div>
+          <h1 class="sidebar__title">SUIVI DES DOTATIONS ENTREE / SORTIE</h1>
+          <p class="sidebar__subtitle">GESTION ONLINE DES EFFETS</p>
+          <div class="sidebar__project-icon" aria-hidden="true">
+            <img src="assets/images/sidebar/icone-cle.png" alt="" class="sidebar__project-icon-image" />
+            <img src="assets/images/sidebar/icone-badge.png" alt="" class="sidebar__project-icon-image" />
+            <img src="assets/images/sidebar/icone-carte.png" alt="" class="sidebar__project-icon-image" />
+            <img src="assets/images/sidebar/icone-telecommande.png" alt="" class="sidebar__project-icon-image" />
+          </div>
+        </div>
+
+        <nav class="sidebar__nav">
+          <a href="index.html" class="sidebar__link" data-nav="overview">VUE D'ENSEMBLE</a>
+          <a href="fiche-personne.html" class="sidebar__link" data-nav="person-sheet">FICHE PERSONNE</a>
+          <a href="document-arrivee.html" class="sidebar__link" data-nav="arrival-document">DOCUMENT ARRIVEE</a>
+          <a href="document-sortie.html" class="sidebar__link" data-nav="exit-document">DOCUMENT SORTIE</a>
+          <a href="documents-archives.html" class="sidebar__link" data-nav="documents-archives">DOCUMENTS / ARCHIVES</a>
+          <a href="suivi-global.html" class="sidebar__link" data-nav="global">SUIVI GLOBAL</a>
+          <a href="bases-reference.html" class="sidebar__link" data-nav="reference-bases">BASES DE REFERENCE</a>
+        </nav>
+      </aside>
+
+      <main class="main-content">
+        <div class="archives-top-fixed">
+        <header class="page-header">
+          <div>
+            <p class="page-header__eyebrow">ARCHIVAGE</p>
+            <h2 class="page-header__title">DOCUMENTS / ARCHIVES</h2>
+            <p class="page-header__subtitle">RECHERCHE, CONSULTATION ET PREPARATION DU STOCKAGE STRUCTURE DES PDF SIGNES</p>
+          </div>
+          <div class="page-header__actions">
+            <button type="button" class="button button--secondary js-load-data">RECHARGER</button>
+            <button type="button" class="button button--primary js-save-data">SAUVEGARDER</button>
+          </div>
+        </header>
+        <p class="data-status" id="data-status">OUVERTURE DES DONNEES EN COURS...</p>
+        <p class="dirty-status" id="dirty-status" hidden>MODIFICATIONS NON SAUVEGARDEES</p>
+
+        <section class="section">
+          <div class="kpi-grid">
+            <article class="kpi-card">
+              <p class="kpi-card__label">TOTAL DOCUMENTS</p>
+              <p class="kpi-card__value" id="archive-count-total">0</p>
+            </article>
+            <article class="kpi-card">
+              <p class="kpi-card__label">DOCUMENTS ARRIVEE</p>
+              <p class="kpi-card__value" id="archive-count-arrival">0</p>
+            </article>
+            <article class="kpi-card">
+              <p class="kpi-card__label">DOCUMENTS SORTIE</p>
+              <p class="kpi-card__value" id="archive-count-exit">0</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section__heading">
+            <h3>RECHERCHE ET FILTRES</h3>
+            <p>RECHERCHE DES FUTURS PDF ARCHIVES PAR PERSONNE, TYPE DE DOCUMENT ET STATUT DE SIGNATURE.</p>
+          </div>
+
+          <div class="card">
+            <form id="documents-archives-filter-form" class="filter-form">
+              <label class="field field--search">
+                <span>RECHERCHE</span>
+                <div class="search-input-wrap">
+                  <span class="field__icon" aria-hidden="true"></span>
+                  <input type="search" name="archiveSearch" placeholder="NOM, PRENOM, TYPE, SITE..." />
+                </div>
+              </label>
+
+              <label class="field">
+                <span>TYPE DE DOCUMENT</span>
+                <select name="archiveTypeDocument">
+                  <option value="">TOUS</option>
+                  <option value="ARRIVEE">ARRIVEE</option>
+                  <option value="SORTIE">SORTIE</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>SITE</span>
+                <select name="archiveSite">
+                  <option value="">TOUS</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>STATUT SIGNATURE</span>
+                <select name="archiveStatutSignature">
+                  <option value="">TOUS</option>
+                  <option value="SIGNE">SIGNE</option>
+                  <option value="EN ATTENTE">EN ATTENTE</option>
+                </select>
+              </label>
+
+              <div class="form-actions form-actions--filters">
+                <button type="reset" class="button button--secondary">REINITIALISER</button>
+              </div>
+            </form>
+          </div>
+        </section>
+        </div>
+
+        <section class="section">
+          <div class="section__heading">
+            <h3>TABLEAU DES DOCUMENTS</h3>
+            <p>CE TABLEAU SERVIRA A TERME A RETROUVER ET OUVRIR LES PDF STOCKES.</p>
+          </div>
+
+          <div class="card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>NOM</th>
+                    <th>PRENOM</th>
+                    <th>TYPE</th>
+                    <th>DATE DOCUMENT</th>
+                    <th>SITE(S)</th>
+                    <th>STATUT SIGNATURE</th>
+                    <th>TOTAL EFFETS</th>
+                    <th>TOTAL FACTURABLE</th>
+                    <th>CHEMIN PDF</th>
+                    <th>ACTION</th>
+                  </tr>
+                </thead>
+                <tbody id="documents-archives-body">
+                  <tr><td colspan="10" class="table-empty">CHARGEMENT...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section__heading">
+            <h3>STOCKAGE STRUCTURE PREVU</h3>
+            <p>ARBORESCENCE PREPAREE POUR LE STOCKAGE LOCAL, PUIS PLUS TARD POUR SUPABASE.</p>
+          </div>
+
+          <div class="card">
+            <div class="document-clauses">
+              <p><strong>ARRIVEE :</strong> `archives/pdf/arrivee/`</p>
+              <p><strong>SORTIE :</strong> `archives/pdf/sortie/`</p>
+              <p><strong>METADONNEES :</strong> `archives/metadata/`</p>
+              <p><strong>REGLE :</strong> UN FUTUR PDF SIGNE DEVRA ETRE CLASSE PAR TYPE DE DOCUMENT, PUIS PAR NOM DE PERSONNE ET DATE.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js?v=20260304-007"></script>
+  </body>
+</html>

@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bases de reference</title>
+    <link rel="stylesheet" href="style.css?v=20260304-007" />
+  </head>
+  <body data-page="reference-bases">
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="sidebar__brand-banner-wrap">
+            <img src="assets/images/sidebar/bandeau-nextboard-sidebar-detoure.png" alt="NextBoard" class="sidebar__brand-banner" />
+          </div>
+          <h1 class="sidebar__title">SUIVI DES DOTATIONS ENTREE / SORTIE</h1>
+          <p class="sidebar__subtitle">
+            GESTION ONLINE DES EFFETS
+          </p>
+          <div class="sidebar__project-icon" aria-hidden="true">
+            <img src="assets/images/sidebar/icone-cle.png" alt="" class="sidebar__project-icon-image" />
+            <img src="assets/images/sidebar/icone-badge.png" alt="" class="sidebar__project-icon-image" />
+            <img src="assets/images/sidebar/icone-carte.png" alt="" class="sidebar__project-icon-image" />
+            <img src="assets/images/sidebar/icone-telecommande.png" alt="" class="sidebar__project-icon-image" />
+          </div>
+        </div>
+
+        <nav class="sidebar__nav">
+          <a href="index.html" class="sidebar__link" data-nav="overview">VUE D'ENSEMBLE</a>
+          <a href="fiche-personne.html" class="sidebar__link" data-nav="person-sheet">FICHE PERSONNE</a>
+          <a href="document-arrivee.html" class="sidebar__link" data-nav="arrival-document">DOCUMENT ARRIVEE</a>
+          <a href="document-sortie.html" class="sidebar__link" data-nav="exit-document">DOCUMENT SORTIE</a>
+          <a href="documents-archives.html" class="sidebar__link" data-nav="documents-archives">DOCUMENTS / ARCHIVES</a>
+          <a href="suivi-global.html" class="sidebar__link" data-nav="global">SUIVI GLOBAL</a>
+          <a href="bases-reference.html" class="sidebar__link" data-nav="reference-bases">BASES DE REFERENCE</a>
+        </nav>
+      </aside>
+
+      <main class="main-content">
+        <div class="reference-top-fixed">
+        <header class="page-header">
+          <div>
+            <p class="page-header__eyebrow">PARAMETRAGE</p>
+            <h2 class="page-header__title">BASES DE REFERENCE</h2>
+            <p class="page-header__subtitle">
+              GESTION DES LISTES ET DES REFERENCES D'EFFETS CONFIES
+            </p>
+          </div>
+          <div class="page-header__actions">
+            <button type="button" class="button button--secondary js-load-data">RECHARGER</button>
+            <button type="button" class="button button--primary js-save-data">SAUVEGARDER</button>
+          </div>
+        </header>
+        <p class="data-status" id="data-status">OUVERTURE DES DONNEES EN COURS...</p>
+        <p class="dirty-status" id="dirty-status" hidden>MODIFICATIONS NON SAUVEGARDEES</p>
+
+        <section class="section">
+          <div class="kpi-grid kpi-grid--references">
+            <article class="kpi-card">
+              <p class="kpi-card__label">SITES</p>
+              <p class="kpi-card__value" id="reference-count-sites">0</p>
+            </article>
+            <article class="kpi-card">
+              <p class="kpi-card__label">TYPES PERSONNEL</p>
+              <p class="kpi-card__value" id="reference-count-typesPersonnel">0</p>
+            </article>
+            <article class="kpi-card">
+              <p class="kpi-card__label">TYPES CONTRATS</p>
+              <p class="kpi-card__value" id="reference-count-typesContrats">0</p>
+            </article>
+            <article class="kpi-card">
+              <p class="kpi-card__label">FONCTIONS</p>
+              <p class="kpi-card__value" id="reference-count-fonctions">0</p>
+            </article>
+            <article class="kpi-card">
+              <p class="kpi-card__label">TYPES EFFETS</p>
+              <p class="kpi-card__value" id="reference-count-typesEffets">0</p>
+            </article>
+            <article class="kpi-card">
+              <p class="kpi-card__label">REFERENCES EFFETS</p>
+              <p class="kpi-card__value" id="reference-count-referencesEffets">0</p>
+            </article>
+            <article class="kpi-card">
+              <p class="kpi-card__label">COUTS REMPLACEMENT</p>
+              <p class="kpi-card__value" id="reference-count-coutsRemplacement">0</p>
+            </article>
+            <article class="kpi-card">
+              <p class="kpi-card__label">REPRESENTANTS SIGNATAIRES</p>
+              <p class="kpi-card__value" id="reference-count-representantsSignataires">0</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section">
+          <article class="card reference-card">
+            <div class="section__subheading section__subheading--stacked">
+              <h4>SIGNATURE MOBILE (FLASHCODE)</h4>
+              <p>DEFINIR UNE URL PUBLIQUE POUR UTILISER LE TELEPHONE EN 4G/5G (FUTUR HEBERGEMENT).</p>
+            </div>
+            <form class="reference-mini-form" id="mobile-signature-settings-form">
+              <input
+                type="text"
+                name="mobileSignatureBaseUrl"
+                placeholder="https://mon-domaine.fr"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button type="submit" class="button button--primary">ENREGISTRER</button>
+            </form>
+            <p class="form-help" id="mobile-signature-settings-status">MODE AUTO RESEAU LOCAL (URL PUBLIQUE NON DEFINIE)</p>
+          </article>
+        </section>
+        </div>
+
+        <section class="section">
+          <div class="section__heading">
+            <h3>LISTES PRINCIPALES</h3>
+            <p>Ajout, mise a jour et suppression si la valeur n'est pas deja utilisee.</p>
+          </div>
+
+          <div class="reference-grid reference-grid--lists">
+            <article class="card reference-card">
+              <div class="section__subheading"><h4>SITES</h4></div>
+              <form class="reference-mini-form js-reference-list-form" data-list-name="sites">
+                <input type="text" name="value" placeholder="NOUVEAU SITE" />
+                <button type="submit" class="button button--primary">ENREGISTRER</button>
+              </form>
+              <div class="table-wrap table-wrap--reference-short">
+                <table class="data-table data-table--compact">
+                  <tbody id="reference-sites-body">
+                    <tr><td colspan="2" class="table-empty">CHARGEMENT...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="card reference-card">
+              <div class="section__subheading"><h4>TYPES DE PERSONNEL</h4></div>
+              <form class="reference-mini-form js-reference-list-form" data-list-name="typesPersonnel">
+                <input type="text" name="value" placeholder="NOUVEAU TYPE" />
+                <button type="submit" class="button button--primary">ENREGISTRER</button>
+              </form>
+              <div class="table-wrap table-wrap--reference-medium">
+                <table class="data-table data-table--compact">
+                  <tbody id="reference-typesPersonnel-body">
+                    <tr><td colspan="2" class="table-empty">CHARGEMENT...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="card reference-card">
+              <div class="section__subheading"><h4>TYPES DE CONTRAT</h4></div>
+              <form class="reference-mini-form js-reference-list-form" data-list-name="typesContrats">
+                <input type="text" name="value" placeholder="NOUVEAU TYPE DE CONTRAT" />
+                <button type="submit" class="button button--primary">ENREGISTRER</button>
+              </form>
+              <div class="table-wrap table-wrap--reference-short">
+                <table class="data-table data-table--compact">
+                  <tbody id="reference-typesContrats-body">
+                    <tr><td colspan="2" class="table-empty">CHARGEMENT...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="card reference-card">
+              <div class="section__subheading"><h4>FONCTIONS</h4></div>
+              <form class="reference-mini-form js-reference-list-form" data-list-name="fonctions">
+                <input type="text" name="value" placeholder="NOUVELLE FONCTION" />
+                <button type="submit" class="button button--primary">ENREGISTRER</button>
+              </form>
+              <div class="table-wrap table-wrap--reference-tall">
+                <table class="data-table data-table--compact">
+                  <tbody id="reference-fonctions-body">
+                    <tr><td colspan="2" class="table-empty">CHARGEMENT...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="card reference-card">
+              <div class="section__subheading"><h4>TYPES D'EFFETS</h4></div>
+              <form class="reference-mini-form js-reference-list-form" data-list-name="typesEffets">
+                <input type="text" name="value" placeholder="NOUVEAU TYPE D'EFFET" />
+                <button type="submit" class="button button--primary">ENREGISTRER</button>
+              </form>
+              <div class="table-wrap table-wrap--reference-short">
+                <table class="data-table data-table--compact">
+                  <tbody id="reference-typesEffets-body">
+                    <tr><td colspan="2" class="table-empty">CHARGEMENT...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="card reference-card">
+              <div class="section__subheading"><h4>REPRESENTANTS SIGNATAIRES</h4></div>
+              <form class="reference-effect-form" id="representative-signatory-form">
+                <label class="field">
+                  <span>NOM</span>
+                  <input type="text" name="representativeName" placeholder="NOM DU REPRESENTANT" />
+                </label>
+
+                <label class="field">
+                  <span>FONCTION</span>
+                  <input type="text" name="representativeFunction" placeholder="FONCTION" />
+                </label>
+
+                <div class="form-actions">
+                  <button type="submit" class="button button--primary">ENREGISTRER LE REPRESENTANT</button>
+                </div>
+              </form>
+                <div class="table-wrap table-wrap--reference-medium">
+                  <table class="data-table data-table--compact data-table--representatives">
+                  <thead>
+                    <tr>
+                      <th>NOM</th>
+                      <th>FONCTION</th>
+                      <th>UTILISATIONS</th>
+                      <th>ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reference-representantsSignataires-body">
+                    <tr><td colspan="4" class="table-empty">CHARGEMENT...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section__heading">
+            <h3>REFERENCES D'EFFETS</h3>
+            <p>Designation precise d'un effet, liee a un site et a un type d'effet.</p>
+          </div>
+
+          <article class="card">
+            <div class="section__subheading section__subheading--stacked">
+              <h4>FILTRER LES REFERENCES</h4>
+              <p>AFFICHAGE DE LA LISTE SELON TES CRITERES.</p>
+            </div>
+
+            <form class="reference-filter-form" id="reference-filter-form">
+              <label class="field field--search">
+                <span>RECHERCHE</span>
+                <div class="search-input-wrap">
+                  <span class="field__icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                      <defs>
+                        <linearGradient id="searchLensGradientReferences" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stop-color="#FF9A62" />
+                          <stop offset="45%" stop-color="#FFD166" />
+                          <stop offset="100%" stop-color="#67C6CF" />
+                        </linearGradient>
+                      </defs>
+                      <circle cx="10.5" cy="10.5" r="5.4" fill="url(#searchLensGradientReferences)" />
+                      <path
+                        d="M10.5 4.6A5.9 5.9 0 1 0 16.4 10.5 5.91 5.91 0 0 0 10.5 4.6Zm0 1.4A4.5 4.5 0 1 1 6 10.5 4.5 4.5 0 0 1 10.5 6Z"
+                        fill="#355564"
+                      />
+                      <path
+                        d="M15.35 15.35 20 20"
+                        stroke="#E16F4F"
+                        stroke-width="2.4"
+                        stroke-linecap="round"
+                      />
+                      <circle cx="8.7" cy="8.6" r="1.35" fill="#FFFFFF" fill-opacity="0.82" />
+                    </svg>
+                  </span>
+                  <input
+                    type="search"
+                    name="filterReferenceSearch"
+                    placeholder="SITE, TYPE D'EFFET, DESIGNATION..."
+                  />
+                </div>
+              </label>
+
+              <label class="field">
+                <span>FILTRE SITE</span>
+                <select name="filterReferenceSite">
+                  <option value="">TOUS</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>FILTRE TYPE D'EFFET</span>
+                <select name="filterReferenceTypeEffet">
+                  <option value="">TOUS</option>
+                </select>
+              </label>
+
+              <div class="form-actions form-actions--filters">
+                <button type="reset" class="button button--secondary">REINITIALISER</button>
+              </div>
+            </form>
+
+            <div class="form-divider" aria-hidden="true"></div>
+
+            <div class="section__subheading section__subheading--stacked">
+              <h4>AJOUTER / MODIFIER UNE REFERENCE</h4>
+              <p>SAISIE D'UNE NOUVELLE REFERENCE OU MISE A JOUR D'UNE EXISTANTE.</p>
+            </div>
+
+            <form class="reference-effect-form" id="reference-effect-form">
+              <label class="field">
+                <span>SITE</span>
+                <select name="referenceSite">
+                  <option value="">SELECTIONNER</option>
+                </select>
+              </label>
+
+              <label class="field field--full is-hidden" id="reference-sites-field">
+                <span>SITES DE LA CLE CES</span>
+                <div class="site-selector" id="reference-sites-selector"></div>
+              </label>
+
+              <label class="field">
+                <span>TYPE D'EFFET</span>
+                <select name="referenceTypeEffet">
+                  <option value="">SELECTIONNER</option>
+                </select>
+              </label>
+
+              <label class="field field--wide">
+                <span>DESIGNATION</span>
+                <input type="text" name="referenceDesignation" />
+              </label>
+
+              <div class="form-actions">
+                <button type="submit" class="button button--primary">ENREGISTRER LA REFERENCE</button>
+              </div>
+            </form>
+
+            <div class="table-wrap table-wrap--reference-large">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>SITE</th>
+                    <th>TYPE D'EFFET</th>
+                    <th>DESIGNATION</th>
+                    <th>UTILISATIONS</th>
+                    <th>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody id="reference-effects-table-body">
+                  <tr><td colspan="5" class="table-empty">CHARGEMENT...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="section">
+          <div class="section__heading">
+            <h3>COUTS DE REMPLACEMENT</h3>
+            <p>Montants de reference factures selon le type d'effet et la cause.</p>
+          </div>
+
+          <article class="card">
+            <form class="reference-effect-form" id="replacement-cost-form">
+              <label class="field">
+                <span>TYPE D'EFFET</span>
+                <select name="costTypeEffet">
+                  <option value="">SELECTIONNER</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>CAUSE</span>
+                <select name="costCauseRemplacement">
+                  <option value="">SELECTIONNER</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>MONTANT</span>
+                <input type="text" name="costMontant" inputmode="decimal" placeholder="0,00 €" />
+              </label>
+
+              <div class="form-actions">
+                <button type="submit" class="button button--primary">ENREGISTRER LE COUT</button>
+              </div>
+            </form>
+
+            <div class="table-wrap table-wrap--reference-medium">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>TYPE D'EFFET</th>
+                    <th>CAUSE</th>
+                    <th>MONTANT</th>
+                    <th>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody id="replacement-costs-body">
+                  <tr><td colspan="4" class="table-empty">CHARGEMENT...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js?v=20260304-007"></script>
+  </body>
+</html>
