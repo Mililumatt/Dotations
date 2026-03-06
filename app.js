@@ -3578,8 +3578,13 @@ function resizeSignatureCanvas(canvas) {
   const ratio = window.devicePixelRatio || 1;
   const width = Math.max(1, Math.round(canvas.clientWidth));
   const height = Math.max(1, Math.round(canvas.clientHeight));
-  canvas.width = Math.max(1, Math.round(width * ratio));
-  canvas.height = Math.max(1, Math.round(height * ratio));
+  const targetWidth = Math.max(1, Math.round(width * ratio));
+  const targetHeight = Math.max(1, Math.round(height * ratio));
+  const needsResize = canvas.width !== targetWidth || canvas.height !== targetHeight;
+  if (needsResize) {
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+  }
   const context = canvas.getContext("2d");
   if (!context) {
     return null;
