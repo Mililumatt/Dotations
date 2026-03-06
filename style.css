@@ -1827,11 +1827,25 @@ body[data-page="reference-bases"] .table-wrap--reference-large::-webkit-scrollba
   background: rgba(224, 154, 103, 0.12);
 }
 
+.arrival-effect-row--updated td {
+  background: rgba(109, 152, 214, 0.12);
+}
+
+.arrival-effect-row--lost td,
+.arrival-effect-row--stolen td {
+  background: rgba(214, 109, 109, 0.12);
+}
+
+.arrival-effect-row--hs td {
+  background: rgba(141, 147, 153, 0.14);
+}
+
 .movement-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   margin-left: 6px;
+  margin-top: 2px;
   padding: 1px 7px;
   border-radius: 999px;
   border: 1px solid transparent;
@@ -1851,6 +1865,30 @@ body[data-page="reference-bases"] .table-wrap--reference-large::-webkit-scrollba
   color: #8a4e20;
   background: rgba(224, 154, 103, 0.22);
   border-color: rgba(224, 154, 103, 0.62);
+}
+
+.movement-badge--modifie {
+  color: #25567d;
+  background: rgba(109, 152, 214, 0.2);
+  border-color: rgba(109, 152, 214, 0.56);
+}
+
+.movement-badge--perdu {
+  color: #8b2f2f;
+  background: rgba(214, 109, 109, 0.2);
+  border-color: rgba(214, 109, 109, 0.58);
+}
+
+.movement-badge--vole {
+  color: #7f3f72;
+  background: rgba(181, 120, 172, 0.2);
+  border-color: rgba(181, 120, 172, 0.56);
+}
+
+.movement-badge--hs {
+  color: #46535e;
+  background: rgba(141, 147, 153, 0.22);
+  border-color: rgba(141, 147, 153, 0.62);
 }
 
 .js-person-row {

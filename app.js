@@ -1506,9 +1506,9 @@ function getDocumentPagePath(docType) {
   return normalizeText(docType) === "EXIT" ? "document-sortie.html" : "document-arrivee.html";
 }
 
-function getHostedPdfDocumentPath(docType, personId) {
+function getHostedPdfDocumentPath(docType, personId, mode = "STANDARD") {
   const pagePath = getDocumentPagePath(docType);
-  return `${pagePath}?personId=${encodeURIComponent(personId)}&pdf=1`;
+  return `${pagePath}?personId=${encodeURIComponent(personId)}&pdf=1&mode=${encodeURIComponent(normalizeText(mode || "STANDARD"))}`;
 }
 
 async function openPdfDocument(docType, personId) {
@@ -1548,7 +1548,7 @@ async function openPdfDocument(docType, personId) {
     }
 
     if (getDataBackendMode() !== "LOCAL_API") {
-      const hostedPath = getHostedPdfDocumentPath(docType, personId);
+      const hostedPath = getHostedPdfDocumentPath(docType, personId, archiveMode);
       const hostedUrl = `${hostedPath}&ts=${Date.now()}`;
       popup.location.href = hostedUrl;
       if (person) {
@@ -3149,6 +3149,56 @@ function getEffectMovementKey(effect) {
   ].join("|");
 }
 
+function getEffectStableKey(effect) {
+  const explicitId = String(effect?.id || "").trim();
+  if (explicitId) {
+    return `ID:${explicitId}`;
+  }
+  return [
+    normalizeText(effect?.typeEffet),
+    normalizeText(effect?.siteReference || referenceSiteFromEffect(effect)),
+    normalizeText(getEffectDisplayDesignation(effect)),
+    normalizeText(effect?.numeroIdentification),
+  ].join("|");
+}
+
+function getEffectComparableSignature(person, effect) {
+  return JSON.stringify({
+    typeEffet: normalizeText(effect?.typeEffet),
+    site: normalizeText(effect?.siteReference || referenceSiteFromEffect(effect)),
+    designation: normalizeText(getEffectDisplayDesignation(effect)),
+    numeroIdentification: normalizeText(effect?.numeroIdentification),
+    vehiculeImmatriculation: normalizeText(effect?.vehiculeImmatriculation),
+    dateRemise: String(effect?.dateRemise || ""),
+    dateRetour: String(effect?.dateRetour || ""),
+    statut: normalizeText(getEffectStatus(person, effect)),
+    cause: normalizeText(getEffectReplacementCause(person, effect)),
+    dateRemplacement: String(effect?.dateRemplacement || ""),
+    commentaire: normalizeText(effect?.commentaire),
+    cout: normalizeAmount(getEffectReplacementCost(person, effect)),
+  });
+}
+
+function getMovementBadgeVariant(movement) {
+  const normalized = normalizeText(movement);
+  if (normalized === "RENDU") return "retour";
+  if (normalized === "PERDU") return "perdu";
+  if (normalized === "VOLE") return "vole";
+  if (normalized === "HS") return "hs";
+  if (normalized === "MODIFIE") return "modifie";
+  return "ajout";
+}
+
+function getMovementRowVariant(movement) {
+  const normalized = normalizeText(movement);
+  if (normalized === "RENDU") return "returned";
+  if (normalized === "PERDU") return "lost";
+  if (normalized === "VOLE") return "stolen";
+  if (normalized === "HS") return "hs";
+  if (normalized === "MODIFIE") return "updated";
+  return "added";
+}
+
 function normalizeDateString(value) {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -3193,6 +3243,7 @@ function getArrivalComplementMovementMap(person, effects) {
 
   const latestSignedArrival = getLatestSignedArrivalArchiveForPerson(person.id);
   let baselineKeys = new Set();
+  let baselineByStableKey = new Map();
   const baselineArchivedAt = normalizeDateString(latestSignedArrival?.dateArchivage || "");
   if (latestSignedArrival?.fingerprint) {
     try {
@@ -3203,8 +3254,14 @@ function getArrivalComplementMovementMap(person, effects) {
           .map((effect) => getEffectMovementKey(effect))
           .filter(Boolean)
       );
+      baselineByStableKey = new Map(
+        baselineEffects
+          .map((effect) => [getEffectStableKey(effect), effect])
+          .filter(([key]) => Boolean(key))
+      );
     } catch (error) {
       baselineKeys = new Set();
+      baselineByStableKey = new Map();
     }
   }
 
@@ -3217,9 +3274,40 @@ function getArrivalComplementMovementMap(person, effects) {
       movements.set(key, "RENDU");
       return;
     }
+    const effectStatus = normalizeText(getEffectStatus(person, effect));
+    const effectCause = normalizeText(getEffectReplacementCause(person, effect));
+    if (effectStatus === "HS") {
+      movements.set(key, "HS");
+      return;
+    }
+    if (effectCause === "VOL") {
+      movements.set(key, "VOLE");
+      return;
+    }
+    if (effectStatus === "PERDU" || effectCause === "PERTE") {
+      movements.set(key, "PERDU");
+      return;
+    }
     if (baselineKeys.size && !baselineKeys.has(key)) {
       movements.set(key, "AJOUTE");
       return;
+    }
+    const stableKey = getEffectStableKey(effect);
+    const baselineEffect = stableKey ? baselineByStableKey.get(stableKey) : null;
+    if (baselineEffect) {
+      const baselineSignature = getEffectComparableSignature(
+        person,
+        {
+          ...effect,
+          ...baselineEffect,
+          siteReference: baselineEffect?.site || baselineEffect?.siteReference || effect?.siteReference || "",
+        }
+      );
+      const currentSignature = getEffectComparableSignature(person, effect);
+      if (baselineSignature !== currentSignature) {
+        movements.set(key, "MODIFIE");
+        return;
+      }
     }
     if (!baselineKeys.size && baselineArchivedAt) {
       const remiseDate = normalizeDateString(effect?.dateRemise || "");
@@ -4534,7 +4622,7 @@ function renderGlobalTable(persons) {
   }
 
   if (!persons.length) {
-    body.innerHTML = buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 12);
+    body.innerHTML = buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 13);
     return;
   }
 
@@ -4544,6 +4632,28 @@ function renderGlobalTable(persons) {
       const nonRendus = (person.effetsConfies || []).filter(
         (effect) => getEffectStatus(person, effect) === "NON RENDU"
       ).length;
+      const movementMap = getArrivalComplementMovementMap(person, person.effetsConfies || []);
+      const movementCounts = {
+        AJOUTE: 0,
+        MODIFIE: 0,
+        RENDU: 0,
+        PERDU: 0,
+        VOLE: 0,
+        HS: 0,
+      };
+      movementMap.forEach((movement) => {
+        const normalized = normalizeText(movement);
+        if (Object.prototype.hasOwnProperty.call(movementCounts, normalized)) {
+          movementCounts[normalized] += 1;
+        }
+      });
+      const movementMarkup = Object.entries(movementCounts)
+        .filter(([, count]) => count > 0)
+        .map(
+          ([movement, count]) =>
+            `<span class="movement-badge movement-badge--${getMovementBadgeVariant(movement)}">${movement} ${count}</span>`
+        )
+        .join(" ");
       const alertClass = hasOverdueExit(person) ? " is-alert-row" : "";
       return `<tr class="js-person-row${alertClass}" data-person-id="${person.id}">
         <td>${person.nom}</td>
@@ -4557,6 +4667,7 @@ function renderGlobalTable(persons) {
         <td>${getDossierStatusCellMarkup(getDossierStatus(person))}</td>
         <td>${totalEffects}</td>
         <td>${nonRendus > 0 ? '<span class="row-alert-dot" aria-hidden="true"></span>' : ""}${nonRendus}</td>
+        <td>${movementMarkup || "-"}</td>
         <td>
           <a class="table-link" href="fiche-personne.html?personId=${person.id}">VOIR</a>
           <button type="button" class="table-link js-delete-person" data-person-id="${person.id}">SUPPRIMER</button>
@@ -4565,7 +4676,7 @@ function renderGlobalTable(persons) {
     })
     ;
 
-  renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 12), 24);
+  renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 13), 24);
 
   bindPersonRowActions();
   bindDeletePersonButtons();
@@ -4974,15 +5085,19 @@ function renderArrivalDocument(personId) {
     return;
   }
 
-  const effects = (person.effetsConfies || []).filter((effect) => Boolean(effect.dateRemise));
-  const sortedEffects = sortEffectsForTable(person, effects, "arrivalEffects");
-  const totalValue = effects.reduce((sum, effect) => sum + getEffectUnitValue(effect), 0);
-  const fallbackMovements = getArrivalComplementMovementMap(person, sortedEffects);
+  const allEffects = Array.isArray(person.effetsConfies) ? person.effetsConfies : [];
+  const fallbackMovements = getArrivalComplementMovementMap(person, allEffects);
 
   if (!explicitMode && !isComplement && fallbackMovements.size) {
     mode = "COMPLEMENTAIRE";
     isComplement = true;
   }
+
+  const effectsForDisplay = isComplement
+    ? allEffects
+    : allEffects.filter((effect) => Boolean(effect.dateRemise));
+  const sortedEffects = sortEffectsForTable(person, effectsForDisplay, "arrivalEffects");
+  const totalValue = sortedEffects.reduce((sum, effect) => sum + getEffectUnitValue(effect), 0);
 
   titleNode.textContent = isComplement
     ? "AVENANT DE REMISE DES EFFETS CONFIES"
@@ -5020,10 +5135,10 @@ function renderArrivalDocument(personId) {
           (effect) => {
             const movement = isComplement ? String(complementMovements.get(getEffectMovementKey(effect)) || "") : "";
             const movementBadge = movement
-              ? `<span class="movement-badge movement-badge--${movement === "RENDU" ? "retour" : "ajout"}">${movement}</span>`
+              ? `<span class="movement-badge movement-badge--${getMovementBadgeVariant(movement)}">${movement}</span>`
               : "";
             const rowClass = movement
-              ? ` class="arrival-effect-row arrival-effect-row--${movement === "RENDU" ? "returned" : "added"}"`
+              ? ` class="arrival-effect-row arrival-effect-row--${getMovementRowVariant(movement)}"`
               : "";
             return `<tr${rowClass}>
             <td>${effect.typeEffet || ""}</td>
@@ -5042,7 +5157,7 @@ function renderArrivalDocument(personId) {
     : buildEmptyTableRow(body, "AUCUN EFFET A AFFICHER", 5);
 
   renderArrivalCostsTable(costsHead, costsBody);
-  totalEffectsNode.textContent = String(effects.length);
+  totalEffectsNode.textContent = String(sortedEffects.length);
   totalValueNode.textContent = formatAmountWithEuro(totalValue);
   updateSortableHeaders("arrivalEffects");
   syncDocumentMobileSignatureLink("arrival", person.id, "personnel");
