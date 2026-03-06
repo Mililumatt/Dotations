@@ -819,7 +819,7 @@ function migrateDataModel() {
       ...state.data.listes.statutsObjetManuels.map(normalizeText),
       "ACTIF",
       "PERDU",
-      "DETRUIT",
+      "CASSE",
       "HS",
       "REMPLACE",
     ])
@@ -980,6 +980,9 @@ function migrateDataModel() {
       effect.numeroIdentification = normalizeText(effect.numeroIdentification);
       effect.vehiculeImmatriculation = normalizeText(effect.vehiculeImmatriculation);
       effect.statutManuel = normalizeText(effect.statutManuel);
+      if (effect.statutManuel === "DETRUIT") {
+        effect.statutManuel = "CASSE";
+      }
       effect.causeRemplacement = normalizeText(effect.causeRemplacement);
       effect.dateRemplacement = String(effect.dateRemplacement || "");
       effect.coutRemplacement = normalizeAmount(effect.coutRemplacement);
@@ -1922,7 +1925,22 @@ function bindEffectForm() {
     };
   }
 
-  const submitEffect = (mode) => {
+  const openArrivalComplementAfterEffectUpdate = async (personId) => {
+    await saveDataToFile({
+      silent: true,
+      reloadAfter: false,
+    });
+    if (state.isDirty) {
+      showDataStatus("SAUVEGARDE IMPOSSIBLE - REDIRECTION ANNULEE");
+      return;
+    }
+    window.alert(
+      "DES MODIFICATIONS D'EFFETS ONT ETE EFFECTUEES. VOUS DEVEZ DONC PROCEDER A UNE NOUVELLE SIGNATURE DE L'AVENANT."
+    );
+    window.location.href = `document-arrivee.html?personId=${encodeURIComponent(personId)}&mode=COMPLEMENTAIRE`;
+  };
+
+  const submitEffect = async (mode) => {
     const person = getCurrentPerson();
     if (!person) {
       showDataStatus("SELECTIONNER UNE PERSONNE AVANT D'AJOUTER UN EFFET");
@@ -2021,18 +2039,26 @@ function bindEffectForm() {
         ? `EFFET MODIFIE : ${effectLabel}`
         : `EFFET AJOUTE : ${effectLabel}`
     );
+
+    if (mode === "edit") {
+      await openArrivalComplementAfterEffectUpdate(person.id);
+    }
   };
 
-  form.onsubmit = (event) => {
+  form.onsubmit = async (event) => {
     event.preventDefault();
-    submitEffect(state.editingEffectId ? "edit" : "add");
+    await submitEffect(state.editingEffectId ? "edit" : "add");
   };
 
   if (addButton) {
-    addButton.onclick = () => submitEffect("add");
+    addButton.onclick = async () => {
+      await submitEffect("add");
+    };
   }
   if (updateButton) {
-    updateButton.onclick = () => submitEffect("edit");
+    updateButton.onclick = async () => {
+      await submitEffect("edit");
+    };
   }
   if (deleteButton) {
     deleteButton.onclick = () => {
@@ -5587,7 +5613,7 @@ function getEffectStatus(person, effect) {
   if (effect.dateRetour) return "RESTITUE";
 
   const manualStatus = normalizeText(effect.statutManuel);
-  if (["PERDU", "DETRUIT", "HS"].includes(manualStatus)) return manualStatus;
+  if (["PERDU", "CASSE", "HS"].includes(manualStatus)) return manualStatus;
   if (isExitDue(person)) return "NON RENDU";
   return manualStatus || "ACTIF";
 }

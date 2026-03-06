@@ -1489,6 +1489,7 @@ body[data-page="global"] .form-actions--filters {
   color: #8f4a32;
 }
 
+.status-pill--casse,
 .status-pill--detruit,
 .status-pill--hs {
   background: rgba(121, 122, 134, 0.16);
