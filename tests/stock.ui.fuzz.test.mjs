@@ -47,7 +47,10 @@ function createStockContext() {
     "referenceHasSite",
     "isReferenceEffectActive",
     "findReferenceById",
+    "isCesKeyDesignation",
     "typeUsesReferenceCatalog",
+    "getReferenceEffectiveType",
+    "referenceMatchesType",
     "getEffectDisplayDesignation",
     "getEffectDisplaySite",
     "getTodayIsoDate",
@@ -187,4 +190,20 @@ test("fuzz stock mechanics stays coherent under random personnel/effects/movemen
   for (const [type, total] of byType.entries()) {
     assert.equal(Number.isFinite(total), true, `type total NaN for ${type}`);
   }
+});
+
+test("legacy CLE reference with CES designation matches CLE CES stock selection", () => {
+  const ctx = createStockContext();
+  const reference = {
+    id: "REF0001",
+    site: "CDM",
+    sitesAffectation: ["CDM"],
+    typeEffet: "CLE",
+    designation: "CES-VLOC",
+    active: true,
+  };
+
+  assert.equal(ctx.getReferenceEffectiveType(reference), "CLE CES");
+  assert.equal(ctx.referenceMatchesType(reference, "CLE CES"), true);
+  assert.equal(ctx.referenceMatchesType(reference, "CLE"), false);
 });

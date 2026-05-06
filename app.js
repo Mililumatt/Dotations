@@ -4493,7 +4493,7 @@ function updateEffectFormMode(typeEffet) {
 
 function isCesKeyDesignation(designation) {
   const normalized = normalizeText(designation);
-  return normalized === "CES" || normalized.startsWith("CES ");
+  return normalized === "CES" || normalized.startsWith("CES-") || normalized.startsWith("CES ");
 }
 
 function bindRegisterButtonsAutoSave() {
@@ -5063,6 +5063,7 @@ function bindStockAdjustmentForm() {
     const referenceEffetId = String(formData.get("stockReferenceId") || "");
     const reference = referenceEffetId === ALL_DESIGNATIONS_VALUE ? null : findReferenceById(referenceEffetId);
     const designation = normalizeText(reference?.designation || "");
+    const effectiveTypeEffet = reference ? getReferenceEffectiveType(reference) : typeEffet;
     const action = normalizeText(formData.get("stockAction"));
     const quantite = Math.max(1, Number.parseInt(String(formData.get("stockQuantity") || "1"), 10) || 1);
     const motif = normalizeText(formData.get("stockReason"));
@@ -5080,11 +5081,15 @@ function bindStockAdjustmentForm() {
       showDataStatus("REFERENCE EFFET DESACTIVEE - MOUVEMENT BLOQUE");
       return;
     }
+    if (!referenceMatchesType(reference, typeEffet)) {
+      showDataStatus("TYPE D'EFFET ET DESIGNATION INCOHERENTS");
+      return;
+    }
 
     pushUndoSnapshot("MOUVEMENT STOCK MANUEL");
     state.data.stocksEffetsManuels.push({
       id: getNextId("STKM", state.data.stocksEffetsManuels),
-      typeEffet,
+      typeEffet: effectiveTypeEffet,
       site,
       referenceEffetId: String(reference.id || ""),
       designation,
@@ -5094,7 +5099,7 @@ function bindStockAdjustmentForm() {
       commentaire,
       date: getTodayIsoDate(),
     });
-    state.stockHighlightKey = `${typeEffet}__${site}__${designation}`;
+    state.stockHighlightKey = `${effectiveTypeEffet}__${site}__${designation}`;
     markDirty();
     refreshStockTableFiltersFromForm();
     renderReferenceBases();
@@ -5105,7 +5110,7 @@ function bindStockAdjustmentForm() {
     if (form.elements.stockComment) {
       form.elements.stockComment.value = "";
     }
-    showActionStatus("create", `MOUVEMENT STOCK ENREGISTRE : ${typeEffet} / ${designation}`);
+    showActionStatus("create", `MOUVEMENT STOCK ENREGISTRE : ${effectiveTypeEffet} / ${designation}`);
   };
 
   const typeSelect = form.elements.stockTypeEffet;
