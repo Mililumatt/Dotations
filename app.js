@@ -1500,6 +1500,7 @@ async function loadData() {
   bindStockAdjustmentForm();
   bindRepresentativeSignatoryForm();
   bindMobileSignatureSettingsForm();
+  bindRegisterButtonsAutoSave();
   bindReferenceFilters();
   bindArchiveFilterForm();
   bindSignatureCanvases();
@@ -4493,6 +4494,40 @@ function updateEffectFormMode(typeEffet) {
 function isCesKeyDesignation(designation) {
   const normalized = normalizeText(designation);
   return normalized === "CES" || normalized.startsWith("CES ");
+}
+
+function bindRegisterButtonsAutoSave() {
+  if (document.body?.dataset?.registerAutosaveBound === "true") {
+    return;
+  }
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const button = target.closest("button");
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    const label = normalizeText(button.textContent || "");
+    if (!label.startsWith("ENREGISTRER")) {
+      return;
+    }
+
+    window.setTimeout(async () => {
+      if (!state.isDirty) {
+        return;
+      }
+      await saveDataToFile({
+        silent: true,
+        reloadAfter: false,
+        promptDownload: false,
+      });
+    }, 220);
+  });
+
+  document.body.dataset.registerAutosaveBound = "true";
 }
 
 function getReplacementCostValue(typeEffet, causeRemplacement, designation = "") {
