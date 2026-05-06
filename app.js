@@ -5228,7 +5228,6 @@ function bindStockAdjustmentForm() {
       };
       renderStockMovementsTable();
       renderStockSummaryTable();
-      renderStockTypeKpis();
       renderReferenceCounts();
       showActionStatus("create", `MOUVEMENT STOCK ENREGISTRE : ${effectiveTypeEffet} / ${designation}`);
       showStockAdjustmentStatus(`MOUVEMENT STOCK AJOUTE : ${effectiveTypeEffet} / ${designation} - SAUVEGARDE EN COURS`, "success");
@@ -5274,6 +5273,7 @@ function bindStockAdjustmentForm() {
       refreshStockTableFiltersFromForm();
       renderStockMovementsTable();
       renderStockSummaryTable();
+      renderStockTypeKpis();
     };
   }
   if (siteSelect instanceof HTMLSelectElement) {
@@ -5282,6 +5282,7 @@ function bindStockAdjustmentForm() {
       refreshStockTableFiltersFromForm();
       renderStockMovementsTable();
       renderStockSummaryTable();
+      renderStockTypeKpis();
     };
   }
   if (referenceSelect instanceof HTMLSelectElement) {
@@ -5289,6 +5290,7 @@ function bindStockAdjustmentForm() {
       refreshStockTableFiltersFromForm();
       renderStockMovementsTable();
       renderStockSummaryTable();
+      renderStockTypeKpis();
     };
   }
   const resetButton = document.getElementById("stock-reset-filters");
@@ -5431,6 +5433,7 @@ function hydrateStockAdjustmentFromSelection(selection) {
   refreshStockTableFiltersFromForm();
   renderStockMovementsTable();
   renderStockSummaryTable();
+  renderStockTypeKpis();
 }
 
 function getReferenceCauseOptions() {
@@ -9593,6 +9596,7 @@ function resetStockTableFiltersFromForm() {
   refreshStockTableFiltersFromForm();
   renderStockMovementsTable();
   renderStockSummaryTable();
+  renderStockTypeKpis();
 }
 
 function renderMobileSignatureSettings() {
