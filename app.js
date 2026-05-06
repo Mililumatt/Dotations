@@ -5140,11 +5140,11 @@ function bindStockAdjustmentForm() {
       const referenceEffetId = String(formData.get("stockReferenceId") || "");
       let syntheticReference = parseStockSyntheticReferenceValue(referenceEffetId);
       const reference = referenceEffetId === ALL_DESIGNATIONS_VALUE || syntheticReference ? null : findReferenceById(referenceEffetId);
+      const effectiveTypeEffet = reference ? getReferenceEffectiveType(reference) : typeEffet;
       let designation = getStockGroupingDesignation(
         effectiveTypeEffet,
         reference ? getStockReferenceDesignation(reference) : syntheticReference?.designation || ""
       );
-      const effectiveTypeEffet = reference ? getReferenceEffectiveType(reference) : typeEffet;
       const action = normalizeText(formData.get("stockAction"));
       const quantite = Math.max(1, Number.parseInt(String(formData.get("stockQuantity") || "1"), 10) || 1);
       const motif = normalizeText(formData.get("stockReason"));
@@ -5175,7 +5175,7 @@ function bindStockAdjustmentForm() {
       if (
         typeEffet === ALL_TYPES_VALUE ||
         referenceEffetId === ALL_DESIGNATIONS_VALUE ||
-        (site === ALL_SITES_VALUE && !isExactSyntheticStockRow)
+        (site === ALL_SITES_VALUE && !isExactSyntheticStockRow && !referenceHasSite(reference, ALL_SITES_VALUE))
       ) {
         showStockAdjustmentStatus("POUR ENREGISTRER : CHOISIR SITE/TYPE/DESIGNATION PRECIS", "error");
         return;

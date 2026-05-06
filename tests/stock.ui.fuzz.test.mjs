@@ -220,6 +220,40 @@ test("legacy CLE reference with CES designation matches CLE CES stock selection"
   assert.equal(rows.some((row) => row.typeEffet === "CLE CES" && row.designation === "CES-VLOC"), true);
 });
 
+test("all-sites CLE CES reference can receive manual stock movement", () => {
+  const ctx = createStockContext();
+  const reference = {
+    id: "REF_CES_PG",
+    site: "TOUS SITES",
+    sitesAffectation: ["TOUS SITES"],
+    typeEffet: "CLE",
+    designation: "CES-PG",
+    active: true,
+  };
+
+  ctx.state.data.listes.referencesEffets.push(reference);
+  ctx.state.data.stocksEffetsManuels.push({
+    id: "STKM_CES_PG",
+    typeEffet: ctx.getReferenceEffectiveType(reference),
+    site: "TOUS SITES",
+    referenceEffetId: reference.id,
+    designation: ctx.getStockReferenceDesignation(reference),
+    action: "ENTREE",
+    quantite: 2,
+    motif: "TEST",
+    commentaire: "",
+    date: "2026-05-06",
+  });
+
+  const rows = ctx.getStockSummaryRows();
+  const row = rows.find(
+    (entry) => entry.site === "TOUS SITES" && entry.typeEffet === "CLE CES" && entry.designation === "CES-PG"
+  );
+  assert.ok(row);
+  assert.equal(row.manuelDelta, 2);
+  assert.equal(row.stockCourant, 2);
+});
+
 test("manual stock supports references with empty base designation", () => {
   const ctx = createStockContext();
   const reference = {
