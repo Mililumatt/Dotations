@@ -36,6 +36,7 @@ const state = {
     arrivalEffects: { key: "typeEffet", dir: "asc" },
     exitEffects: { key: "typeEffet", dir: "asc" },
     overviewPersons: { key: "nom", dir: "asc" },
+    documentsArchives: { key: "nom", dir: "asc" },
   },
   filters: { ...DEFAULT_FILTERS },
   referenceRenderContext: null,
@@ -2395,6 +2396,7 @@ function getEffectTableSort(tableName) {
     exitEffects: { key: "typeEffet", dir: "asc" },
     overviewPersons: { key: "nom", dir: "asc" },
     referenceEffects: { key: "site", dir: "asc" },
+    documentsArchives: { key: "nom", dir: "asc" },
   };
   const current = state.tableSorts?.[tableName];
   return current && current.key && current.dir ? current : (defaults[tableName] || { key: "nom", dir: "asc" });
@@ -3098,6 +3100,67 @@ function notifyFullySignedDocumentsOnReload(previousSignatureValidationMap = new
   }
 }
 
+function getArchiveSortValue(entry, key, resolveArchiveDisplayData) {
+  const display = resolveArchiveDisplayData(entry);
+  switch (key) {
+    case "nom":
+      return display.nom || "";
+    case "prenom":
+      return display.prenom || "";
+    case "typeDocument":
+      return entry?.typeDocument || "";
+    case "dateDocument":
+      return Date.parse(String(entry?.dateDocument || "")) || 0;
+    case "heureDocument":
+      return Date.parse(String(entry?.dateArchivage || "")) || 0;
+    case "sites":
+      return display.sites || "";
+    case "statutSignature":
+      return getDocumentArchiveSignatureStatus(entry) || "";
+    case "totalEffets":
+      return Number(entry?.totalEffets || 0);
+    case "totalFacturable":
+      return normalizeAmount(entry?.totalFacturable || 0);
+    case "version":
+      return getDocumentArchiveVersionLabel(entry) || "";
+    default:
+      return "";
+  }
+}
+
+function sortArchivesForTable(entries, resolveArchiveDisplayData) {
+  const sort = getEffectTableSort("documentsArchives");
+  const numericKeys = new Set(["dateDocument", "heureDocument", "totalEffets", "totalFacturable"]);
+  return [...entries].sort((left, right) => {
+    const primary = compareEffectValues(
+      getArchiveSortValue(left, sort.key, resolveArchiveDisplayData),
+      getArchiveSortValue(right, sort.key, resolveArchiveDisplayData),
+      numericKeys.has(sort.key)
+    );
+    if (primary !== 0) {
+      return sort.dir === "asc" ? primary : -primary;
+    }
+
+    const nomCompare = compareTextValues(
+      getArchiveSortValue(left, "nom", resolveArchiveDisplayData),
+      getArchiveSortValue(right, "nom", resolveArchiveDisplayData)
+    );
+    if (nomCompare !== 0) {
+      return nomCompare;
+    }
+
+    const prenomCompare = compareTextValues(
+      getArchiveSortValue(left, "prenom", resolveArchiveDisplayData),
+      getArchiveSortValue(right, "prenom", resolveArchiveDisplayData)
+    );
+    if (prenomCompare !== 0) {
+      return prenomCompare;
+    }
+
+    return compareTextValues(String(left?.id || ""), String(right?.id || ""));
+  });
+}
+
 function bindDeletePersonButtons() {
   document.querySelectorAll(".js-delete-person").forEach((button) => {
     button.onclick = () => {
@@ -3278,7 +3341,9 @@ function bindArchiveFilterForm() {
   const applyArchiveReset = () => {
     setCurrentPersonId("", "replace");
     resetArchiveFilters();
+    state.tableSorts.documentsArchives = { key: "nom", dir: "asc" };
     renderDocumentsArchivePage();
+    updateSortableHeaders("documentsArchives");
   };
 
   form.oninput = () => {
@@ -3289,7 +3354,9 @@ function bindArchiveFilterForm() {
     event.preventDefault();
     setCurrentPersonId("", "replace");
     resetArchiveFilters();
+    state.tableSorts.documentsArchives = { key: "nom", dir: "asc" };
     renderDocumentsArchivePage();
+    updateSortableHeaders("documentsArchives");
   };
 
   const searchField = form.elements.archiveSearch;
@@ -5304,6 +5371,8 @@ function renderPage() {
 
   if (page === "documents-archives") {
     renderDocumentsArchivePage();
+    bindEffectTableSorting();
+    updateSortableHeaders("documentsArchives");
   }
 
   if (page === "person-sheet" || page === "arrival-document" || page === "exit-document") {
@@ -6201,34 +6270,7 @@ function renderDocumentsArchivePage() {
     }
     return true;
   });
-  const groupedArchives = archives.slice().sort((left, right) => {
-    const leftPersonKey = String(left.personId || "")
-      || `${normalizeText(left.nom)}|${normalizeText(left.prenom)}`;
-    const rightPersonKey = String(right.personId || "")
-      || `${normalizeText(right.nom)}|${normalizeText(right.prenom)}`;
-    const personCompare = leftPersonKey.localeCompare(rightPersonKey, "fr");
-    if (personCompare !== 0) {
-      return personCompare;
-    }
-
-    const typeRank = (entry) => {
-      const type = normalizeText(entry?.typeDocument || "");
-      if (type === "ARRIVEE") return 0;
-      if (type === "SORTIE") return 1;
-      return 2;
-    };
-    const rankCompare = typeRank(left) - typeRank(right);
-    if (rankCompare !== 0) {
-      return rankCompare;
-    }
-
-    const leftDate = Date.parse(String(left?.dateDocument || "")) || 0;
-    const rightDate = Date.parse(String(right?.dateDocument || "")) || 0;
-    if (leftDate !== rightDate) {
-      return leftDate - rightDate;
-    }
-    return String(left?.id || "").localeCompare(String(right?.id || ""), "fr");
-  });
+  const groupedArchives = sortArchivesForTable(archives, resolveArchiveDisplayData);
 
   const totalNode = document.getElementById("archive-count-total");
   const arrivalNode = document.getElementById("archive-count-arrival");
