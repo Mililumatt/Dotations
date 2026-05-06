@@ -9185,9 +9185,41 @@ function renderReferenceBases() {
   renderStockFormOptions();
   renderStockMovementsTable();
   renderStockSummaryTable();
+  renderStockTypeKpis();
   renderReferenceCounts();
   renderMobileSignatureSettings();
   bindReferenceBaseResetButtons();
+}
+
+function renderStockTypeKpis() {
+  const summaryRows = getStockSummaryRows();
+  const knownTypes = Array.from(
+    new Set(((state.data?.listes?.typesEffets || []).map(normalizeText).filter(Boolean)))
+  ).sort((a, b) => a.localeCompare(b, "fr"));
+  const rowTypes = Array.from(
+    new Set(summaryRows.map((row) => normalizeText(row.typeEffet)).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, "fr"));
+  const mergedTypes = Array.from(new Set([...knownTypes, ...rowTypes])).slice(0, 5);
+
+  for (let index = 1; index <= 5; index += 1) {
+    const typeEffet = mergedTypes[index - 1] || "";
+    const labelNode = document.getElementById(`stock-type-kpi-label-${index}`);
+    const valueNode = document.getElementById(`stock-type-kpi-value-${index}`);
+    if (labelNode) {
+      labelNode.textContent = typeEffet || `TYPE ${index}`;
+    }
+    if (!valueNode) {
+      continue;
+    }
+    if (!typeEffet) {
+      setKpiCountAnimated(valueNode, 0);
+      continue;
+    }
+    const totalStock = summaryRows
+      .filter((row) => normalizeText(row.typeEffet) === typeEffet)
+      .reduce((sum, row) => sum + Number(row.stockCourant || 0), 0);
+    setKpiCountAnimated(valueNode, totalStock);
+  }
 }
 
 function renderStockFormOptions() {
@@ -10686,6 +10718,11 @@ function resetUiWithoutData() {
     "reference-count-referencesEffets",
     "reference-count-coutsRemplacement",
     "reference-count-representantsSignataires",
+    "stock-type-kpi-value-1",
+    "stock-type-kpi-value-2",
+    "stock-type-kpi-value-3",
+    "stock-type-kpi-value-4",
+    "stock-type-kpi-value-5",
   ].forEach((id) => {
     const node = document.getElementById(id);
     if (node) node.textContent = "0";

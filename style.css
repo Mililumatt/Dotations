@@ -1188,6 +1188,12 @@ body.has-modal-open {
   grid-template-columns: repeat(8, minmax(0, 1fr));
 }
 
+.kpi-grid--stock-types {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
 body[data-page="reference-bases"] .kpi-grid--references {
   gap: 4px;
 }
@@ -3426,6 +3432,7 @@ body[data-pdf-mode="true"] .signature-box__meta-value--pdf {
   .summary-grid,
   .kpi-grid,
   .kpi-grid--references,
+  .kpi-grid--stock-types,
   .effect-type-kpis,
   .document-grid,
   .arrival-summary,
@@ -3488,6 +3495,7 @@ body[data-pdf-mode="true"] .signature-box__meta-value--pdf {
   .summary-grid,
   .kpi-grid,
   .kpi-grid--references,
+  .kpi-grid--stock-types,
   .effect-type-kpis,
   .sheet-grid,
   .reference-grid,
