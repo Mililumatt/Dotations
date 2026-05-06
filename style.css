@@ -2506,6 +2506,11 @@ body[data-page="reference-bases"] .reference-cost-form--inline .form-actions {
   max-height: 220px;
 }
 
+body[data-page="reference-bases"] #stock-movements-wrap.table-wrap--reference-medium {
+  max-height: 176px !important;
+  overflow-y: auto;
+}
+
 .table-wrap--reference-tall {
   max-height: 470px;
 }
