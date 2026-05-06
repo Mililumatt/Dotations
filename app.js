@@ -771,7 +771,23 @@ function typeUsesReferenceCatalog(typeEffet) {
 }
 
 function getReferenceCatalogType(typeEffet) {
-  return typeUsesReferenceCatalog(typeEffet) ? "CLE" : normalizeText(typeEffet);
+  return normalizeText(typeEffet);
+}
+
+function getReferenceEffectiveType(reference) {
+  const baseType = normalizeText(reference?.typeEffet || "");
+  if (baseType === "CLE" && isCesKeyDesignation(reference?.designation || "")) {
+    return "CLE CES";
+  }
+  return baseType;
+}
+
+function referenceMatchesType(reference, selectedType) {
+  const normalizedType = normalizeText(selectedType || "");
+  if (!normalizedType) {
+    return true;
+  }
+  return getReferenceEffectiveType(reference) === normalizedType;
 }
 
 function typeUsesSiteField(typeEffet) {
@@ -5170,9 +5186,7 @@ function hydrateStockAdjustmentFromSelection(selection) {
       if (normalizeText(reference.designation || "") !== designation) {
         return false;
       }
-      const referenceType = normalizeText(reference.typeEffet || "");
-      const expectedType = getReferenceCatalogType(typeEffet);
-      if (referenceType !== expectedType && referenceType !== typeEffet) {
+      if (!referenceMatchesType(reference, typeEffet)) {
         return false;
       }
       return referenceHasSite(reference, site);
@@ -8784,13 +8798,7 @@ function getReferenceSitesForType(typeEffet) {
       if (!isReferenceEffectActive(reference)) {
         return false;
       }
-      if (normalizeText(reference.typeEffet) !== getReferenceCatalogType(normalizedTypeEffet)) {
-        return false;
-      }
-      if (normalizedTypeEffet === "CLE CES" && !isCesKeyDesignation(reference.designation)) {
-        return false;
-      }
-      if (normalizedTypeEffet === "CLE" && isCesKeyDesignation(reference.designation)) {
+      if (!referenceMatchesType(reference, normalizedTypeEffet)) {
         return false;
       }
       return true;
@@ -8855,16 +8863,7 @@ function hydrateReferenceSelect(siteSource, typeEffet = "", selectedId = "", ref
       if (normalizedReferenceSite && !referenceHasSite(reference, normalizedReferenceSite)) {
         return false;
       }
-      if (
-        normalizedTypeEffet &&
-        normalizeText(reference.typeEffet) !== getReferenceCatalogType(normalizedTypeEffet)
-      ) {
-        return false;
-      }
-      if (normalizedTypeEffet === "CLE CES" && !isCesKeyDesignation(reference.designation)) {
-        return false;
-      }
-      if (normalizedTypeEffet === "CLE" && isCesKeyDesignation(reference.designation)) {
+      if (normalizedTypeEffet && !referenceMatchesType(reference, normalizedTypeEffet)) {
         return false;
       }
       return true;
@@ -8906,7 +8905,7 @@ function ensureReferenceExists(site, typeEffet, designation, existingId) {
   const exists = state.data.listes.referencesEffets.some(
     (reference) =>
       reference.site === site &&
-      reference.typeEffet === getReferenceCatalogType(typeEffet) &&
+      referenceMatchesType(reference, typeEffet) &&
       reference.designation === designation
   );
 
@@ -8914,7 +8913,7 @@ function ensureReferenceExists(site, typeEffet, designation, existingId) {
     state.data.listes.referencesEffets.push({
       id: getNextId("REF", state.data.listes.referencesEffets),
       site,
-      typeEffet: getReferenceCatalogType(typeEffet),
+      typeEffet: normalizeText(typeEffet),
       designation,
     });
     sortReferenceEffects();
@@ -9218,16 +9217,8 @@ function updateStockDesignationOptions() {
       if (!typeEffet || typeEffet === ALL_TYPES_VALUE) {
         return true;
       }
-      const referenceType = normalizeText(reference.typeEffet);
-      const expectedType = getReferenceCatalogType(typeEffet);
-      if (referenceType !== expectedType && referenceType !== typeEffet) {
+      if (!referenceMatchesType(reference, typeEffet)) {
         return false;
-      }
-      if (typeEffet === "CLE CES") {
-        return isCesKeyDesignation(reference.designation);
-      }
-      if (typeEffet === "CLE") {
-        return !isCesKeyDesignation(reference.designation);
       }
       return true;
     })
@@ -9472,15 +9463,7 @@ function renderReferenceEffectsTable(renderContext = null) {
       return false;
     }
     if (filterTypeEffet) {
-      const referenceType = normalizeText(reference.typeEffet);
-      const expectedType = getReferenceCatalogType(filterTypeEffet);
-      if (referenceType !== expectedType) {
-        return false;
-      }
-      if (filterTypeEffet === "CLE CES" && !isCesKeyDesignation(reference.designation)) {
-        return false;
-      }
-      if (filterTypeEffet === "CLE" && isCesKeyDesignation(reference.designation)) {
+      if (!referenceMatchesType(reference, filterTypeEffet)) {
         return false;
       }
     }
