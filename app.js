@@ -50,6 +50,7 @@ const state = {
   previousSignatureValidationMap: new Map(),
   stockTableFilters: { site: "", typeEffet: "", referenceEffetId: "" },
   stockHighlightKey: "",
+  isReferencePageResetting: false,
 };
 
 const WORKING_DATA_KEY = "dashboard-working-data";
@@ -4789,6 +4790,9 @@ function bindReferenceEffectForm() {
   const siteField = form.elements.referenceSite;
   const designationField = form.elements.referenceDesignation;
   const syncReferenceTableFiltersFromEditor = () => {
+    if (state.isReferencePageResetting) {
+      return;
+    }
     const filterForm = document.getElementById("reference-filter-form");
     if (!filterForm) {
       return;
@@ -5138,6 +5142,7 @@ function resetReferenceBasesPageFields() {
   if (document.body?.dataset?.page !== "reference-bases") {
     return;
   }
+  state.isReferencePageResetting = true;
 
   const formIds = [
     "mobile-signature-settings-form",
@@ -5181,6 +5186,25 @@ function resetReferenceBasesPageFields() {
   updateStockDesignationOptions();
   refreshStockTableFiltersFromForm();
   renderReferenceBases();
+
+  const filterForm = document.getElementById("reference-filter-form");
+  if (filterForm instanceof HTMLFormElement) {
+    const searchField = filterForm.elements.filterReferenceSearch;
+    const siteField = filterForm.elements.filterReferenceSite;
+    const typeField = filterForm.elements.filterReferenceTypeEffet;
+    if (searchField instanceof HTMLInputElement) {
+      searchField.value = "";
+      searchField.defaultValue = "";
+    }
+    if (siteField instanceof HTMLSelectElement) {
+      siteField.value = "";
+    }
+    if (typeField instanceof HTMLSelectElement) {
+      typeField.value = "";
+    }
+  }
+  renderReferenceEffectsTable(state.referenceRenderContext || buildReferenceRenderContext());
+  state.isReferencePageResetting = false;
 }
 
 function bindReferenceBaseResetButtons() {
