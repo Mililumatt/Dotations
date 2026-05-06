@@ -4817,6 +4817,9 @@ function bindReferenceEffectForm() {
   }
   if (designationField) {
     designationField.oninput = () => {
+      if (normalizeText(typeField?.value || "") === "CLE CES") {
+        designationField.value = normalizeCesDesignationLabel(designationField.value);
+      }
       syncReferenceSitesSelector();
     };
   }
@@ -4833,12 +4836,16 @@ function bindReferenceEffectForm() {
     const normalizedTypeEffet = normalizeText(formData.get("referenceTypeEffet"));
     const referenceId = state.editingReferenceId || getNextId("REF", state.data.listes.referencesEffets);
     const selectedSite = normalizeText(formData.get("referenceSite")) || "SANS SITE";
+    const normalizedDesignation = normalizeReferenceDesignationByType(
+      normalizedTypeEffet,
+      formData.get("referenceDesignation")
+    );
     const reference = {
       id: referenceId,
       site: selectedSite,
       sitesAffectation: normalizeSites([selectedSite]),
       typeEffet: normalizedTypeEffet || "EFFET",
-      designation: normalizeText(formData.get("referenceDesignation")) || `REFERENCE ${referenceId}`,
+      designation: normalizedDesignation || `REFERENCE ${referenceId}`,
     };
     reference.site = getReferenceSiteLabel(reference) || reference.site;
 
@@ -4897,6 +4904,28 @@ function updateReferenceEffectFormMode(typeEffet) {
     return;
   }
   field.classList.add("is-hidden");
+}
+
+function normalizeCesDesignationLabel(value) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) {
+    return "";
+  }
+  const compact = raw.replace(/_/g, "-").replace(/\s+/g, " ");
+  const withoutPrefix = compact.replace(/^CES[\s-]*/i, "").trim();
+  if (!withoutPrefix) {
+    return "CES";
+  }
+  const suffix = withoutPrefix.replace(/\s*-\s*/g, "-").replace(/\s+/g, "-");
+  return `CES-${suffix}`;
+}
+
+function normalizeReferenceDesignationByType(typeEffet, designation) {
+  const normalizedType = normalizeText(typeEffet);
+  if (normalizedType === "CLE CES") {
+    return normalizeCesDesignationLabel(designation);
+  }
+  return normalizeText(designation);
 }
 
 function canUseAllSitesForReference() {
