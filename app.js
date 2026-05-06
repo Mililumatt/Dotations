@@ -5183,6 +5183,28 @@ function resetReferenceBasesPageFields() {
   renderReferenceBases();
 }
 
+function bindReferenceBaseResetButtons() {
+  if (document.body?.dataset?.page !== "reference-bases") {
+    return;
+  }
+  document.querySelectorAll("button").forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    if (normalizeText(button.textContent || "") !== "REINITIALISER") {
+      return;
+    }
+    if (button.dataset.boundGlobalReset === "1") {
+      return;
+    }
+    button.dataset.boundGlobalReset = "1";
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      resetReferenceBasesPageFields();
+    });
+  });
+}
+
 function bindReferenceFilters() {
   const form = document.getElementById("reference-filter-form");
   if (!form) {
@@ -8996,6 +9018,7 @@ function renderReferenceBases() {
   renderStockSummaryTable();
   renderReferenceCounts();
   renderMobileSignatureSettings();
+  bindReferenceBaseResetButtons();
 }
 
 function renderStockFormOptions() {
@@ -9357,7 +9380,7 @@ function renderReferenceEffectsTable(renderContext = null) {
       }
     }
     if (filterSearch) {
-      const text = [reference.site, reference.typeEffet, reference.designation]
+      const text = [getReferenceSiteLabel(reference), reference.typeEffet, reference.designation]
         .map(normalizeText)
         .join(" ");
       if (!text.includes(filterSearch)) {
