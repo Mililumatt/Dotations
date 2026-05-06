@@ -9302,7 +9302,7 @@ function renderReferenceBases() {
 }
 
 function renderStockTypeKpis() {
-  const summaryRows = getStockSummaryRows();
+  const summaryRows = getFilteredStockSummaryRows();
   const knownTypes = Array.from(
     new Set(((state.data?.listes?.typesEffets || []).map(normalizeText).filter(Boolean)))
   ).sort((a, b) => a.localeCompare(b, "fr"));
@@ -9330,6 +9330,27 @@ function renderStockTypeKpis() {
       .reduce((sum, row) => sum + Number(row.stockCourant || 0), 0);
     setKpiCountAnimated(valueNode, totalStock);
   }
+}
+
+function getFilteredStockSummaryRows() {
+  const filters = state.stockTableFilters || { site: "", typeEffet: "", referenceEffetId: "" };
+  return getStockSummaryRows().filter((row) => {
+    if (filters.site && filters.site !== ALL_SITES_VALUE && normalizeText(row.site) !== filters.site) {
+      return false;
+    }
+    if (filters.typeEffet && filters.typeEffet !== ALL_TYPES_VALUE && normalizeText(row.typeEffet) !== filters.typeEffet) {
+      return false;
+    }
+    if (filters.referenceEffetId && filters.referenceEffetId !== ALL_DESIGNATIONS_VALUE) {
+      const syntheticDesignation = parseStockSyntheticReferenceValue(filters.referenceEffetId);
+      const reference = syntheticDesignation ? null : findReferenceById(filters.referenceEffetId);
+      const referenceDesignation = syntheticDesignation || (reference ? getStockReferenceDesignation(reference) : "");
+      if (referenceDesignation && normalizeText(row.designation) !== referenceDesignation) {
+        return false;
+      }
+    }
+    return true;
+  });
 }
 
 function renderStockFormOptions() {
@@ -9928,25 +9949,7 @@ function renderStockSummaryTable() {
   if (!body) {
     return;
   }
-  const filters = state.stockTableFilters || { site: "", typeEffet: "", referenceEffetId: "" };
-  const rows = getStockSummaryRows().filter((row) => {
-    if (filters.site && filters.site !== ALL_SITES_VALUE && normalizeText(row.site) !== filters.site) {
-      return false;
-    }
-    if (filters.typeEffet && filters.typeEffet !== ALL_TYPES_VALUE && normalizeText(row.typeEffet) !== filters.typeEffet) {
-      return false;
-    }
-    if (filters.referenceEffetId && filters.referenceEffetId !== ALL_DESIGNATIONS_VALUE) {
-      const reference = (state.data?.listes?.referencesEffets || []).find(
-        (entry) => String(entry.id || "") === String(filters.referenceEffetId || "")
-      );
-      const referenceDesignation = reference ? getStockReferenceDesignation(reference) : "";
-      if (referenceDesignation && normalizeText(row.designation) !== referenceDesignation) {
-        return false;
-      }
-    }
-    return true;
-  });
+  const rows = getFilteredStockSummaryRows();
   if (!rows.length) {
     body.innerHTML = buildEmptyTableRow(body, "AUCUN STOCK CALCULE", 12);
     return;
