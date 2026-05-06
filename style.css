@@ -2141,6 +2141,18 @@ body[data-page="reference-bases"] .reference-effect-form--inline .form-actions {
   margin-top: 0;
 }
 
+body[data-page="reference-bases"] .reference-cost-form--inline {
+  grid-template-columns: minmax(170px, 0.95fr) minmax(170px, 0.95fr) minmax(170px, 0.9fr) auto;
+  align-items: end;
+}
+
+body[data-page="reference-bases"] .reference-cost-form--inline .form-actions {
+  grid-column: auto;
+  justify-content: flex-end;
+  align-self: end;
+  margin-top: 0;
+}
+
 .button--pdf.button--pdf-attention {
   animation: pdf-attention-pulse 1.6s ease-in-out 0s 4;
   box-shadow: 0 0 0 4px rgba(217, 137, 106, 0.42), 0 0 0 10px rgba(217, 137, 106, 0.2);
