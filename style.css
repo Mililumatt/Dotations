@@ -2511,6 +2511,24 @@ body[data-page="reference-bases"] #stock-movements-wrap.table-wrap--reference-me
   overflow-y: auto;
 }
 
+body[data-page="reference-bases"] #stock-movements-wrap table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+body[data-page="reference-bases"] #stock-movements-wrap thead,
+body[data-page="reference-bases"] #stock-movements-wrap tbody tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+body[data-page="reference-bases"] #stock-movements-wrap tbody {
+  display: block;
+  max-height: 120px !important;
+  overflow-y: auto;
+}
+
 .table-wrap--reference-tall {
   max-height: 470px;
 }
