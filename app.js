@@ -5176,15 +5176,9 @@ function bindStockAdjustmentForm() {
       renderStockSummaryTable();
       renderStockTypeKpis();
       renderReferenceCounts();
-      if (form.elements.stockAction) form.elements.stockAction.value = "ENTREE";
-      if (form.elements.stockQuantity) {
-        form.elements.stockQuantity.value = "1";
-      }
-      if (form.elements.stockComment) {
-        form.elements.stockComment.value = "";
-      }
       showActionStatus("create", `MOUVEMENT STOCK ENREGISTRE : ${effectiveTypeEffet} / ${designation}`);
       showStockAdjustmentStatus(`MOUVEMENT STOCK AJOUTE : ${effectiveTypeEffet} / ${designation} - SAUVEGARDE EN COURS`, "success");
+      resetStockTableFiltersFromForm();
       saveDataToFile({
         silent: true,
         reloadAfter: false,
