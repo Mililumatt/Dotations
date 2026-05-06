@@ -9098,7 +9098,7 @@ function updateStockDesignationOptions() {
       }
       const referenceType = normalizeText(reference.typeEffet);
       const expectedType = getReferenceCatalogType(typeEffet);
-      if (referenceType !== expectedType) {
+      if (referenceType !== expectedType && referenceType !== typeEffet) {
         return false;
       }
       if (typeEffet === "CLE CES") {
@@ -9112,8 +9112,13 @@ function updateStockDesignationOptions() {
     .filter((reference) => !site || site === ALL_SITES_VALUE || referenceHasSite(reference, site))
     .sort((a, b) => normalizeText(a.designation).localeCompare(normalizeText(b.designation), "fr"));
 
-  const currentValue = designationSelect.value;
-  designationSelect.innerHTML = [`<option value="">SELECTIONNER</option>`, `<option value="${ALL_DESIGNATIONS_VALUE}">TOUTES DESIGNATIONS</option>`]
+  const currentValue = String(designationSelect.value || "");
+  const canUseAllDesignations = !typeEffet || typeEffet === ALL_TYPES_VALUE || !site || site === ALL_SITES_VALUE;
+  const optionHtml = [`<option value="">SELECTIONNER</option>`];
+  if (canUseAllDesignations) {
+    optionHtml.push(`<option value="${ALL_DESIGNATIONS_VALUE}">TOUTES DESIGNATIONS</option>`);
+  }
+  designationSelect.innerHTML = optionHtml
     .concat(
       references.map(
         (reference) =>
@@ -9123,6 +9128,10 @@ function updateStockDesignationOptions() {
     .join("");
   if (currentValue && references.some((entry) => String(entry.id || "") === currentValue)) {
     designationSelect.value = currentValue;
+  } else if (currentValue === ALL_DESIGNATIONS_VALUE && canUseAllDesignations) {
+    designationSelect.value = ALL_DESIGNATIONS_VALUE;
+  } else {
+    designationSelect.value = "";
   }
   designationSelect.disabled = references.length === 0;
 }
