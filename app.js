@@ -5051,8 +5051,7 @@ function bindStockAdjustmentForm() {
     return;
   }
 
-  form.onsubmit = (event) => {
-    event.preventDefault();
+  const saveStockMovement = () => {
     if (!Array.isArray(state.data?.stocksEffetsManuels)) {
       showDataStatus("DONNEES NON CHARGEES");
       return;
@@ -5112,6 +5111,19 @@ function bindStockAdjustmentForm() {
     }
     showActionStatus("create", `MOUVEMENT STOCK ENREGISTRE : ${effectiveTypeEffet} / ${designation}`);
   };
+
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    saveStockMovement();
+  };
+
+  const saveButton = document.getElementById("stock-save-movement");
+  if (saveButton instanceof HTMLButtonElement) {
+    saveButton.onclick = (event) => {
+      event.preventDefault();
+      saveStockMovement();
+    };
+  }
 
   const typeSelect = form.elements.stockTypeEffet;
   const siteSelect = form.elements.stockSite;
