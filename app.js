@@ -4491,7 +4491,8 @@ function updateEffectFormMode(typeEffet) {
 }
 
 function isCesKeyDesignation(designation) {
-  return normalizeText(designation).startsWith("CES-");
+  const normalized = normalizeText(designation);
+  return normalized === "CES" || normalized.startsWith("CES ");
 }
 
 function getReplacementCostValue(typeEffet, causeRemplacement, designation = "") {
