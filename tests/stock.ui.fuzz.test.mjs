@@ -50,6 +50,7 @@ function createStockContext() {
     "isCesKeyDesignation",
     "typeUsesReferenceCatalog",
     "getReferenceEffectiveType",
+    "getStockReferenceDesignation",
     "referenceMatchesType",
     "getEffectDisplayDesignation",
     "getEffectDisplaySite",
@@ -64,6 +65,7 @@ function createStockContext() {
 
   const context = {
     ALL_SITES_VALUE: "TOUS SITES",
+    STOCK_EMPTY_DESIGNATION_LABEL: "SANS DESIGNATION",
     state: { data: { personnes: [], listes: { referencesEffets: [] }, stocksEffetsManuels: [] } },
     Date,
   };
@@ -210,4 +212,41 @@ test("legacy CLE reference with CES designation matches CLE CES stock selection"
   ctx.state.data.listes.referencesEffets.push(reference);
   const rows = ctx.getStockSummaryRows();
   assert.equal(rows.some((row) => row.typeEffet === "CLE CES" && row.designation === "CES-VLOC"), true);
+});
+
+test("manual stock supports references with empty base designation", () => {
+  const ctx = createStockContext();
+  const reference = {
+    id: "REF_EMPTY",
+    site: "CDM",
+    sitesAffectation: ["CDM"],
+    typeEffet: "BADGE INTRUSION",
+    designation: "",
+    active: true,
+  };
+
+  ctx.state.data.listes.referencesEffets.push(reference);
+  ctx.state.data.stocksEffetsManuels.push({
+    id: "STKM_EMPTY",
+    typeEffet: "BADGE INTRUSION",
+    site: "CDM",
+    referenceEffetId: "REF_EMPTY",
+    designation: ctx.getStockReferenceDesignation(reference),
+    action: "ENTREE",
+    quantite: 3,
+    motif: "TEST",
+    commentaire: "",
+    date: "2026-05-06",
+  });
+
+  const rows = ctx.getStockSummaryRows();
+  const row = rows.find(
+    (entry) =>
+      entry.site === "CDM" &&
+      entry.typeEffet === "BADGE INTRUSION" &&
+      entry.designation === "SANS DESIGNATION"
+  );
+  assert.ok(row);
+  assert.equal(row.manuelDelta, 3);
+  assert.equal(row.stockCourant, 3);
 });

@@ -59,6 +59,7 @@ const MAX_UNDO_STACK = 30;
 const ALL_SITES_VALUE = "TOUS SITES";
 const ALL_TYPES_VALUE = "TOUS TYPES";
 const ALL_DESIGNATIONS_VALUE = "__ALL_DESIGNATIONS__";
+const STOCK_EMPTY_DESIGNATION_LABEL = "SANS DESIGNATION";
 const EFFECT_STATUS_CAUSES = ["HS", "PERTE", "VOL", "NON RENDU", "DETRUIT"];
 const BILLABLE_EFFECT_CAUSES = ["PERTE", "VOL", "NON RENDU", "DETRUIT"];
 const NON_RENDU_REFERENCE_COSTS = {
@@ -780,6 +781,10 @@ function getReferenceEffectiveType(reference) {
     return "CLE CES";
   }
   return baseType;
+}
+
+function getStockReferenceDesignation(reference) {
+  return normalizeText(reference?.designation || "") || STOCK_EMPTY_DESIGNATION_LABEL;
 }
 
 function referenceMatchesType(reference, selectedType) {
@@ -5091,14 +5096,14 @@ function bindStockAdjustmentForm() {
       const site = normalizeText(formData.get("stockSite"));
       const referenceEffetId = String(formData.get("stockReferenceId") || "");
       const reference = referenceEffetId === ALL_DESIGNATIONS_VALUE ? null : findReferenceById(referenceEffetId);
-      const designation = normalizeText(reference?.designation || "");
+      const designation = reference ? getStockReferenceDesignation(reference) : "";
       const effectiveTypeEffet = reference ? getReferenceEffectiveType(reference) : typeEffet;
       const action = normalizeText(formData.get("stockAction"));
       const quantite = Math.max(1, Number.parseInt(String(formData.get("stockQuantity") || "1"), 10) || 1);
       const motif = normalizeText(formData.get("stockReason"));
       const commentaire = normalizeText(formData.get("stockComment"));
 
-      if (!typeEffet || !site || !reference || !designation || !action) {
+      if (!typeEffet || !site || !reference || !action) {
         showStockAdjustmentStatus("TYPE, SITE, DESIGNATION BASE ET MOUVEMENT OBLIGATOIRES", "error");
         return;
       }
@@ -5148,11 +5153,18 @@ function bindStockAdjustmentForm() {
         form.elements.stockComment.value = "";
       }
       showActionStatus("create", `MOUVEMENT STOCK ENREGISTRE : ${effectiveTypeEffet} / ${designation}`);
-      showStockAdjustmentStatus(`MOUVEMENT STOCK ENREGISTRE : ${effectiveTypeEffet} / ${designation}`, "success");
-      await saveDataToFile({
+      showStockAdjustmentStatus(`MOUVEMENT STOCK AJOUTE : ${effectiveTypeEffet} / ${designation} - SAUVEGARDE EN COURS`, "success");
+      saveDataToFile({
         silent: true,
         reloadAfter: false,
         promptDownload: false,
+        reloadOnConflict: false,
+      }).then(() => {
+        if (state.isDirty) {
+          showStockAdjustmentStatus("MOUVEMENT STOCK AJOUTE - SAUVEGARDE A RELANCER", "warning");
+          return;
+        }
+        showStockAdjustmentStatus(`MOUVEMENT STOCK SAUVEGARDE : ${effectiveTypeEffet} / ${designation}`, "success");
       });
     } finally {
       stockSaveInFlight = false;
@@ -5314,7 +5326,7 @@ function hydrateStockAdjustmentFromSelection(selection) {
       if (!isReferenceEffectActive(reference)) {
         return false;
       }
-      if (normalizeText(reference.designation || "") !== designation) {
+      if (getStockReferenceDesignation(reference) !== designation) {
         return false;
       }
       if (!referenceMatchesType(reference, typeEffet)) {
@@ -9387,7 +9399,7 @@ function updateStockDesignationOptions() {
       return true;
     })
     .filter((reference) => !site || site === ALL_SITES_VALUE || referenceHasSite(reference, site))
-    .sort((a, b) => normalizeText(a.designation).localeCompare(normalizeText(b.designation), "fr"));
+    .sort((a, b) => getStockReferenceDesignation(a).localeCompare(getStockReferenceDesignation(b), "fr"));
 
   const currentValue = String(designationSelect.value || "");
   const canUseAllDesignations = !typeEffet || typeEffet === ALL_TYPES_VALUE || !site || site === ALL_SITES_VALUE;
@@ -9399,7 +9411,7 @@ function updateStockDesignationOptions() {
     .concat(
       references.map(
         (reference) =>
-          `<option value="${escapeHtml(String(reference.id || ""))}">${escapeHtml(reference.designation || "-")}</option>`
+          `<option value="${escapeHtml(String(reference.id || ""))}">${escapeHtml(getStockReferenceDesignation(reference))}</option>`
       )
     )
     .join("");
@@ -9742,9 +9754,9 @@ function getStockSummaryRows() {
     .filter((reference) => isReferenceEffectActive(reference))
     .forEach((reference) => {
       const typeEffet = getReferenceEffectiveType(reference);
-      const designation = normalizeText(reference?.designation || "");
+      const designation = getStockReferenceDesignation(reference);
       const sites = getReferenceSites(reference);
-      if (!typeEffet || !designation) {
+      if (!typeEffet) {
         return;
       }
       if (!sites.length) {
@@ -9866,7 +9878,7 @@ function renderStockSummaryTable() {
       const reference = (state.data?.listes?.referencesEffets || []).find(
         (entry) => String(entry.id || "") === String(filters.referenceEffetId || "")
       );
-      const referenceDesignation = normalizeText(reference?.designation || "");
+      const referenceDesignation = reference ? getStockReferenceDesignation(reference) : "";
       if (referenceDesignation && normalizeText(row.designation) !== referenceDesignation) {
         return false;
       }
@@ -10647,6 +10659,7 @@ async function saveDataToFile(options = {}) {
     alertText = "",
     closeAfterAlert = false,
     promptDownload = !silent,
+    reloadOnConflict = true,
   } = resolvedOptions;
 
   const downloadDataJson = () => {
@@ -10729,7 +10742,7 @@ async function saveDataToFile(options = {}) {
   } catch (error) {
     console.error(error);
     if (isSaveConflictError(error)) {
-      if (getDataBackendMode() === "SUPABASE" || isSupabaseConfigured()) {
+      if (reloadOnConflict && (getDataBackendMode() === "SUPABASE" || isSupabaseConfigured())) {
         try {
           await reloadData("CONFLIT DETECTE - RECHARGEMENT DES DONNEES DISTANTES...");
         } catch (refreshError) {
