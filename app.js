@@ -9281,8 +9281,18 @@ function renderReferenceEffectsTable(renderContext = null) {
     if (filterSite && !referenceHasSite(reference, filterSite)) {
       return false;
     }
-    if (filterTypeEffet && normalizeText(reference.typeEffet) !== filterTypeEffet) {
-      return false;
+    if (filterTypeEffet) {
+      const referenceType = normalizeText(reference.typeEffet);
+      const expectedType = getReferenceCatalogType(filterTypeEffet);
+      if (referenceType !== expectedType) {
+        return false;
+      }
+      if (filterTypeEffet === "CLE CES" && !isCesKeyDesignation(reference.designation)) {
+        return false;
+      }
+      if (filterTypeEffet === "CLE" && isCesKeyDesignation(reference.designation)) {
+        return false;
+      }
     }
     if (filterSearch) {
       const text = [reference.site, reference.typeEffet, reference.designation]
