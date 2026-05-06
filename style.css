@@ -2507,25 +2507,7 @@ body[data-page="reference-bases"] .reference-cost-form--inline .form-actions {
 }
 
 body[data-page="reference-bases"] #stock-movements-wrap.table-wrap--reference-medium {
-  max-height: 176px !important;
-  overflow-y: auto;
-}
-
-body[data-page="reference-bases"] #stock-movements-wrap table {
-  width: 100%;
-  table-layout: fixed;
-}
-
-body[data-page="reference-bases"] #stock-movements-wrap thead,
-body[data-page="reference-bases"] #stock-movements-wrap tbody tr {
-  display: table;
-  width: 100%;
-  table-layout: fixed;
-}
-
-body[data-page="reference-bases"] #stock-movements-wrap tbody {
-  display: block;
-  max-height: 120px !important;
+  max-height: 150px !important;
   overflow-y: auto;
 }
 
