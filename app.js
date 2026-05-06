@@ -9720,10 +9720,11 @@ function getStockSummaryRows() {
 
   return Array.from(rowsByKey.values())
     .map((row) => {
-      const sortiesSansRetour = row.nonRendus + row.perdus + row.voles + row.hs + row.detruits;
+      // Stock available = manual stock delta - entrusted effects + returned effects.
+      // Lost/HS/vol/detruit remain consumed because they are included in entrusted effects and not returned.
       return {
         ...row,
-        stockCourant: row.manuelDelta + row.rendus - sortiesSansRetour,
+        stockCourant: row.manuelDelta - row.dotes + row.rendus,
       };
     })
     .sort((left, right) => {
