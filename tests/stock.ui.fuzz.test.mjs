@@ -65,6 +65,9 @@ function createStockContext() {
     "getEffectStatus",
     "getAllEffects",
     "getStockMovementSignedQuantity",
+    "referenceMatchesStockIdentity",
+    "hasActiveStockReference",
+    "isStockMovementAllowedInSummary",
     "getStockSummaryRows",
   ];
 
@@ -375,4 +378,55 @@ test("stock grouping ignores designation for badge card and remote control types
       false
     );
   }
+});
+
+test("orphan manual key stock movement is hidden when reference no longer exists", () => {
+  const ctx = createStockContext();
+
+  ctx.state.data.stocksEffetsManuels.push({
+    id: "STKM_ORPHAN_E1",
+    typeEffet: "CLE",
+    site: "CDM",
+    referenceEffetId: "",
+    designation: "E1???",
+    action: "ENTREE",
+    quantite: 1,
+    motif: "CORRECTION INVENTAIRE",
+    date: "2026-05-06",
+  });
+
+  const rows = ctx.getStockSummaryRows();
+  assert.equal(
+    rows.some((row) => row.site === "CDM" && row.typeEffet === "CLE" && row.designation === "E1???"),
+    false
+  );
+});
+
+test("manual key stock movement remains visible while matching reference is active", () => {
+  const ctx = createStockContext();
+
+  ctx.state.data.listes.referencesEffets.push({
+    id: "REF_E1",
+    site: "CDM",
+    sitesAffectation: ["CDM"],
+    typeEffet: "CLE",
+    designation: "E1???",
+    active: true,
+  });
+  ctx.state.data.stocksEffetsManuels.push({
+    id: "STKM_E1",
+    typeEffet: "CLE",
+    site: "CDM",
+    referenceEffetId: "",
+    designation: "E1???",
+    action: "ENTREE",
+    quantite: 1,
+    motif: "CORRECTION INVENTAIRE",
+    date: "2026-05-06",
+  });
+
+  const rows = ctx.getStockSummaryRows();
+  const row = rows.find((entry) => entry.site === "CDM" && entry.typeEffet === "CLE" && entry.designation === "E1???");
+  assert.equal(row?.manuelDelta, 1);
+  assert.equal(row?.stockCourant, 1);
 });

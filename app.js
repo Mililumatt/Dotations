@@ -9939,6 +9939,9 @@ function getStockSummaryRows() {
   });
 
   (state.data?.stocksEffetsManuels || []).forEach((entry) => {
+    if (!isStockMovementAllowedInSummary(entry)) {
+      return;
+    }
     const typeEffet = normalizeText(entry?.typeEffet || "");
     const site = normalizeText(entry?.site || "SANS SITE");
     const designation = getStockGroupingDesignation(typeEffet, entry?.designation || "");
@@ -9973,6 +9976,9 @@ function renderStockMovementsTable() {
   const filters = state.stockTableFilters || { site: "", typeEffet: "", referenceEffetId: "" };
   const entries = (state.data?.stocksEffetsManuels || [])
     .filter((entry) => {
+      if (!isStockMovementAllowedInSummary(entry)) {
+        return false;
+      }
       if (filters.site && filters.site !== ALL_SITES_VALUE && normalizeText(entry.site) !== filters.site) {
         return false;
       }
@@ -10492,19 +10498,21 @@ function deleteReferenceEffect(referenceId) {
   }
 
   if (!nextActive) {
-    const usage = getReferenceEffectUsage(referenceId);
+    const usage = getReferenceEffectCurrentUsage(referenceId);
     if (usage > 0) {
-      const forceDisable = window.confirm(
-        "REFERENCE DEJA UTILISEE DANS DES DOSSIERS. DESACTIVER QUAND MEME ?"
-      );
-      if (!forceDisable) {
-        return;
-      }
+      showDataStatus("DESACTIVATION BLOQUEE - REFERENCE ENCORE EN DOTATION");
+      window.alert("DESACTIVATION IMPOSSIBLE : CETTE REFERENCE EST ENCORE EN DOTATION.");
+      return;
     }
   }
 
   pushUndoSnapshot("SUPPRESSION REFERENCE");
   reference.active = nextActive;
+  if (!nextActive && Array.isArray(state.data.stocksEffetsManuels)) {
+    state.data.stocksEffetsManuels = state.data.stocksEffetsManuels.filter(
+      (entry) => !isStockMovementLinkedToReference(entry, reference)
+    );
+  }
   if (state.editingReferenceId === referenceId) {
     state.editingReferenceId = "";
     resetReferenceEffectForm();
@@ -10522,10 +10530,10 @@ function hardDeleteReferenceEffect(referenceId) {
   if (!reference) {
     return;
   }
-  const usage = getReferenceEffectUsage(referenceId);
+  const usage = getReferenceEffectCurrentUsage(referenceId);
   if (usage > 0) {
-    showDataStatus("SUPPRESSION DEFINITIVE BLOQUEE - REFERENCE DEJA UTILISEE");
-    window.alert("SUPPRESSION DEFINITIVE IMPOSSIBLE : REFERENCE DEJA UTILISEE");
+    showDataStatus("SUPPRESSION DEFINITIVE BLOQUEE - REFERENCE ENCORE EN DOTATION");
+    window.alert("SUPPRESSION DEFINITIVE IMPOSSIBLE : CETTE REFERENCE EST ENCORE EN DOTATION.");
     return;
   }
   const confirmDelete = window.confirm(
@@ -10538,6 +10546,11 @@ function hardDeleteReferenceEffect(referenceId) {
   state.data.listes.referencesEffets = state.data.listes.referencesEffets.filter(
     (entry) => entry.id !== referenceId
   );
+  if (Array.isArray(state.data.stocksEffetsManuels)) {
+    state.data.stocksEffetsManuels = state.data.stocksEffetsManuels.filter(
+      (entry) => !isStockMovementLinkedToReference(entry, reference)
+    );
+  }
   if (state.editingReferenceId === referenceId) {
     state.editingReferenceId = "";
     resetReferenceEffectForm();
@@ -10617,6 +10630,68 @@ function getReferenceEffectUsage(referenceId) {
   return getAllEffects(state.data?.personnes || []).filter(
     ({ effect }) => String(effect.referenceEffetId || "") === String(referenceId)
   ).length;
+}
+
+function getReferenceEffectCurrentUsage(referenceId) {
+  return getAllEffects(state.data?.personnes || []).filter(({ person, effect }) => {
+    if (String(effect.referenceEffetId || "") !== String(referenceId)) {
+      return false;
+    }
+    return normalizeText(getEffectStatus(person, effect)) !== "RESTITUE";
+  }).length;
+}
+
+function referenceMatchesStockIdentity(reference, typeEffet, site, designation, requireActive = true) {
+  if (!reference || (requireActive && !isReferenceEffectActive(reference))) {
+    return false;
+  }
+  const normalizedType = normalizeText(typeEffet);
+  const normalizedSite = normalizeText(site);
+  const normalizedDesignation = getStockGroupingDesignation(normalizedType, designation);
+  return (
+    referenceMatchesType(reference, normalizedType) &&
+    referenceHasSite(reference, normalizedSite) &&
+    getStockGroupingDesignation(normalizedType, getStockReferenceDesignation(reference)) === normalizedDesignation
+  );
+}
+
+function hasActiveStockReference(typeEffet, site, designation) {
+  return (state.data?.listes?.referencesEffets || []).some((reference) =>
+    referenceMatchesStockIdentity(reference, typeEffet, site, designation)
+  );
+}
+
+function isStockMovementAllowedInSummary(entry) {
+  const typeEffet = normalizeText(entry?.typeEffet || "");
+  const site = normalizeText(entry?.site || "SANS SITE");
+  const designation = getStockGroupingDesignation(typeEffet, entry?.designation || "");
+  if (!typeEffet || !designation) {
+    return false;
+  }
+  if (entry?.referenceEffetId) {
+    const reference = findReferenceById(entry.referenceEffetId);
+    return referenceMatchesStockIdentity(reference, typeEffet, site, designation);
+  }
+  if (typeUsesReferenceCatalog(typeEffet) && designation !== STOCK_EMPTY_DESIGNATION_LABEL) {
+    return hasActiveStockReference(typeEffet, site, designation);
+  }
+  return true;
+}
+
+function isStockMovementLinkedToReference(entry, reference) {
+  if (!reference) {
+    return false;
+  }
+  if (String(entry?.referenceEffetId || "") === String(reference.id || "")) {
+    return true;
+  }
+  return referenceMatchesStockIdentity(
+    reference,
+    entry?.typeEffet || "",
+    entry?.site || "",
+    entry?.designation || "",
+    false
+  );
 }
 
 function cascadeSimpleReferenceRename(listName, oldValue, newValue) {
