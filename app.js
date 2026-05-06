@@ -5064,7 +5064,7 @@ function bindStockAdjustmentForm() {
   }
   const resetButton = document.getElementById("stock-reset-filters");
   if (resetButton instanceof HTMLButtonElement) {
-    resetButton.onclick = () => resetStockTableFiltersFromForm();
+    resetButton.onclick = () => resetReferenceBasesPageFields();
   }
 }
 
@@ -5124,28 +5124,71 @@ function normalizeReferenceCauseLabel(value) {
   return normalized;
 }
 
+function resetReferenceBasesPageFields() {
+  if (document.body?.dataset?.page !== "reference-bases") {
+    return;
+  }
+
+  const formIds = [
+    "mobile-signature-settings-form",
+    "representative-signatory-form",
+    "reference-filter-form",
+    "reference-effect-form",
+    "stock-adjustment-form",
+    "replacement-cost-form",
+  ];
+
+  formIds.forEach((formId) => {
+    const form = document.getElementById(formId);
+    if (form instanceof HTMLFormElement) {
+      clearFormSearchFields(form);
+      form.reset();
+    }
+  });
+
+  state.editingSimpleReference = null;
+  state.editingReferenceId = "";
+  state.editingRepresentativeId = "";
+  state.editingReplacementCostKey = "";
+  state.stockTableFilters = { site: "", typeEffet: "", referenceEffetId: "" };
+
+  const referenceSubmit = document.querySelector('#reference-effect-form button[type="submit"]');
+  if (referenceSubmit instanceof HTMLButtonElement) {
+    referenceSubmit.textContent = "ENREGISTRER LA REFERENCE";
+  }
+
+  const representativeSubmit = document.querySelector('#representative-signatory-form button[type="submit"]');
+  if (representativeSubmit instanceof HTMLButtonElement) {
+    representativeSubmit.textContent = "ENREGISTRER LE REPRESENTANT";
+  }
+
+  const replacementCostSubmit = document.querySelector('#replacement-cost-form button[type="submit"]');
+  if (replacementCostSubmit instanceof HTMLButtonElement) {
+    replacementCostSubmit.textContent = "ENREGISTRER LE COUT";
+  }
+
+  updateReferenceEffectFormMode("");
+  updateStockDesignationOptions();
+  refreshStockTableFiltersFromForm();
+  renderReferenceBases();
+}
+
 function bindReferenceFilters() {
   const form = document.getElementById("reference-filter-form");
   if (!form) {
     return;
   }
   const applyReferenceReset = () => {
-    clearFormSearchFields(form);
-    form.reset();
-    window.setTimeout(() => {
-      renderReferenceEffectsTable();
-    }, 0);
+    resetReferenceBasesPageFields();
   };
 
   form.oninput = () => {
     renderReferenceEffectsTable();
   };
 
-  form.onreset = () => {
-    clearFormSearchFields(form);
-    window.setTimeout(() => {
-      renderReferenceEffectsTable();
-    }, 0);
+  form.onreset = (event) => {
+    event.preventDefault();
+    applyReferenceReset();
   };
 
   const searchField = form.elements.filterReferenceSearch;
