@@ -5070,30 +5070,125 @@ function bindStockMovementActions() {
       return;
     }
     const deleteButton = target.closest(".js-delete-stock-movement");
-    if (!(deleteButton instanceof HTMLElement)) {
+    if (deleteButton instanceof HTMLElement) {
+      event.preventDefault();
+      const movementId = String(deleteButton.dataset.stockMovementId || "");
+      const movement = (state.data?.stocksEffetsManuels || []).find((entry) => String(entry.id || "") === movementId);
+      if (!movement) {
+        return;
+      }
+      const linkedReference = movement.referenceEffetId ? findReferenceById(movement.referenceEffetId) : null;
+      if (!linkedReference) {
+        showDataStatus("MOUVEMENT STOCK VERROUILLE : REFERENCE ABSENTE EN BASE");
+        return;
+      }
+      if (!window.confirm(`SUPPRIMER LE MOUVEMENT STOCK : ${movement.typeEffet} / ${movement.designation} ?`)) {
+        return;
+      }
+      pushUndoSnapshot("SUPPRESSION MOUVEMENT STOCK");
+      state.data.stocksEffetsManuels = state.data.stocksEffetsManuels.filter((entry) => String(entry.id || "") !== movementId);
+      markDirty();
+      renderReferenceBases();
+      showActionStatus("delete", "MOUVEMENT STOCK SUPPRIME");
       return;
     }
-    event.preventDefault();
-    const movementId = String(deleteButton.dataset.stockMovementId || "");
-    const movement = (state.data?.stocksEffetsManuels || []).find((entry) => String(entry.id || "") === movementId);
-    if (!movement) {
+
+    const row = target.closest(".js-stock-movement-row");
+    if (!(row instanceof HTMLElement)) {
       return;
     }
-    const linkedReference = movement.referenceEffetId ? findReferenceById(movement.referenceEffetId) : null;
-    if (!linkedReference) {
-      showDataStatus("MOUVEMENT STOCK VERROUILLE : REFERENCE ABSENTE EN BASE");
-      return;
-    }
-    if (!window.confirm(`SUPPRIMER LE MOUVEMENT STOCK : ${movement.typeEffet} / ${movement.designation} ?`)) {
-      return;
-    }
-    pushUndoSnapshot("SUPPRESSION MOUVEMENT STOCK");
-    state.data.stocksEffetsManuels = state.data.stocksEffetsManuels.filter((entry) => String(entry.id || "") !== movementId);
-    markDirty();
-    renderReferenceBases();
-    showActionStatus("delete", "MOUVEMENT STOCK SUPPRIME");
+
+    hydrateStockAdjustmentFromSelection({
+      site: String(row.dataset.site || ""),
+      typeEffet: String(row.dataset.typeEffet || ""),
+      referenceEffetId: String(row.dataset.referenceEffetId || ""),
+      designation: String(row.dataset.designation || ""),
+    });
   });
   body.dataset.bound = "true";
+}
+
+function bindStockSummaryActions() {
+  const body = document.getElementById("stock-summary-table-body");
+  if (!body || body.dataset.bound === "true") {
+    return;
+  }
+  body.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const row = target.closest(".js-stock-summary-row");
+    if (!(row instanceof HTMLElement)) {
+      return;
+    }
+    hydrateStockAdjustmentFromSelection({
+      site: String(row.dataset.site || ""),
+      typeEffet: String(row.dataset.typeEffet || ""),
+      referenceEffetId: "",
+      designation: String(row.dataset.designation || ""),
+    });
+  });
+  body.dataset.bound = "true";
+}
+
+function hydrateStockAdjustmentFromSelection(selection) {
+  const form = document.getElementById("stock-adjustment-form");
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+
+  const site = normalizeText(selection?.site || "");
+  const typeEffet = normalizeText(selection?.typeEffet || "");
+  const referenceEffetId = String(selection?.referenceEffetId || "");
+  const designation = normalizeText(selection?.designation || "");
+
+  const siteSelect = form.elements.stockSite;
+  const typeSelect = form.elements.stockTypeEffet;
+  const referenceSelect = form.elements.stockReferenceId;
+  if (!(siteSelect instanceof HTMLSelectElement) || !(typeSelect instanceof HTMLSelectElement) || !(referenceSelect instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  if (site && Array.from(siteSelect.options).some((opt) => normalizeText(opt.value) === site)) {
+    siteSelect.value = site;
+  }
+  if (typeEffet && Array.from(typeSelect.options).some((opt) => normalizeText(opt.value) === typeEffet)) {
+    typeSelect.value = typeEffet;
+  }
+
+  updateStockDesignationOptions();
+
+  let resolvedReferenceId = "";
+  if (referenceEffetId && Array.from(referenceSelect.options).some((opt) => String(opt.value || "") === referenceEffetId)) {
+    resolvedReferenceId = referenceEffetId;
+  } else {
+    const match = (state.data?.listes?.referencesEffets || []).find((reference) => {
+      if (!isReferenceEffectActive(reference)) {
+        return false;
+      }
+      if (normalizeText(reference.designation || "") !== designation) {
+        return false;
+      }
+      const referenceType = normalizeText(reference.typeEffet || "");
+      const expectedType = getReferenceCatalogType(typeEffet);
+      if (referenceType !== expectedType && referenceType !== typeEffet) {
+        return false;
+      }
+      return referenceHasSite(reference, site);
+    });
+    if (match && Array.from(referenceSelect.options).some((opt) => String(opt.value || "") === String(match.id || ""))) {
+      resolvedReferenceId = String(match.id || "");
+    }
+  }
+
+  if (resolvedReferenceId) {
+    referenceSelect.value = resolvedReferenceId;
+  }
+
+  refreshStockTableFiltersFromForm();
+  renderStockMovementsTable();
+  renderStockSummaryTable();
 }
 
 function getReferenceCauseOptions() {
@@ -9572,7 +9667,7 @@ function renderStockMovementsTable() {
   const rowsHtml = entries.map((entry) => {
     const signedQty = getStockMovementSignedQuantity(entry);
     const qtyLabel = signedQty > 0 ? `+${signedQty}` : `${signedQty}`;
-    return `<tr class="js-stock-movement-row" data-stock-movement-id="${escapeHtml(entry.id)}">
+    return `<tr class="js-stock-movement-row" data-stock-movement-id="${escapeHtml(entry.id)}" data-site="${escapeHtml(entry.site || "")}" data-type-effet="${escapeHtml(entry.typeEffet || "")}" data-designation="${escapeHtml(entry.designation || "")}" data-reference-effet-id="${escapeHtml(String(entry.referenceEffetId || ""))}">
       <td>${escapeHtml(formatDate(entry.date) || entry.date || "-")}</td>
       <td>${escapeHtml(entry.site || "-")}</td>
       <td>${escapeHtml(entry.typeEffet || "-")}</td>
@@ -9619,7 +9714,7 @@ function renderStockSummaryTable() {
     const manualDeltaLabel = row.manuelDelta > 0 ? `+${row.manuelDelta}` : String(row.manuelDelta);
     const rowKey = `${normalizeText(row.typeEffet)}__${normalizeText(row.site)}__${normalizeText(row.designation)}`;
     const focusClass = rowKey === String(state.stockHighlightKey || "") ? " stock-row-focus" : "";
-    return `<tr class="${focusClass}">
+    return `<tr class="js-stock-summary-row${focusClass}" data-site="${escapeHtml(row.site || "")}" data-type-effet="${escapeHtml(row.typeEffet || "")}" data-designation="${escapeHtml(row.designation || "")}">
       <td>${escapeHtml(row.site)}</td>
       <td>${escapeHtml(row.typeEffet)}</td>
       <td>${escapeHtml(row.designation)}</td>
@@ -9635,6 +9730,7 @@ function renderStockSummaryTable() {
     </tr>`;
   });
   renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUN STOCK CALCULE", 12), 24);
+  bindStockSummaryActions();
   if (state.stockHighlightKey) {
     window.setTimeout(() => {
       state.stockHighlightKey = "";
