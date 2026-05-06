@@ -10739,7 +10739,9 @@ function markDirty() {
   state.saveButtonLatchedDirty = true;
   saveWorkingData();
   renderDirtyState();
-  scheduleBackgroundAutoSave();
+  if ((document.body?.dataset?.page || "") !== "reference-bases") {
+    scheduleBackgroundAutoSave();
+  }
 }
 
 function renderDirtyState() {
