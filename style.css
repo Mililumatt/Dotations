@@ -1211,6 +1211,11 @@ body[data-page="reference-bases"] .kpi-grid--references .kpi-card__value {
   font-size: 16px;
 }
 
+body[data-page="reference-bases"] #stock-movements-wrap {
+  max-height: 208px;
+  overflow-y: auto;
+}
+
 body[data-page="reference-bases"] #representative-signatory-form .form-actions {
   align-self: end;
 }
