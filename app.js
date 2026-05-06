@@ -5086,7 +5086,7 @@ function bindStockAdjustmentForm() {
     }
 
     pushUndoSnapshot("MOUVEMENT STOCK MANUEL");
-    state.data.stocksEffetsManuels.push({
+    const movement = {
       id: getNextId("STKM", state.data.stocksEffetsManuels),
       typeEffet: effectiveTypeEffet,
       site,
@@ -5097,11 +5097,19 @@ function bindStockAdjustmentForm() {
       motif,
       commentaire,
       date: getTodayIsoDate(),
-    });
+    };
+    state.data.stocksEffetsManuels.push(movement);
     state.stockHighlightKey = `${effectiveTypeEffet}__${site}__${designation}`;
     markDirty();
-    refreshStockTableFiltersFromForm();
-    renderReferenceBases();
+    state.stockTableFilters = {
+      site,
+      typeEffet: effectiveTypeEffet,
+      referenceEffetId: String(reference.id || ""),
+    };
+    renderStockMovementsTable();
+    renderStockSummaryTable();
+    renderStockTypeKpis();
+    renderReferenceCounts();
     if (form.elements.stockAction) form.elements.stockAction.value = "ENTREE";
     if (form.elements.stockQuantity) {
       form.elements.stockQuantity.value = "1";
