@@ -59,6 +59,7 @@ const MAX_UNDO_STACK = 30;
 const ALL_SITES_VALUE = "TOUS SITES";
 const ALL_TYPES_VALUE = "TOUS TYPES";
 const ALL_DESIGNATIONS_VALUE = "__ALL_DESIGNATIONS__";
+const STOCK_SYNTHETIC_REFERENCE_PREFIX = "__STOCK_SYNTHETIC__:";
 const STOCK_EMPTY_DESIGNATION_LABEL = "SANS DESIGNATION";
 const EFFECT_STATUS_CAUSES = ["HS", "PERTE", "VOL", "NON RENDU", "DETRUIT"];
 const BILLABLE_EFFECT_CAUSES = ["PERTE", "VOL", "NON RENDU", "DETRUIT"];
@@ -785,6 +786,23 @@ function getReferenceEffectiveType(reference) {
 
 function getStockReferenceDesignation(reference) {
   return normalizeText(reference?.designation || "") || STOCK_EMPTY_DESIGNATION_LABEL;
+}
+
+function getStockSyntheticReferenceValue(designation) {
+  return `${STOCK_SYNTHETIC_REFERENCE_PREFIX}${encodeURIComponent(normalizeText(designation) || STOCK_EMPTY_DESIGNATION_LABEL)}`;
+}
+
+function parseStockSyntheticReferenceValue(value) {
+  const rawValue = String(value || "");
+  if (!rawValue.startsWith(STOCK_SYNTHETIC_REFERENCE_PREFIX)) {
+    return "";
+  }
+  try {
+    return normalizeText(decodeURIComponent(rawValue.slice(STOCK_SYNTHETIC_REFERENCE_PREFIX.length))) || STOCK_EMPTY_DESIGNATION_LABEL;
+  } catch (error) {
+    console.error(error);
+    return STOCK_EMPTY_DESIGNATION_LABEL;
+  }
 }
 
 function referenceMatchesType(reference, selectedType) {
@@ -5095,29 +5113,42 @@ function bindStockAdjustmentForm() {
       const typeEffet = normalizeText(formData.get("stockTypeEffet"));
       const site = normalizeText(formData.get("stockSite"));
       const referenceEffetId = String(formData.get("stockReferenceId") || "");
-      const reference = referenceEffetId === ALL_DESIGNATIONS_VALUE ? null : findReferenceById(referenceEffetId);
-      const designation = reference ? getStockReferenceDesignation(reference) : "";
+      const syntheticDesignation = parseStockSyntheticReferenceValue(referenceEffetId);
+      const reference = referenceEffetId === ALL_DESIGNATIONS_VALUE || syntheticDesignation ? null : findReferenceById(referenceEffetId);
+      const designation = reference ? getStockReferenceDesignation(reference) : syntheticDesignation;
       const effectiveTypeEffet = reference ? getReferenceEffectiveType(reference) : typeEffet;
       const action = normalizeText(formData.get("stockAction"));
       const quantite = Math.max(1, Number.parseInt(String(formData.get("stockQuantity") || "1"), 10) || 1);
       const motif = normalizeText(formData.get("stockReason"));
       const commentaire = normalizeText(formData.get("stockComment"));
 
-      if (!typeEffet || !site || !reference || !action) {
-        showStockAdjustmentStatus("TYPE, SITE, DESIGNATION BASE ET MOUVEMENT OBLIGATOIRES", "error");
+      if (!typeEffet || !site || (!reference && !syntheticDesignation) || !action) {
+        showStockAdjustmentStatus("TYPE, SITE ET MOUVEMENT OBLIGATOIRES", "error");
         return;
       }
       if (typeEffet === ALL_TYPES_VALUE || site === ALL_SITES_VALUE || referenceEffetId === ALL_DESIGNATIONS_VALUE) {
         showStockAdjustmentStatus("POUR ENREGISTRER : CHOISIR SITE/TYPE/DESIGNATION PRECIS", "error");
         return;
       }
-      if (!isReferenceEffectActive(reference)) {
+      if (reference && !isReferenceEffectActive(reference)) {
         showStockAdjustmentStatus("REFERENCE EFFET DESACTIVEE - MOUVEMENT BLOQUE", "error");
         return;
       }
-      if (!referenceMatchesType(reference, typeEffet)) {
+      if (reference && !referenceMatchesType(reference, typeEffet)) {
         showStockAdjustmentStatus("TYPE D'EFFET ET DESIGNATION INCOHERENTS", "error");
         return;
+      }
+      if (!reference) {
+        const stockRowExists = getStockSummaryRows().some(
+          (row) =>
+            normalizeText(row.site) === site &&
+            normalizeText(row.typeEffet) === typeEffet &&
+            normalizeText(row.designation) === designation
+        );
+        if (!stockRowExists) {
+          showStockAdjustmentStatus("MOUVEMENT STOCK BLOQUE : LIGNE ABSENTE DE LA SYNTHESE STOCK", "error");
+          return;
+        }
       }
 
       pushUndoSnapshot("MOUVEMENT STOCK MANUEL");
@@ -5125,7 +5156,7 @@ function bindStockAdjustmentForm() {
         id: getNextId("STKM", state.data.stocksEffetsManuels),
         typeEffet: effectiveTypeEffet,
         site,
-        referenceEffetId: String(reference.id || ""),
+        referenceEffetId: reference ? String(reference.id || "") : "",
         designation,
         action,
         quantite,
@@ -5139,7 +5170,7 @@ function bindStockAdjustmentForm() {
       state.stockTableFilters = {
         site,
         typeEffet: effectiveTypeEffet,
-        referenceEffetId: String(reference.id || ""),
+        referenceEffetId: reference ? String(reference.id || "") : referenceEffetId,
       };
       renderStockMovementsTable();
       renderStockSummaryTable();
@@ -5336,6 +5367,12 @@ function hydrateStockAdjustmentFromSelection(selection) {
     });
     if (match && Array.from(referenceSelect.options).some((opt) => String(opt.value || "") === String(match.id || ""))) {
       resolvedReferenceId = String(match.id || "");
+    }
+  }
+  if (!resolvedReferenceId && designation) {
+    const syntheticValue = getStockSyntheticReferenceValue(designation);
+    if (Array.from(referenceSelect.options).some((opt) => String(opt.value || "") === syntheticValue)) {
+      resolvedReferenceId = syntheticValue;
     }
   }
 
@@ -9400,6 +9437,28 @@ function updateStockDesignationOptions() {
     })
     .filter((reference) => !site || site === ALL_SITES_VALUE || referenceHasSite(reference, site))
     .sort((a, b) => getStockReferenceDesignation(a).localeCompare(getStockReferenceDesignation(b), "fr"));
+  const referenceOptionValues = new Set(references.map((reference) => String(reference.id || "")));
+  const syntheticRows = getStockSummaryRows()
+    .filter((row) => {
+      if (!site || site === ALL_SITES_VALUE || normalizeText(row.site) === site) {
+        return !typeEffet || typeEffet === ALL_TYPES_VALUE || normalizeText(row.typeEffet) === typeEffet;
+      }
+      return false;
+    })
+    .filter((row) => normalizeText(row.designation) === STOCK_EMPTY_DESIGNATION_LABEL)
+    .filter((row) => {
+      return !references.some(
+        (reference) =>
+          referenceMatchesType(reference, row.typeEffet) &&
+          referenceHasSite(reference, row.site) &&
+          getStockReferenceDesignation(reference) === STOCK_EMPTY_DESIGNATION_LABEL
+      );
+    })
+    .sort((a, b) => {
+      const left = `${normalizeText(a.site)} ${normalizeText(a.typeEffet)} ${normalizeText(a.designation)}`;
+      const right = `${normalizeText(b.site)} ${normalizeText(b.typeEffet)} ${normalizeText(b.designation)}`;
+      return left.localeCompare(right, "fr");
+    });
 
   const currentValue = String(designationSelect.value || "");
   const canUseAllDesignations = !typeEffet || typeEffet === ALL_TYPES_VALUE || !site || site === ALL_SITES_VALUE;
@@ -9414,15 +9473,24 @@ function updateStockDesignationOptions() {
           `<option value="${escapeHtml(String(reference.id || ""))}">${escapeHtml(getStockReferenceDesignation(reference))}</option>`
       )
     )
+    .concat(
+      syntheticRows.map((row) => {
+        const value = getStockSyntheticReferenceValue(row.designation);
+        referenceOptionValues.add(value);
+        return `<option value="${escapeHtml(value)}">${escapeHtml(row.designation)}</option>`;
+      })
+    )
     .join("");
   if (currentValue && references.some((entry) => String(entry.id || "") === currentValue)) {
+    designationSelect.value = currentValue;
+  } else if (currentValue && referenceOptionValues.has(currentValue)) {
     designationSelect.value = currentValue;
   } else if (currentValue === ALL_DESIGNATIONS_VALUE && canUseAllDesignations) {
     designationSelect.value = ALL_DESIGNATIONS_VALUE;
   } else {
     designationSelect.value = "";
   }
-  designationSelect.disabled = references.length === 0;
+  designationSelect.disabled = references.length === 0 && syntheticRows.length === 0;
 }
 
 function refreshStockTableFiltersFromForm() {
@@ -9772,7 +9840,7 @@ function getStockSummaryRows() {
     const linkedReference = effect?.referenceEffetId ? findReferenceById(effect.referenceEffetId) : null;
     const typeEffet = linkedReference ? getReferenceEffectiveType(linkedReference) : normalizeText(effect?.typeEffet || "");
     const site = normalizeText(getEffectDisplaySite(effect) || getPersonSiteLabel(person) || "SANS SITE");
-    const designation = normalizeText(getEffectDisplayDesignation(effect) || effect?.designation || typeEffet || "SANS DESIGNATION");
+    const designation = normalizeText(getEffectDisplayDesignation(effect) || effect?.designation || STOCK_EMPTY_DESIGNATION_LABEL);
     if (!typeEffet || !designation) {
       return;
     }

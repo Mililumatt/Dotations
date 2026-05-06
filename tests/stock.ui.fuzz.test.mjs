@@ -42,8 +42,10 @@ function createStockContext() {
   const fnNames = [
     "normalizeText",
     "normalizeSites",
+    "getPersonSites",
     "getReferenceSites",
     "getReferenceSiteLabel",
+    "getPersonSiteLabel",
     "referenceHasSite",
     "isReferenceEffectActive",
     "findReferenceById",
@@ -249,4 +251,35 @@ test("manual stock supports references with empty base designation", () => {
   assert.ok(row);
   assert.equal(row.manuelDelta, 3);
   assert.equal(row.stockCourant, 3);
+});
+
+test("stock summary groups effects without reference or designation as sans designation", () => {
+  const ctx = createStockContext();
+  ctx.state.data.personnes.push({
+    id: "P_EMPTY_EFFECT",
+    nom: "TEST",
+    prenom: "STOCK",
+    site: "CDM",
+    sitesAffectation: ["CDM"],
+    effetsConfies: [
+      {
+        id: "E_EMPTY_EFFECT",
+        typeEffet: "BADGE INTRUSION",
+        designation: "",
+        referenceEffetId: "",
+        statutManuel: "ACTIF",
+      },
+    ],
+  });
+
+  const rows = ctx.getStockSummaryRows();
+  const row = rows.find(
+    (entry) =>
+      entry.site === "CDM" &&
+      entry.typeEffet === "BADGE INTRUSION" &&
+      entry.designation === "SANS DESIGNATION"
+  );
+  assert.ok(row);
+  assert.equal(row.dotes, 1);
+  assert.equal(row.stockCourant, -1);
 });
