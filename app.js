@@ -9591,6 +9591,24 @@ function getStockSummaryRows() {
     return rowsByKey.get(key);
   };
 
+  (state.data?.listes?.referencesEffets || [])
+    .filter((reference) => isReferenceEffectActive(reference))
+    .forEach((reference) => {
+      const typeEffet = normalizeText(reference?.typeEffet || "");
+      const designation = normalizeText(reference?.designation || "");
+      const sites = getReferenceSites(reference);
+      if (!typeEffet || !designation) {
+        return;
+      }
+      if (!sites.length) {
+        ensureRow(typeEffet, "SANS SITE", designation);
+        return;
+      }
+      sites.forEach((site) => {
+        ensureRow(typeEffet, normalizeText(site) || "SANS SITE", designation);
+      });
+    });
+
   getAllEffects(state.data?.personnes || []).forEach(({ person, effect }) => {
     const typeEffet = normalizeText(effect?.typeEffet || "");
     const site = normalizeText(getEffectDisplaySite(effect) || getPersonSiteLabel(person) || "SANS SITE");
