@@ -788,20 +788,33 @@ function getStockReferenceDesignation(reference) {
   return normalizeText(reference?.designation || "") || STOCK_EMPTY_DESIGNATION_LABEL;
 }
 
-function getStockSyntheticReferenceValue(designation) {
-  return `${STOCK_SYNTHETIC_REFERENCE_PREFIX}${encodeURIComponent(normalizeText(designation) || STOCK_EMPTY_DESIGNATION_LABEL)}`;
+function getStockSyntheticReferenceValue(site, typeEffet, designation) {
+  const parts = [
+    normalizeText(site) || "SANS SITE",
+    normalizeText(typeEffet),
+    normalizeText(designation) || STOCK_EMPTY_DESIGNATION_LABEL,
+  ];
+  return `${STOCK_SYNTHETIC_REFERENCE_PREFIX}${parts.map((part) => encodeURIComponent(part)).join("|")}`;
 }
 
 function parseStockSyntheticReferenceValue(value) {
   const rawValue = String(value || "");
   if (!rawValue.startsWith(STOCK_SYNTHETIC_REFERENCE_PREFIX)) {
-    return "";
+    return null;
   }
   try {
-    return normalizeText(decodeURIComponent(rawValue.slice(STOCK_SYNTHETIC_REFERENCE_PREFIX.length))) || STOCK_EMPTY_DESIGNATION_LABEL;
+    const [site = "", typeEffet = "", designation = ""] = rawValue
+      .slice(STOCK_SYNTHETIC_REFERENCE_PREFIX.length)
+      .split("|")
+      .map((part) => normalizeText(decodeURIComponent(part)));
+    return {
+      site: site || "SANS SITE",
+      typeEffet,
+      designation: designation || STOCK_EMPTY_DESIGNATION_LABEL,
+    };
   } catch (error) {
     console.error(error);
-    return STOCK_EMPTY_DESIGNATION_LABEL;
+    return null;
   }
 }
 
@@ -5113,16 +5126,16 @@ function bindStockAdjustmentForm() {
       const typeEffet = normalizeText(formData.get("stockTypeEffet"));
       const site = normalizeText(formData.get("stockSite"));
       const referenceEffetId = String(formData.get("stockReferenceId") || "");
-      const syntheticDesignation = parseStockSyntheticReferenceValue(referenceEffetId);
-      const reference = referenceEffetId === ALL_DESIGNATIONS_VALUE || syntheticDesignation ? null : findReferenceById(referenceEffetId);
-      const designation = reference ? getStockReferenceDesignation(reference) : syntheticDesignation;
+      const syntheticReference = parseStockSyntheticReferenceValue(referenceEffetId);
+      const reference = referenceEffetId === ALL_DESIGNATIONS_VALUE || syntheticReference ? null : findReferenceById(referenceEffetId);
+      const designation = reference ? getStockReferenceDesignation(reference) : syntheticReference?.designation || "";
       const effectiveTypeEffet = reference ? getReferenceEffectiveType(reference) : typeEffet;
       const action = normalizeText(formData.get("stockAction"));
       const quantite = Math.max(1, Number.parseInt(String(formData.get("stockQuantity") || "1"), 10) || 1);
       const motif = normalizeText(formData.get("stockReason"));
       const commentaire = normalizeText(formData.get("stockComment"));
 
-      if (!typeEffet || !site || (!reference && !syntheticDesignation) || !action) {
+      if (!typeEffet || !site || (!reference && !syntheticReference) || !action) {
         showStockAdjustmentStatus("TYPE, SITE ET MOUVEMENT OBLIGATOIRES", "error");
         return;
       }
@@ -5139,6 +5152,10 @@ function bindStockAdjustmentForm() {
         return;
       }
       if (!reference) {
+        if (syntheticReference.site !== site || syntheticReference.typeEffet !== typeEffet) {
+          showStockAdjustmentStatus("TYPE, SITE ET DESIGNATION STOCK INCOHERENTS", "error");
+          return;
+        }
         const stockRowExists = getStockSummaryRows().some(
           (row) =>
             normalizeText(row.site) === site &&
@@ -5262,7 +5279,7 @@ function bindStockMovementActions() {
         return;
       }
       const linkedReference = movement.referenceEffetId ? findReferenceById(movement.referenceEffetId) : null;
-      if (!linkedReference) {
+      if (movement.referenceEffetId && !linkedReference) {
         showDataStatus("MOUVEMENT STOCK VERROUILLE : REFERENCE ABSENTE EN BASE");
         return;
       }
@@ -5364,7 +5381,7 @@ function hydrateStockAdjustmentFromSelection(selection) {
     }
   }
   if (!resolvedReferenceId && designation) {
-    const syntheticValue = getStockSyntheticReferenceValue(designation);
+    const syntheticValue = getStockSyntheticReferenceValue(site, typeEffet, designation);
     if (Array.from(referenceSelect.options).some((opt) => String(opt.value || "") === syntheticValue)) {
       resolvedReferenceId = syntheticValue;
     }
@@ -9342,9 +9359,16 @@ function getFilteredStockSummaryRows() {
       return false;
     }
     if (filters.referenceEffetId && filters.referenceEffetId !== ALL_DESIGNATIONS_VALUE) {
-      const syntheticDesignation = parseStockSyntheticReferenceValue(filters.referenceEffetId);
-      const reference = syntheticDesignation ? null : findReferenceById(filters.referenceEffetId);
-      const referenceDesignation = syntheticDesignation || (reference ? getStockReferenceDesignation(reference) : "");
+      const syntheticReference = parseStockSyntheticReferenceValue(filters.referenceEffetId);
+      const reference = syntheticReference ? null : findReferenceById(filters.referenceEffetId);
+      if (syntheticReference) {
+        return (
+          normalizeText(row.site) === syntheticReference.site &&
+          normalizeText(row.typeEffet) === syntheticReference.typeEffet &&
+          normalizeText(row.designation) === syntheticReference.designation
+        );
+      }
+      const referenceDesignation = reference ? getStockReferenceDesignation(reference) : "";
       if (referenceDesignation && normalizeText(row.designation) !== referenceDesignation) {
         return false;
       }
@@ -9490,7 +9514,7 @@ function updateStockDesignationOptions() {
     )
     .concat(
       syntheticRows.map((row) => {
-        const value = getStockSyntheticReferenceValue(row.designation);
+        const value = getStockSyntheticReferenceValue(row.site, row.typeEffet, row.designation);
         referenceOptionValues.add(value);
         return `<option value="${escapeHtml(value)}">${escapeHtml(row.designation)}</option>`;
       })
@@ -9913,10 +9937,19 @@ function renderStockMovementsTable() {
       }
       if (
         filters.referenceEffetId &&
-        filters.referenceEffetId !== ALL_DESIGNATIONS_VALUE &&
-        String(entry.referenceEffetId || "") !== String(filters.referenceEffetId || "")
+        filters.referenceEffetId !== ALL_DESIGNATIONS_VALUE
       ) {
-        return false;
+        const syntheticReference = parseStockSyntheticReferenceValue(filters.referenceEffetId);
+        if (syntheticReference) {
+          return (
+            normalizeText(entry.site) === syntheticReference.site &&
+            normalizeText(entry.typeEffet) === syntheticReference.typeEffet &&
+            normalizeText(entry.designation) === syntheticReference.designation
+          );
+        }
+        if (String(entry.referenceEffetId || "") !== String(filters.referenceEffetId || "")) {
+          return false;
+        }
       }
       return true;
     })

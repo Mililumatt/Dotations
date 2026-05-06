@@ -53,6 +53,8 @@ function createStockContext() {
     "typeUsesReferenceCatalog",
     "getReferenceEffectiveType",
     "getStockReferenceDesignation",
+    "getStockSyntheticReferenceValue",
+    "parseStockSyntheticReferenceValue",
     "referenceMatchesType",
     "getEffectDisplayDesignation",
     "getEffectDisplaySite",
@@ -67,6 +69,7 @@ function createStockContext() {
 
   const context = {
     ALL_SITES_VALUE: "TOUS SITES",
+    STOCK_SYNTHETIC_REFERENCE_PREFIX: "__STOCK_SYNTHETIC__:",
     STOCK_EMPTY_DESIGNATION_LABEL: "SANS DESIGNATION",
     state: { data: { personnes: [], listes: { referencesEffets: [] }, stocksEffetsManuels: [] } },
     Date,
@@ -282,4 +285,22 @@ test("stock summary groups effects without reference or designation as sans desi
   assert.ok(row);
   assert.equal(row.dotes, 1);
   assert.equal(row.stockCourant, -1);
+});
+
+test("synthetic stock reference keys separate same designation across sites", () => {
+  const ctx = createStockContext();
+  const cdmKey = ctx.getStockSyntheticReferenceValue("CDM", "CARTE TURBOSELF", "SANS DESIGNATION");
+  const allSitesKey = ctx.getStockSyntheticReferenceValue("TOUS SITES", "CARTE TURBOSELF", "SANS DESIGNATION");
+
+  assert.notEqual(cdmKey, allSitesKey);
+  assert.equal(JSON.stringify(ctx.parseStockSyntheticReferenceValue(cdmKey)), JSON.stringify({
+    site: "CDM",
+    typeEffet: "CARTE TURBOSELF",
+    designation: "SANS DESIGNATION",
+  }));
+  assert.equal(JSON.stringify(ctx.parseStockSyntheticReferenceValue(allSitesKey)), JSON.stringify({
+    site: "TOUS SITES",
+    typeEffet: "CARTE TURBOSELF",
+    designation: "SANS DESIGNATION",
+  }));
 });
