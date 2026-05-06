@@ -788,11 +788,23 @@ function getStockReferenceDesignation(reference) {
   return normalizeText(reference?.designation || "") || STOCK_EMPTY_DESIGNATION_LABEL;
 }
 
+function getStockGroupingDesignation(typeEffet, designation) {
+  const normalizedType = normalizeText(typeEffet);
+  if (["BADGE INTRUSION", "CARTE TURBOSELF", "TELECOMMANDE URMET"].includes(normalizedType)) {
+    return STOCK_EMPTY_DESIGNATION_LABEL;
+  }
+  return normalizeText(designation || "") || STOCK_EMPTY_DESIGNATION_LABEL;
+}
+
+function typeIgnoresStockDesignation(typeEffet) {
+  return ["BADGE INTRUSION", "CARTE TURBOSELF", "TELECOMMANDE URMET"].includes(normalizeText(typeEffet));
+}
+
 function getStockSyntheticReferenceValue(site, typeEffet, designation) {
   const parts = [
     normalizeText(site) || "SANS SITE",
     normalizeText(typeEffet),
-    normalizeText(designation) || STOCK_EMPTY_DESIGNATION_LABEL,
+    getStockGroupingDesignation(typeEffet, designation),
   ];
   return `${STOCK_SYNTHETIC_REFERENCE_PREFIX}${parts.map((part) => encodeURIComponent(part)).join("|")}`;
 }
@@ -5128,7 +5140,10 @@ function bindStockAdjustmentForm() {
       const referenceEffetId = String(formData.get("stockReferenceId") || "");
       let syntheticReference = parseStockSyntheticReferenceValue(referenceEffetId);
       const reference = referenceEffetId === ALL_DESIGNATIONS_VALUE || syntheticReference ? null : findReferenceById(referenceEffetId);
-      let designation = reference ? getStockReferenceDesignation(reference) : syntheticReference?.designation || "";
+      let designation = getStockGroupingDesignation(
+        effectiveTypeEffet,
+        reference ? getStockReferenceDesignation(reference) : syntheticReference?.designation || ""
+      );
       const effectiveTypeEffet = reference ? getReferenceEffectiveType(reference) : typeEffet;
       const action = normalizeText(formData.get("stockAction"));
       const quantite = Math.max(1, Number.parseInt(String(formData.get("stockQuantity") || "1"), 10) || 1);
@@ -5140,15 +5155,15 @@ function bindStockAdjustmentForm() {
           (row) =>
             normalizeText(row.site) === site &&
             normalizeText(row.typeEffet) === typeEffet &&
-            normalizeText(row.designation) === STOCK_EMPTY_DESIGNATION_LABEL
+            normalizeText(row.designation) === getStockGroupingDesignation(typeEffet, row.designation)
         );
-        if (matchingUndesignatedRow) {
+        if (matchingUndesignatedRow || typeIgnoresStockDesignation(typeEffet)) {
           syntheticReference = {
             site,
             typeEffet,
-            designation: STOCK_EMPTY_DESIGNATION_LABEL,
+            designation: getStockGroupingDesignation(typeEffet, ""),
           };
-          designation = STOCK_EMPTY_DESIGNATION_LABEL;
+          designation = getStockGroupingDesignation(typeEffet, "");
         }
       }
 
@@ -5182,9 +5197,9 @@ function bindStockAdjustmentForm() {
           (row) =>
             normalizeText(row.site) === site &&
             normalizeText(row.typeEffet) === typeEffet &&
-            normalizeText(row.designation) === designation
+            normalizeText(row.designation) === getStockGroupingDesignation(typeEffet, designation)
         );
-        if (!stockRowExists) {
+        if (!stockRowExists && !typeIgnoresStockDesignation(typeEffet)) {
           showStockAdjustmentStatus("MOUVEMENT STOCK BLOQUE : LIGNE ABSENTE DE LA SYNTHESE STOCK", "error");
           return;
         }
@@ -9883,7 +9898,7 @@ function getStockSummaryRows() {
     .filter((reference) => isReferenceEffectActive(reference))
     .forEach((reference) => {
       const typeEffet = getReferenceEffectiveType(reference);
-      const designation = getStockReferenceDesignation(reference);
+      const designation = getStockGroupingDesignation(typeEffet, getStockReferenceDesignation(reference));
       const sites = getReferenceSites(reference);
       if (!typeEffet) {
         return;
@@ -9901,7 +9916,10 @@ function getStockSummaryRows() {
     const linkedReference = effect?.referenceEffetId ? findReferenceById(effect.referenceEffetId) : null;
     const typeEffet = linkedReference ? getReferenceEffectiveType(linkedReference) : normalizeText(effect?.typeEffet || "");
     const site = normalizeText(getEffectDisplaySite(effect) || getPersonSiteLabel(person) || "SANS SITE");
-    const designation = normalizeText(getEffectDisplayDesignation(effect) || effect?.designation || STOCK_EMPTY_DESIGNATION_LABEL);
+    const designation = getStockGroupingDesignation(
+      typeEffet,
+      getEffectDisplayDesignation(effect) || effect?.designation || STOCK_EMPTY_DESIGNATION_LABEL
+    );
     if (!typeEffet || !designation) {
       return;
     }
@@ -9919,7 +9937,7 @@ function getStockSummaryRows() {
   (state.data?.stocksEffetsManuels || []).forEach((entry) => {
     const typeEffet = normalizeText(entry?.typeEffet || "");
     const site = normalizeText(entry?.site || "SANS SITE");
-    const designation = normalizeText(entry?.designation || "");
+    const designation = getStockGroupingDesignation(typeEffet, entry?.designation || "");
     if (!typeEffet || !designation) {
       return;
     }

@@ -53,6 +53,7 @@ function createStockContext() {
     "typeUsesReferenceCatalog",
     "getReferenceEffectiveType",
     "getStockReferenceDesignation",
+    "getStockGroupingDesignation",
     "getStockSyntheticReferenceValue",
     "parseStockSyntheticReferenceValue",
     "referenceMatchesType",
@@ -303,4 +304,41 @@ test("synthetic stock reference keys separate same designation across sites", ()
     typeEffet: "CARTE TURBOSELF",
     designation: "SANS DESIGNATION",
   }));
+});
+
+test("stock grouping ignores designation for badge card and remote control types", () => {
+  const ctx = createStockContext();
+  const groupedTypes = ["BADGE INTRUSION", "CARTE TURBOSELF", "TELECOMMANDE URMET"];
+
+  for (const typeEffet of groupedTypes) {
+    ctx.state.data.personnes.push({
+      id: `P_${typeEffet.replace(/\s+/g, "_")}`,
+      nom: "TEST",
+      prenom: typeEffet,
+      site: "CDM",
+      sitesAffectation: ["CDM"],
+      effetsConfies: [
+        {
+          id: `E_${typeEffet.replace(/\s+/g, "_")}`,
+          typeEffet,
+          designation: "NUMERO-INDIVIDUEL",
+          referenceEffetId: "",
+          statutManuel: "ACTIF",
+        },
+      ],
+    });
+  }
+
+  const rows = ctx.getStockSummaryRows();
+  for (const typeEffet of groupedTypes) {
+    assert.equal(ctx.getStockGroupingDesignation(typeEffet, "NUMERO-INDIVIDUEL"), "SANS DESIGNATION");
+    assert.equal(
+      rows.some((row) => row.site === "CDM" && row.typeEffet === typeEffet && row.designation === "SANS DESIGNATION"),
+      true
+    );
+    assert.equal(
+      rows.some((row) => row.site === "CDM" && row.typeEffet === typeEffet && row.designation === "NUMERO-INDIVIDUEL"),
+      false
+    );
+  }
 });
