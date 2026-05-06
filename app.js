@@ -5126,14 +5126,31 @@ function bindStockAdjustmentForm() {
       const typeEffet = normalizeText(formData.get("stockTypeEffet"));
       const site = normalizeText(formData.get("stockSite"));
       const referenceEffetId = String(formData.get("stockReferenceId") || "");
-      const syntheticReference = parseStockSyntheticReferenceValue(referenceEffetId);
+      let syntheticReference = parseStockSyntheticReferenceValue(referenceEffetId);
       const reference = referenceEffetId === ALL_DESIGNATIONS_VALUE || syntheticReference ? null : findReferenceById(referenceEffetId);
-      const designation = reference ? getStockReferenceDesignation(reference) : syntheticReference?.designation || "";
+      let designation = reference ? getStockReferenceDesignation(reference) : syntheticReference?.designation || "";
       const effectiveTypeEffet = reference ? getReferenceEffectiveType(reference) : typeEffet;
       const action = normalizeText(formData.get("stockAction"));
       const quantite = Math.max(1, Number.parseInt(String(formData.get("stockQuantity") || "1"), 10) || 1);
       const motif = normalizeText(formData.get("stockReason"));
       const commentaire = normalizeText(formData.get("stockComment"));
+
+      if (!reference && !syntheticReference && typeEffet && site) {
+        const matchingUndesignatedRow = getStockSummaryRows().find(
+          (row) =>
+            normalizeText(row.site) === site &&
+            normalizeText(row.typeEffet) === typeEffet &&
+            normalizeText(row.designation) === STOCK_EMPTY_DESIGNATION_LABEL
+        );
+        if (matchingUndesignatedRow) {
+          syntheticReference = {
+            site,
+            typeEffet,
+            designation: STOCK_EMPTY_DESIGNATION_LABEL,
+          };
+          designation = STOCK_EMPTY_DESIGNATION_LABEL;
+        }
+      }
 
       if (!typeEffet || !site || (!reference && !syntheticReference) || !action) {
         showStockAdjustmentStatus("TYPE, SITE ET MOUVEMENT OBLIGATOIRES", "error");
