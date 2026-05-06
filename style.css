@@ -1212,7 +1212,7 @@ body[data-page="reference-bases"] .kpi-grid--references .kpi-card__value {
 }
 
 body[data-page="reference-bases"] #stock-movements-wrap {
-  max-height: 208px;
+  max-height: 140px;
   overflow-y: auto;
 }
 
