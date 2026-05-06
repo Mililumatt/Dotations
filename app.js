@@ -4832,17 +4832,12 @@ function bindReferenceEffectForm() {
 
     const formData = new FormData(form);
     const normalizedTypeEffet = normalizeText(formData.get("referenceTypeEffet"));
-    const selectedReferenceSites = Array.from(
-      form.querySelectorAll('input[name="referenceSites"]:checked')
-    ).map((input) => normalizeText(input.value));
     const referenceId = state.editingReferenceId || getNextId("REF", state.data.listes.referencesEffets);
+    const selectedSite = normalizeText(formData.get("referenceSite")) || "SANS SITE";
     const reference = {
       id: referenceId,
-      site: normalizeText(formData.get("referenceSite")) || "SANS SITE",
-      sitesAffectation:
-        normalizedTypeEffet === "CLE CES"
-          ? normalizeSites(selectedReferenceSites)
-          : normalizeSites([normalizeText(formData.get("referenceSite")) || "SANS SITE"]),
+      site: selectedSite,
+      sitesAffectation: normalizeSites([selectedSite]),
       typeEffet: normalizedTypeEffet || "EFFET",
       designation: normalizeText(formData.get("referenceDesignation")) || `REFERENCE ${referenceId}`,
     };
@@ -4900,11 +4895,10 @@ function bindReferenceEffectForm() {
 
 function updateReferenceEffectFormMode(typeEffet) {
   const field = document.getElementById("reference-sites-field");
-  const normalizedType = normalizeText(typeEffet);
   if (!field) {
     return;
   }
-  field.classList.toggle("is-hidden", normalizedType !== "CLE CES");
+  field.classList.add("is-hidden");
 }
 
 function canUseAllSitesForReference() {
