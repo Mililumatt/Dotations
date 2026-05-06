@@ -9033,7 +9033,23 @@ function updateStockDesignationOptions() {
   }
   const references = (state.data?.listes?.referencesEffets || [])
     .filter((reference) => isReferenceEffectActive(reference))
-    .filter((reference) => !typeEffet || typeEffet === ALL_TYPES_VALUE || normalizeText(reference.typeEffet) === typeEffet)
+    .filter((reference) => {
+      if (!typeEffet || typeEffet === ALL_TYPES_VALUE) {
+        return true;
+      }
+      const referenceType = normalizeText(reference.typeEffet);
+      const expectedType = getReferenceCatalogType(typeEffet);
+      if (referenceType !== expectedType) {
+        return false;
+      }
+      if (typeEffet === "CLE CES") {
+        return isCesKeyDesignation(reference.designation);
+      }
+      if (typeEffet === "CLE") {
+        return !isCesKeyDesignation(reference.designation);
+      }
+      return true;
+    })
     .filter((reference) => !site || site === ALL_SITES_VALUE || referenceHasSite(reference, site))
     .sort((a, b) => normalizeText(a.designation).localeCompare(normalizeText(b.designation), "fr"));
 
