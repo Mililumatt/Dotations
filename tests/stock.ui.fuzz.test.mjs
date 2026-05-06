@@ -206,4 +206,8 @@ test("legacy CLE reference with CES designation matches CLE CES stock selection"
   assert.equal(ctx.getReferenceEffectiveType(reference), "CLE CES");
   assert.equal(ctx.referenceMatchesType(reference, "CLE CES"), true);
   assert.equal(ctx.referenceMatchesType(reference, "CLE"), false);
+
+  ctx.state.data.listes.referencesEffets.push(reference);
+  const rows = ctx.getStockSummaryRows();
+  assert.equal(rows.some((row) => row.typeEffet === "CLE CES" && row.designation === "CES-VLOC"), true);
 });

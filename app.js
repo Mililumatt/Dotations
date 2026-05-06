@@ -4514,6 +4514,9 @@ function bindRegisterButtonsAutoSave() {
     if (!label.startsWith("ENREGISTRER")) {
       return;
     }
+    if (button.id === "stock-save-movement") {
+      return;
+    }
 
     window.setTimeout(async () => {
       if (!state.isDirty) {
@@ -4528,6 +4531,15 @@ function bindRegisterButtonsAutoSave() {
   });
 
   document.body.dataset.registerAutosaveBound = "true";
+}
+
+function showStockAdjustmentStatus(message, variant = "info") {
+  const node = document.getElementById("stock-adjustment-status");
+  if (node) {
+    node.textContent = message;
+    node.dataset.status = variant;
+  }
+  showDataStatus(message);
 }
 
 function getReplacementCostValue(typeEffet, causeRemplacement, designation = "") {
@@ -5050,86 +5062,115 @@ function bindStockAdjustmentForm() {
   if (!(form instanceof HTMLFormElement)) {
     return;
   }
-
-  const saveStockMovement = () => {
-    if (!Array.isArray(state.data?.stocksEffetsManuels)) {
-      showDataStatus("DONNEES NON CHARGEES");
-      return;
-    }
-    const formData = new FormData(form);
-    const typeEffet = normalizeText(formData.get("stockTypeEffet"));
-    const site = normalizeText(formData.get("stockSite"));
-    const referenceEffetId = String(formData.get("stockReferenceId") || "");
-    const reference = referenceEffetId === ALL_DESIGNATIONS_VALUE ? null : findReferenceById(referenceEffetId);
-    const designation = normalizeText(reference?.designation || "");
-    const effectiveTypeEffet = reference ? getReferenceEffectiveType(reference) : typeEffet;
-    const action = normalizeText(formData.get("stockAction"));
-    const quantite = Math.max(1, Number.parseInt(String(formData.get("stockQuantity") || "1"), 10) || 1);
-    const motif = normalizeText(formData.get("stockReason"));
-    const commentaire = normalizeText(formData.get("stockComment"));
-
-    if (!typeEffet || !site || !reference || !designation || !action) {
-      showDataStatus("TYPE, SITE, DESIGNATION BASE ET MOUVEMENT OBLIGATOIRES");
-      return;
-    }
-    if (typeEffet === ALL_TYPES_VALUE || site === ALL_SITES_VALUE || referenceEffetId === ALL_DESIGNATIONS_VALUE) {
-      showDataStatus("POUR ENREGISTRER : CHOISIR SITE/TYPE/DESIGNATION PRECIS");
-      return;
-    }
-    if (!isReferenceEffectActive(reference)) {
-      showDataStatus("REFERENCE EFFET DESACTIVEE - MOUVEMENT BLOQUE");
-      return;
-    }
-    if (!referenceMatchesType(reference, typeEffet)) {
-      showDataStatus("TYPE D'EFFET ET DESIGNATION INCOHERENTS");
-      return;
-    }
-
-    pushUndoSnapshot("MOUVEMENT STOCK MANUEL");
-    const movement = {
-      id: getNextId("STKM", state.data.stocksEffetsManuels),
-      typeEffet: effectiveTypeEffet,
-      site,
-      referenceEffetId: String(reference.id || ""),
-      designation,
-      action,
-      quantite,
-      motif,
-      commentaire,
-      date: getTodayIsoDate(),
-    };
-    state.data.stocksEffetsManuels.push(movement);
-    state.stockHighlightKey = `${effectiveTypeEffet}__${site}__${designation}`;
-    markDirty();
-    state.stockTableFilters = {
-      site,
-      typeEffet: effectiveTypeEffet,
-      referenceEffetId: String(reference.id || ""),
-    };
-    renderStockMovementsTable();
-    renderStockSummaryTable();
-    renderStockTypeKpis();
-    renderReferenceCounts();
-    if (form.elements.stockAction) form.elements.stockAction.value = "ENTREE";
-    if (form.elements.stockQuantity) {
-      form.elements.stockQuantity.value = "1";
-    }
-    if (form.elements.stockComment) {
-      form.elements.stockComment.value = "";
-    }
-    showActionStatus("create", `MOUVEMENT STOCK ENREGISTRE : ${effectiveTypeEffet} / ${designation}`);
-  };
-
-  form.onsubmit = (event) => {
-    event.preventDefault();
-    saveStockMovement();
-  };
-
   const saveButton = document.getElementById("stock-save-movement");
+  let stockSaveInFlight = false;
+
+  const saveStockMovement = async () => {
+    if (stockSaveInFlight) {
+      return;
+    }
+    stockSaveInFlight = true;
+    if (saveButton instanceof HTMLButtonElement) {
+      saveButton.disabled = true;
+    }
+    if (!state.data) {
+      showStockAdjustmentStatus("DONNEES NON CHARGEES", "error");
+      stockSaveInFlight = false;
+      if (saveButton instanceof HTMLButtonElement) {
+        saveButton.disabled = false;
+      }
+      return;
+    }
+    if (!Array.isArray(state.data.stocksEffetsManuels)) {
+      state.data.stocksEffetsManuels = [];
+    }
+
+    try {
+      const formData = new FormData(form);
+      const typeEffet = normalizeText(formData.get("stockTypeEffet"));
+      const site = normalizeText(formData.get("stockSite"));
+      const referenceEffetId = String(formData.get("stockReferenceId") || "");
+      const reference = referenceEffetId === ALL_DESIGNATIONS_VALUE ? null : findReferenceById(referenceEffetId);
+      const designation = normalizeText(reference?.designation || "");
+      const effectiveTypeEffet = reference ? getReferenceEffectiveType(reference) : typeEffet;
+      const action = normalizeText(formData.get("stockAction"));
+      const quantite = Math.max(1, Number.parseInt(String(formData.get("stockQuantity") || "1"), 10) || 1);
+      const motif = normalizeText(formData.get("stockReason"));
+      const commentaire = normalizeText(formData.get("stockComment"));
+
+      if (!typeEffet || !site || !reference || !designation || !action) {
+        showStockAdjustmentStatus("TYPE, SITE, DESIGNATION BASE ET MOUVEMENT OBLIGATOIRES", "error");
+        return;
+      }
+      if (typeEffet === ALL_TYPES_VALUE || site === ALL_SITES_VALUE || referenceEffetId === ALL_DESIGNATIONS_VALUE) {
+        showStockAdjustmentStatus("POUR ENREGISTRER : CHOISIR SITE/TYPE/DESIGNATION PRECIS", "error");
+        return;
+      }
+      if (!isReferenceEffectActive(reference)) {
+        showStockAdjustmentStatus("REFERENCE EFFET DESACTIVEE - MOUVEMENT BLOQUE", "error");
+        return;
+      }
+      if (!referenceMatchesType(reference, typeEffet)) {
+        showStockAdjustmentStatus("TYPE D'EFFET ET DESIGNATION INCOHERENTS", "error");
+        return;
+      }
+
+      pushUndoSnapshot("MOUVEMENT STOCK MANUEL");
+      const movement = {
+        id: getNextId("STKM", state.data.stocksEffetsManuels),
+        typeEffet: effectiveTypeEffet,
+        site,
+        referenceEffetId: String(reference.id || ""),
+        designation,
+        action,
+        quantite,
+        motif,
+        commentaire,
+        date: getTodayIsoDate(),
+      };
+      state.data.stocksEffetsManuels.push(movement);
+      state.stockHighlightKey = `${effectiveTypeEffet}__${site}__${designation}`;
+      markDirty();
+      state.stockTableFilters = {
+        site,
+        typeEffet: effectiveTypeEffet,
+        referenceEffetId: String(reference.id || ""),
+      };
+      renderStockMovementsTable();
+      renderStockSummaryTable();
+      renderStockTypeKpis();
+      renderReferenceCounts();
+      if (form.elements.stockAction) form.elements.stockAction.value = "ENTREE";
+      if (form.elements.stockQuantity) {
+        form.elements.stockQuantity.value = "1";
+      }
+      if (form.elements.stockComment) {
+        form.elements.stockComment.value = "";
+      }
+      showActionStatus("create", `MOUVEMENT STOCK ENREGISTRE : ${effectiveTypeEffet} / ${designation}`);
+      showStockAdjustmentStatus(`MOUVEMENT STOCK ENREGISTRE : ${effectiveTypeEffet} / ${designation}`, "success");
+      await saveDataToFile({
+        silent: true,
+        reloadAfter: false,
+        promptDownload: false,
+      });
+    } finally {
+      stockSaveInFlight = false;
+      if (saveButton instanceof HTMLButtonElement) {
+        saveButton.disabled = false;
+      }
+    }
+  };
+
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    await saveStockMovement();
+  };
+
   if (saveButton instanceof HTMLButtonElement) {
-    saveButton.onclick = (event) => {
+    saveButton.onclick = async (event) => {
       event.preventDefault();
-      saveStockMovement();
+      await saveStockMovement();
     };
   }
 
@@ -9011,7 +9052,8 @@ function ensureReferenceExists(site, typeEffet, designation, existingId) {
 }
 
 function findReferenceById(referenceId) {
-  return state.data?.listes?.referencesEffets?.find((reference) => reference.id === referenceId) || null;
+  const normalizedId = String(referenceId || "");
+  return state.data?.listes?.referencesEffets?.find((reference) => String(reference.id || "") === normalizedId) || null;
 }
 
 function getCurrentPerson() {
@@ -9699,7 +9741,7 @@ function getStockSummaryRows() {
   (state.data?.listes?.referencesEffets || [])
     .filter((reference) => isReferenceEffectActive(reference))
     .forEach((reference) => {
-      const typeEffet = normalizeText(reference?.typeEffet || "");
+      const typeEffet = getReferenceEffectiveType(reference);
       const designation = normalizeText(reference?.designation || "");
       const sites = getReferenceSites(reference);
       if (!typeEffet || !designation) {
@@ -9715,7 +9757,8 @@ function getStockSummaryRows() {
     });
 
   getAllEffects(state.data?.personnes || []).forEach(({ person, effect }) => {
-    const typeEffet = normalizeText(effect?.typeEffet || "");
+    const linkedReference = effect?.referenceEffetId ? findReferenceById(effect.referenceEffetId) : null;
+    const typeEffet = linkedReference ? getReferenceEffectiveType(linkedReference) : normalizeText(effect?.typeEffet || "");
     const site = normalizeText(getEffectDisplaySite(effect) || getPersonSiteLabel(person) || "SANS SITE");
     const designation = normalizeText(getEffectDisplayDesignation(effect) || effect?.designation || typeEffet || "SANS DESIGNATION");
     if (!typeEffet || !designation) {
