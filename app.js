@@ -5156,7 +5156,12 @@ function bindStockAdjustmentForm() {
         showStockAdjustmentStatus("TYPE, SITE ET MOUVEMENT OBLIGATOIRES", "error");
         return;
       }
-      if (typeEffet === ALL_TYPES_VALUE || site === ALL_SITES_VALUE || referenceEffetId === ALL_DESIGNATIONS_VALUE) {
+      const isExactSyntheticStockRow = Boolean(syntheticReference);
+      if (
+        typeEffet === ALL_TYPES_VALUE ||
+        referenceEffetId === ALL_DESIGNATIONS_VALUE ||
+        (site === ALL_SITES_VALUE && !isExactSyntheticStockRow)
+      ) {
         showStockAdjustmentStatus("POUR ENREGISTRER : CHOISIR SITE/TYPE/DESIGNATION PRECIS", "error");
         return;
       }
