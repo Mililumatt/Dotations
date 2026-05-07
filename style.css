@@ -2639,6 +2639,35 @@ body[data-page="overview"] .data-table td {
   background: rgba(214, 224, 229, 0.55);
 }
 
+.table-total-row--stock-summary td {
+  border-top: 2px solid rgba(63, 97, 112, 0.34);
+}
+
+.stock-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 42px;
+  font-weight: 700;
+}
+
+.stock-current__icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.stock-current--positive strong {
+  color: #227449;
+}
+
+.stock-current--zero strong {
+  color: #a35f13;
+}
+
+.stock-current--negative strong {
+  color: #b33131;
+}
+
 .arrival-effect-row--added td {
   background: rgba(109, 174, 126, 0.12);
 }

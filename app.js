@@ -10082,6 +10082,15 @@ function renderStockSummaryTable() {
     body.innerHTML = buildEmptyTableRow(body, "AUCUN STOCK CALCULE", 12);
     return;
   }
+  const formatSignedStockValue = (value) => {
+    const numericValue = Number(value || 0);
+    const variant = numericValue > 0 ? "positive" : numericValue < 0 ? "negative" : "zero";
+    const icon = numericValue > 0 ? "🟢" : numericValue < 0 ? "🔴" : "🟠";
+    return `<span class="stock-current stock-current--${variant}" aria-label="Stock courant ${numericValue}">
+      <span class="stock-current__icon" aria-hidden="true">${icon}</span>
+      <strong>${numericValue}</strong>
+    </span>`;
+  };
   const rowsHtml = rows.map((row) => {
     const manualDeltaLabel = row.manuelDelta > 0 ? `+${row.manuelDelta}` : String(row.manuelDelta);
     const rowKey = `${normalizeText(row.typeEffet)}__${normalizeText(row.site)}__${normalizeText(row.designation)}`;
@@ -10098,9 +10107,37 @@ function renderStockSummaryTable() {
       <td>${row.hs}</td>
       <td>${row.detruits}</td>
       <td>${escapeHtml(manualDeltaLabel)}</td>
-      <td><strong>${row.stockCourant}</strong></td>
+      <td>${formatSignedStockValue(row.stockCourant)}</td>
     </tr>`;
   });
+  const totals = rows.reduce(
+    (accumulator, row) => {
+      accumulator.dotes += Number(row.dotes || 0);
+      accumulator.rendus += Number(row.rendus || 0);
+      accumulator.nonRendus += Number(row.nonRendus || 0);
+      accumulator.perdus += Number(row.perdus || 0);
+      accumulator.voles += Number(row.voles || 0);
+      accumulator.hs += Number(row.hs || 0);
+      accumulator.detruits += Number(row.detruits || 0);
+      accumulator.manuelDelta += Number(row.manuelDelta || 0);
+      accumulator.stockCourant += Number(row.stockCourant || 0);
+      return accumulator;
+    },
+    { dotes: 0, rendus: 0, nonRendus: 0, perdus: 0, voles: 0, hs: 0, detruits: 0, manuelDelta: 0, stockCourant: 0 }
+  );
+  const totalManualDeltaLabel = totals.manuelDelta > 0 ? `+${totals.manuelDelta}` : String(totals.manuelDelta);
+  rowsHtml.push(`<tr class="table-total-row table-total-row--stock-summary">
+    <td colspan="3">TOTAL</td>
+    <td>${totals.dotes}</td>
+    <td>${totals.rendus}</td>
+    <td>${totals.nonRendus}</td>
+    <td>${totals.perdus}</td>
+    <td>${totals.voles}</td>
+    <td>${totals.hs}</td>
+    <td>${totals.detruits}</td>
+    <td>${escapeHtml(totalManualDeltaLabel)}</td>
+    <td>${formatSignedStockValue(totals.stockCourant)}</td>
+  </tr>`);
   renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUN STOCK CALCULE", 12), 24);
   bindStockSummaryActions();
   if (state.stockHighlightKey) {
