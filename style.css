@@ -1494,6 +1494,37 @@ body[data-page="overview"] .kpi-grid .kpi-card__value {
   min-height: 0;
 }
 
+.stock-adjustment-footer {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.stock-instant-kpi {
+  min-width: 160px;
+  padding: 7px 12px;
+  border: 1px solid rgba(68, 110, 129, 0.35);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(236, 245, 246, 0.94), rgba(246, 240, 225, 0.96));
+  text-align: right;
+}
+
+.stock-instant-kpi__label {
+  display: block;
+  color: var(--text-soft);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.stock-instant-kpi__value {
+  display: block;
+  color: var(--brand);
+  font-size: 22px;
+  line-height: 1.05;
+}
+
 body[data-page="reference-bases"] .card,
 body[data-page="reference-bases"] .kpi-card,
 body[data-page="reference-bases"] .reference-card {

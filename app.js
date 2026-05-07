@@ -5228,6 +5228,7 @@ function bindStockAdjustmentForm() {
       };
       renderStockMovementsTable();
       renderStockSummaryTable();
+      renderStockInstantKpi();
       renderReferenceCounts();
       showActionStatus("create", `MOUVEMENT STOCK ENREGISTRE : ${effectiveTypeEffet} / ${designation}`);
       showStockAdjustmentStatus(`MOUVEMENT STOCK AJOUTE : ${effectiveTypeEffet} / ${designation} - SAUVEGARDE EN COURS`, "success");
@@ -5274,6 +5275,7 @@ function bindStockAdjustmentForm() {
       renderStockMovementsTable();
       renderStockSummaryTable();
       renderStockTypeKpis();
+      renderStockInstantKpi();
     };
   }
   if (siteSelect instanceof HTMLSelectElement) {
@@ -5283,6 +5285,7 @@ function bindStockAdjustmentForm() {
       renderStockMovementsTable();
       renderStockSummaryTable();
       renderStockTypeKpis();
+      renderStockInstantKpi();
     };
   }
   if (referenceSelect instanceof HTMLSelectElement) {
@@ -5291,6 +5294,7 @@ function bindStockAdjustmentForm() {
       renderStockMovementsTable();
       renderStockSummaryTable();
       renderStockTypeKpis();
+      renderStockInstantKpi();
     };
   }
   const resetButton = document.getElementById("stock-reset-filters");
@@ -5434,6 +5438,7 @@ function hydrateStockAdjustmentFromSelection(selection) {
   renderStockMovementsTable();
   renderStockSummaryTable();
   renderStockTypeKpis();
+  renderStockInstantKpi();
 }
 
 function getReferenceCauseOptions() {
@@ -9353,6 +9358,7 @@ function renderReferenceBases() {
   renderStockMovementsTable();
   renderStockSummaryTable();
   renderStockTypeKpis();
+  renderStockInstantKpi();
   renderReferenceCounts();
   renderMobileSignatureSettings();
   bindReferenceBaseResetButtons();
@@ -9408,13 +9414,38 @@ function getFilteredStockSummaryRows() {
           normalizeText(row.designation) === syntheticReference.designation
         );
       }
-      const referenceDesignation = reference ? getStockReferenceDesignation(reference) : "";
+      const referenceDesignation = reference
+        ? getStockGroupingDesignation(getReferenceEffectiveType(reference), getStockReferenceDesignation(reference))
+        : "";
       if (referenceDesignation && normalizeText(row.designation) !== referenceDesignation) {
         return false;
       }
     }
     return true;
   });
+}
+
+function getStockInstantSelectionValue(filters = state.stockTableFilters || {}) {
+  const previousFilters = state.stockTableFilters;
+  state.stockTableFilters = filters;
+  const rows = getFilteredStockSummaryRows();
+  state.stockTableFilters = previousFilters;
+  const stockCourant = rows.reduce((sum, row) => sum + Number(row.stockCourant || 0), 0);
+  return {
+    isPrecise: rows.length > 0,
+    stockCourant,
+    label: `${rows.length} ligne(s) de stock concernee(s)`,
+  };
+}
+
+function renderStockInstantKpi() {
+  const valueNode = document.getElementById("stock-instant-value");
+  if (!valueNode) {
+    return;
+  }
+  const selection = getStockInstantSelectionValue(state.stockTableFilters || {});
+  valueNode.textContent = String(selection.stockCourant);
+  valueNode.title = selection.label || "Aucune ligne de stock concernee.";
 }
 
 function renderStockFormOptions() {
@@ -9597,6 +9628,7 @@ function resetStockTableFiltersFromForm() {
   renderStockMovementsTable();
   renderStockSummaryTable();
   renderStockTypeKpis();
+  renderStockInstantKpi();
 }
 
 function renderMobileSignatureSettings() {

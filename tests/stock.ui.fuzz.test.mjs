@@ -71,6 +71,7 @@ function createStockContext() {
     "hasActiveStockReference",
     "isStockMovementAllowedInSummary",
     "getFilteredStockSummaryRows",
+    "getStockInstantSelectionValue",
     "getStockSummaryRows",
   ];
 
@@ -632,6 +633,71 @@ test("manual stock supports references with empty base designation", () => {
   assert.ok(row);
   assert.equal(row.manuelDelta, 3);
   assert.equal(row.stockCourant, 3);
+});
+
+test("instant stock KPI value totals visible stock summary rows from current filters", () => {
+  const ctx = createStockContext();
+  ctx.state.data.listes.referencesEffets = [
+    {
+      id: "REF_REMOTE",
+      site: "CDM",
+      typeEffet: "TELECOMMANDE URMET",
+      designation: "URMET 12",
+      statut: "ACTIF",
+    },
+  ];
+  ctx.state.data.personnes = [
+    {
+      id: "P1",
+      nom: "DUPONT",
+      prenom: "ALICE",
+      site: "CDM",
+      effets: [
+        {
+          id: "E1",
+          referenceEffetId: "REF_REMOTE",
+          typeEffet: "TELECOMMANDE URMET",
+          designation: "URMET 12",
+          dateRemise: "2026-05-01",
+          statutManuel: "ACTIF",
+        },
+      ],
+    },
+  ];
+  ctx.state.data.stocksEffetsManuels = [
+    {
+      id: "STKM1",
+      typeEffet: "TELECOMMANDE URMET",
+      site: "CDM",
+      referenceEffetId: "REF_REMOTE",
+      designation: "TELECOMMANDE URMET",
+      action: "ENTREE",
+      quantite: 4,
+      motif: "ACHAT",
+      date: "2026-05-07",
+    },
+  ];
+
+  const summaryRow = ctx.getStockSummaryRows().find(
+    (row) => row.site === "CDM" && row.typeEffet === "TELECOMMANDE URMET" && row.designation === "SANS DESIGNATION"
+  );
+  const instant = ctx.getStockInstantSelectionValue({
+    site: "CDM",
+    typeEffet: "TELECOMMANDE URMET",
+    referenceEffetId: "REF_REMOTE",
+  });
+
+  assert.equal(summaryRow.stockCourant, 4);
+  assert.equal(instant.isPrecise, true);
+  assert.equal(instant.stockCourant, summaryRow.stockCourant);
+  assert.equal(
+    ctx.getStockInstantSelectionValue({ site: "CDM", typeEffet: "TELECOMMANDE URMET", referenceEffetId: "" }).stockCourant,
+    summaryRow.stockCourant
+  );
+  assert.equal(
+    ctx.getStockInstantSelectionValue({ site: "NDC", typeEffet: "TELECOMMANDE URMET", referenceEffetId: "" }).isPrecise,
+    false
+  );
 });
 
 test("stock summary groups effects without reference or designation as sans designation", () => {
