@@ -1630,11 +1630,7 @@ async function reloadData(statusText = "RECHARGEMENT DES DONNEES...") {
     window.setTimeout(() => {
       notifyFullySignedDocumentsOnReload(previousSignatureValidationMap);
     }, 0);
-    window.setTimeout(() => {
-      autoGenerateSignedDocumentsPdfIfMissing().catch((error) => {
-        console.error(error);
-      });
-    }, 0);
+    queueAutoGenerateSignedDocumentsPdfIfMissing();
   } catch (error) {
     console.error(error);
     state.supabaseRevision = null;
@@ -2990,6 +2986,19 @@ async function generatePdfArchiveSilently(person, docType) {
   return true;
 }
 
+function queueAutoGenerateSignedDocumentsPdfIfMissing() {
+  if (state.autoPdfGenerationInFlight) {
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    window.setTimeout(() => {
+      autoGenerateSignedDocumentsPdfIfMissing().catch((error) => {
+        console.error(error);
+      });
+    }, 16);
+  });
+}
+
 async function autoGenerateSignedDocumentsPdfIfMissing() {
   if (state.autoPdfGenerationInFlight || !state.data || getDataBackendMode() !== "LOCAL_API") {
     return;
@@ -3017,9 +3026,11 @@ async function autoGenerateSignedDocumentsPdfIfMissing() {
   }
 
   const generatedLabels = [];
+  const BATCH_SIZE = 4;
   state.autoPdfGenerationInFlight = true;
   try {
-    for (const candidate of candidates) {
+    for (let index = 0; index < candidates.length; index += 1) {
+      const candidate = candidates[index];
       try {
         const generated = await generatePdfArchiveSilently(candidate.person, candidate.docType);
         if (generated) {
@@ -3033,6 +3044,10 @@ async function autoGenerateSignedDocumentsPdfIfMissing() {
         }
       } catch (error) {
         console.error(error);
+      }
+
+      if ((index + 1) % BATCH_SIZE === 0 && index + 1 < candidates.length) {
+        await new Promise((resolve) => window.setTimeout(resolve, 0));
       }
     }
     if (generatedLabels.length) {
