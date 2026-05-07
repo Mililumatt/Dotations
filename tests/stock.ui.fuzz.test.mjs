@@ -50,6 +50,8 @@ function createStockContext() {
     "isReferenceEffectActive",
     "findReferenceById",
     "isCesKeyDesignation",
+    "normalizeCesDesignationLabel",
+    "normalizeReferenceDesignationByType",
     "typeUsesReferenceCatalog",
     "getReferenceEffectiveType",
     "getStockReferenceDesignation",
@@ -68,11 +70,14 @@ function createStockContext() {
     "referenceMatchesStockIdentity",
     "hasActiveStockReference",
     "isStockMovementAllowedInSummary",
+    "getFilteredStockSummaryRows",
     "getStockSummaryRows",
   ];
 
   const context = {
     ALL_SITES_VALUE: "TOUS SITES",
+    ALL_TYPES_VALUE: "TOUS TYPES",
+    ALL_DESIGNATIONS_VALUE: "TOUTES DESIGNATIONS",
     STOCK_SYNTHETIC_REFERENCE_PREFIX: "__STOCK_SYNTHETIC__:",
     STOCK_EMPTY_DESIGNATION_LABEL: "SANS DESIGNATION",
     state: { data: { personnes: [], listes: { referencesEffets: [] }, stocksEffetsManuels: [] } },
@@ -95,6 +100,50 @@ function makeRng(seed = 42) {
 
 function pick(rng, arr) {
   return arr[Math.floor(rng() * arr.length)];
+}
+
+function stockRowKey(row) {
+  return `${row.site}__${row.typeEffet}__${row.designation}`;
+}
+
+function indexStockRows(rows) {
+  return new Map(rows.map((row) => [stockRowKey(row), row]));
+}
+
+function cloneData(data) {
+  return JSON.parse(JSON.stringify(data));
+}
+
+function normalizeTestText(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function expectedStatusCounters(person, effect) {
+  const status = person.dateSortieReelle && !effect.dateRetour && normalizeTestText(effect.statutManuel) === "ACTIF"
+    ? "NON RENDU"
+    : effect.dateRetour
+      ? "RESTITUE"
+      : normalizeTestText(effect.statutManuel || "ACTIF");
+  return {
+    rendus: status === "RESTITUE" ? 1 : 0,
+    nonRendus: status === "NON RENDU" ? 1 : 0,
+    perdus: status === "PERDU" ? 1 : 0,
+    voles: status === "VOL" ? 1 : 0,
+    hs: status === "HS" ? 1 : 0,
+    detruits: status === "DETRUIT" ? 1 : 0,
+  };
+}
+
+function effectUsesIndividualNumber(typeEffet) {
+  return ["BADGE INTRUSION", "CARTE TURBOSELF", "TELECOMMANDE URMET"].includes(String(typeEffet || "").trim().toUpperCase());
+}
+
+function aggregateStockByType(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    map.set(row.typeEffet, (map.get(row.typeEffet) || 0) + Number(row.stockCourant || 0));
+  }
+  return map;
 }
 
 test("fuzz stock mechanics stays coherent under random personnel/effects/movements", () => {
@@ -201,6 +250,297 @@ test("fuzz stock mechanics stays coherent under random personnel/effects/movemen
   for (const [type, total] of byType.entries()) {
     assert.equal(Number.isFinite(total), true, `type total NaN for ${type}`);
   }
+});
+
+test("complete stock logic fuzz covers manual automatic save reload and all effect shapes", () => {
+  const ctx = createStockContext();
+  const sites = ["CDM", "LGT", "NDC", "TOUS SITES"];
+  const types = ["CLE", "CLE CES", "BADGE INTRUSION", "CARTE TURBOSELF", "TELECOMMANDE URMET"];
+  const manualActions = ["ENTREE", "SORTIE", "AJUSTEMENT_PLUS", "AJUSTEMENT_MOINS"];
+  const manualReasons = ["CORRECTION INVENTAIRE", "DOUBLE", "ACHAT", "CASSE", "PERTE", "VOL"];
+  const statuses = ["ACTIF", "RESTITUE", "PERDU", "VOL", "HS", "DETRUIT", "NON RENDU"];
+  const expected = new Map();
+
+  const addExpected = (site, typeEffet, designation, patch) => {
+    const row = {
+      site: ctx.normalizeText(site),
+      typeEffet: ctx.normalizeText(typeEffet),
+      designation: ctx.getStockGroupingDesignation(typeEffet, designation),
+      dotes: 0,
+      rendus: 0,
+      nonRendus: 0,
+      perdus: 0,
+      voles: 0,
+      hs: 0,
+      detruits: 0,
+      manuelDelta: 0,
+    };
+    const key = stockRowKey(row);
+    const current = expected.get(key) || row;
+    Object.entries(patch).forEach(([field, value]) => {
+      current[field] += value;
+    });
+    expected.set(key, current);
+  };
+
+  let refSeq = 1;
+  const references = [];
+  for (const site of sites) {
+    for (const typeEffet of types) {
+      const designations = typeEffet === "CLE"
+        ? ["A1", "E1???", ""]
+        : typeEffet === "CLE CES"
+          ? ["CES-PG", "CES-VLOC", ""]
+          : ["", `${typeEffet.replace(/\s+/g, "-")}-${site}`];
+      for (const designation of designations) {
+        const reference = {
+          id: `REF_FUZZ_${String(refSeq++).padStart(4, "0")}`,
+          site,
+          sitesAffectation: [site],
+          typeEffet: typeEffet === "CLE CES" ? "CLE" : typeEffet,
+          designation,
+          active: true,
+        };
+        references.push(reference);
+        ctx.state.data.listes.referencesEffets.push(reference);
+        const effectiveType = ctx.getReferenceEffectiveType(reference);
+        addExpected(site, effectiveType, ctx.getStockReferenceDesignation(reference), {});
+      }
+    }
+  }
+
+  let moveSeq = 1;
+  references.forEach((reference, index) => {
+    const effectiveType = ctx.getReferenceEffectiveType(reference);
+    const designation = ctx.getStockReferenceDesignation(reference);
+    manualActions.forEach((action, actionIndex) => {
+      const quantity = actionIndex + 1;
+      const movement = {
+        id: `STKM_FUZZ_${String(moveSeq++).padStart(5, "0")}`,
+        typeEffet: effectiveType,
+        site: ctx.getReferenceSiteLabel(reference),
+        referenceEffetId: index % 2 === 0 ? reference.id : "",
+        designation,
+        action,
+        quantite: quantity,
+        motif: manualReasons[(index + actionIndex) % manualReasons.length],
+        commentaire: "FUZZ MANUAL",
+        date: "2026-05-07",
+      };
+      ctx.state.data.stocksEffetsManuels.push(movement);
+      if (ctx.isStockMovementAllowedInSummary(movement)) {
+        addExpected(movement.site, movement.typeEffet, movement.designation, {
+          manuelDelta: ctx.getStockMovementSignedQuantity(movement),
+        });
+      }
+    });
+  });
+
+  let personSeq = 1;
+  let effectSeq = 1;
+  references.forEach((reference, index) => {
+    const effectiveType = ctx.getReferenceEffectiveType(reference);
+    const site = ctx.getReferenceSiteLabel(reference);
+    const designation = ctx.getStockReferenceDesignation(reference);
+    statuses.forEach((status, statusIndex) => {
+      const person = {
+        id: `P_FUZZ_${String(personSeq++).padStart(5, "0")}`,
+        nom: "FUZZ",
+        prenom: `${effectiveType}_${status}_${statusIndex}`,
+        site,
+        sitesAffectation: [site],
+        dateSortiePrevue: "",
+        dateSortieReelle: status === "NON RENDU" ? "2026-05-01" : "",
+        effetsConfies: [],
+      };
+      const effect = {
+        id: `E_FUZZ_${String(effectSeq++).padStart(6, "0")}`,
+        typeEffet: effectiveType,
+        siteReference: site,
+        referenceEffetId: reference.id,
+        designation,
+        numeroIdentification: effectUsesIndividualNumber(effectiveType) ? `NUM-${index}-${statusIndex}` : "",
+        statutManuel: status === "RESTITUE" || status === "NON RENDU" ? "ACTIF" : status,
+        dateRetour: status === "RESTITUE" ? "2026-05-02" : "",
+      };
+      person.effetsConfies.push(effect);
+      ctx.state.data.personnes.push(person);
+
+      const counters = expectedStatusCounters(person, effect);
+      addExpected(site, effectiveType, designation, {
+        dotes: 1,
+        ...counters,
+      });
+    });
+  });
+
+  ctx.state.data.stocksEffetsManuels.push({
+    id: "STKM_ORPHAN_AFTER_DELETE",
+    typeEffet: "CLE",
+    site: "CDM",
+    referenceEffetId: "",
+    designation: "SUPPRIMEE-ORPHELINE",
+    action: "ENTREE",
+    quantite: 9,
+    motif: "CORRECTION INVENTAIRE",
+    date: "2026-05-07",
+  });
+
+  const mutationRefA = references.find(
+    (reference) => ctx.getReferenceEffectiveType(reference) === "CLE" && ctx.getReferenceSiteLabel(reference) === "CDM"
+  );
+  const mutationRefB = references.find(
+    (reference) => ctx.getReferenceEffectiveType(reference) === "CLE CES" && ctx.getReferenceSiteLabel(reference) === "LGT"
+  );
+  const mutationRefC = references.find(
+    (reference) => ctx.getReferenceEffectiveType(reference) === "TELECOMMANDE URMET" && ctx.getReferenceSiteLabel(reference) === "NDC"
+  );
+
+  const mutatedPerson = {
+    id: "P_MUTATION_STOCK",
+    nom: "MUTATION",
+    prenom: "STOCK",
+    site: "CDM",
+    sitesAffectation: ["CDM"],
+    dateSortiePrevue: "",
+    dateSortieReelle: "",
+    effetsConfies: [],
+  };
+
+  const addedThenRemovedEffect = {
+    id: "E_ADDED_THEN_REMOVED",
+    typeEffet: ctx.getReferenceEffectiveType(mutationRefA),
+    siteReference: ctx.getReferenceSiteLabel(mutationRefA),
+    referenceEffetId: mutationRefA.id,
+    designation: ctx.getStockReferenceDesignation(mutationRefA),
+    statutManuel: "ACTIF",
+    dateRetour: "",
+  };
+  mutatedPerson.effetsConfies.push(addedThenRemovedEffect);
+  mutatedPerson.effetsConfies = mutatedPerson.effetsConfies.filter((effect) => effect.id !== "E_ADDED_THEN_REMOVED");
+
+  const modifiedEffect = {
+    id: "E_MODIFIED_SITE_TYPE_DESIGNATION",
+    typeEffet: ctx.getReferenceEffectiveType(mutationRefA),
+    siteReference: ctx.getReferenceSiteLabel(mutationRefA),
+    referenceEffetId: mutationRefA.id,
+    designation: ctx.getStockReferenceDesignation(mutationRefA),
+    statutManuel: "ACTIF",
+    dateRetour: "",
+  };
+  modifiedEffect.typeEffet = ctx.getReferenceEffectiveType(mutationRefB);
+  modifiedEffect.siteReference = ctx.getReferenceSiteLabel(mutationRefB);
+  modifiedEffect.referenceEffetId = mutationRefB.id;
+  modifiedEffect.designation = ctx.getStockReferenceDesignation(mutationRefB);
+  modifiedEffect.statutManuel = "PERDU";
+  mutatedPerson.effetsConfies.push(modifiedEffect);
+  addExpected(modifiedEffect.siteReference, modifiedEffect.typeEffet, modifiedEffect.designation, {
+    dotes: 1,
+    perdus: 1,
+  });
+
+  const returnedOnExitEffect = {
+    id: "E_RETURNED_ON_EXIT",
+    typeEffet: ctx.getReferenceEffectiveType(mutationRefC),
+    siteReference: ctx.getReferenceSiteLabel(mutationRefC),
+    referenceEffetId: mutationRefC.id,
+    designation: ctx.getStockReferenceDesignation(mutationRefC),
+    statutManuel: "ACTIF",
+    dateRetour: "2026-05-06",
+  };
+  mutatedPerson.dateSortieReelle = "2026-05-07";
+  mutatedPerson.effetsConfies.push(returnedOnExitEffect);
+  addExpected(returnedOnExitEffect.siteReference, returnedOnExitEffect.typeEffet, returnedOnExitEffect.designation, {
+    dotes: 1,
+    rendus: 1,
+  });
+
+  ctx.state.data.personnes.push(mutatedPerson);
+
+  let rows = ctx.getStockSummaryRows();
+  let actual = indexStockRows(rows);
+
+  for (const [key, expectedRow] of expected.entries()) {
+    const row = actual.get(key);
+    assert.ok(row, `missing stock row ${key}`);
+    assert.equal(row.dotes, expectedRow.dotes, `dotes mismatch ${key}`);
+    assert.equal(row.rendus, expectedRow.rendus, `rendus mismatch ${key}`);
+    assert.equal(row.nonRendus, expectedRow.nonRendus, `nonRendus mismatch ${key}`);
+    assert.equal(row.perdus, expectedRow.perdus, `perdus mismatch ${key}`);
+    assert.equal(row.voles, expectedRow.voles, `voles mismatch ${key}`);
+    assert.equal(row.hs, expectedRow.hs, `hs mismatch ${key}`);
+    assert.equal(row.detruits, expectedRow.detruits, `detruits mismatch ${key}`);
+    assert.equal(row.manuelDelta, expectedRow.manuelDelta, `manual delta mismatch ${key}`);
+    assert.equal(row.stockCourant, row.manuelDelta - row.dotes + row.rendus, `formula mismatch ${key}`);
+  }
+
+  assert.equal(
+    rows.some((row) => row.typeEffet === "CLE" && row.designation === "SUPPRIMEE-ORPHELINE"),
+    false,
+    "orphan precise key movement must not create stock row"
+  );
+
+  assert.equal(
+    rows.some((row) => row.key.includes("E_ADDED_THEN_REMOVED")),
+    false,
+    "removed effects must not leave stock rows"
+  );
+
+  const allRowsKpi = aggregateStockByType(rows);
+  ctx.state.stockTableFilters = { site: "", typeEffet: "", referenceEffetId: "" };
+  const visibleRows = ctx.getFilteredStockSummaryRows();
+  assert.deepEqual(
+    Array.from(aggregateStockByType(visibleRows).entries()).sort(),
+    Array.from(allRowsKpi.entries()).sort(),
+    "KPI totals must match visible stock table with no filters"
+  );
+
+  const cesCases = [
+    ["VLOC", "CES-VLOC"],
+    ["CES VLOC", "CES-VLOC"],
+    ["CES-VLOC", "CES-VLOC"],
+    ["ces_pg", "CES-PG"],
+    [" CES - PG ", "CES-PG"],
+    ["CES-CES-PG", "CES-PG"],
+  ];
+  for (const [input, expectedLabel] of cesCases) {
+    assert.equal(ctx.normalizeCesDesignationLabel(input), expectedLabel, `CES label normalization mismatch for ${input}`);
+    assert.equal(
+      ctx.normalizeReferenceDesignationByType("CLE CES", input),
+      expectedLabel,
+      `CLE CES reference normalization mismatch for ${input}`
+    );
+    assert.equal(ctx.isCesKeyDesignation(expectedLabel), true, `normalized CES label must be detected for ${input}`);
+  }
+
+  for (const site of sites) {
+    ctx.state.stockTableFilters = { site, typeEffet: "", referenceEffetId: "" };
+    const filteredRows = ctx.getFilteredStockSummaryRows();
+    assert.equal(
+      filteredRows.every((row) => row.site === site || site === "TOUS SITES"),
+      true,
+      `site filter mismatch for ${site}`
+    );
+    const filteredKpi = aggregateStockByType(filteredRows);
+    for (const [typeEffet, total] of filteredKpi.entries()) {
+      const manualTotal = filteredRows
+        .filter((row) => row.typeEffet === typeEffet)
+        .reduce((sum, row) => sum + row.stockCourant, 0);
+      assert.equal(total, manualTotal, `KPI filtered total mismatch ${site}/${typeEffet}`);
+    }
+  }
+
+  const beforeReload = rows.map((row) => ({ ...row })).sort((a, b) => stockRowKey(a).localeCompare(stockRowKey(b), "fr"));
+  const reloaded = createStockContext();
+  reloaded.state.data = cloneData(ctx.state.data);
+  const afterReload = reloaded.getStockSummaryRows()
+    .map((row) => ({ ...row }))
+    .sort((a, b) => stockRowKey(a).localeCompare(stockRowKey(b), "fr"));
+  assert.equal(
+    JSON.stringify(afterReload),
+    JSON.stringify(beforeReload),
+    "stock summary must be stable after JSON save/reload"
+  );
 });
 
 test("legacy CLE reference with CES designation matches CLE CES stock selection", () => {

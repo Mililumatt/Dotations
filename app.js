@@ -5007,7 +5007,7 @@ function normalizeCesDesignationLabel(value) {
     return "";
   }
   const compact = raw.replace(/_/g, "-").replace(/\s+/g, " ");
-  const withoutPrefix = compact.replace(/^CES[\s-]*/i, "").trim();
+  const withoutPrefix = compact.replace(/^(?:CES[\s-]*)+/i, "").trim();
   if (!withoutPrefix) {
     return "CES";
   }
