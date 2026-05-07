@@ -1979,6 +1979,10 @@ body[data-page="global"] .form-actions--filters {
   background: var(--accent-strong);
 }
 
+.stock-reset-pending {
+  box-shadow: 0 0 0 2px rgba(63, 97, 112, 0.22), 0 6px 16px rgba(31, 64, 79, 0.34);
+}
+
 .button--secondary {
   background: rgba(63, 97, 112, 0.18);
   color: var(--accent-strong);

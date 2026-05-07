@@ -4590,6 +4590,16 @@ function showStockAdjustmentStatus(message, variant = "info") {
   showDataStatus(message);
 }
 
+function setStockResetButtonPending(isPending) {
+  const resetButton = document.getElementById("stock-reset-filters");
+  if (!(resetButton instanceof HTMLButtonElement)) {
+    return;
+  }
+  resetButton.classList.toggle("button--primary", Boolean(isPending));
+  resetButton.classList.toggle("button--secondary", !isPending);
+  resetButton.classList.toggle("stock-reset-pending", Boolean(isPending));
+}
+
 function getReplacementCostValue(typeEffet, causeRemplacement, designation = "") {
   const normalizedType = normalizePricingKey(typeEffet);
   const normalizedCause = normalizePricingKey(causeRemplacement, { cause: true });
@@ -5232,7 +5242,7 @@ function bindStockAdjustmentForm() {
       renderReferenceCounts();
       showActionStatus("create", `MOUVEMENT STOCK ENREGISTRE : ${effectiveTypeEffet} / ${designation}`);
       showStockAdjustmentStatus(`MOUVEMENT STOCK AJOUTE : ${effectiveTypeEffet} / ${designation} - SAUVEGARDE EN COURS`, "success");
-      resetStockTableFiltersFromForm();
+      setStockResetButtonPending(true);
       saveDataToFile({
         silent: true,
         reloadAfter: false,
@@ -5299,7 +5309,10 @@ function bindStockAdjustmentForm() {
   }
   const resetButton = document.getElementById("stock-reset-filters");
   if (resetButton instanceof HTMLButtonElement) {
-    resetButton.onclick = () => resetReferenceBasesPageFields();
+    resetButton.onclick = () => {
+      resetReferenceBasesPageFields();
+      setStockResetButtonPending(false);
+    };
   }
 }
 
