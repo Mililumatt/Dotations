@@ -408,6 +408,59 @@ function parseStorageSchemePath(value) {
   };
 }
 
+function getSupabaseProjectHost() {
+  const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
+  if (!baseUrl) {
+    return "";
+  }
+  try {
+    return new URL(baseUrl).hostname.toLowerCase();
+  } catch (error) {
+    return "";
+  }
+}
+
+function isSafeArchiveHttpUrl(value) {
+  const host = getSupabaseProjectHost();
+  if (!host) {
+    return false;
+  }
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch (error) {
+    return false;
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    return false;
+  }
+  if (String(parsed.hostname || "").toLowerCase() !== host) {
+    return false;
+  }
+  const path = String(parsed.pathname || "");
+  return (
+    path.startsWith("/storage/v1/object/public/") ||
+    path.startsWith("/storage/v1/object/")
+  );
+}
+
+function isSafeArchiveRelativePath(value) {
+  const normalized = String(value || "").trim().replace(/^\/+/, "");
+  if (!normalized) {
+    return false;
+  }
+  if (normalized.length > 2048) {
+    return false;
+  }
+  if (normalized.includes("\\")) {
+    return false;
+  }
+  if (/(^|\/)\.\.(\/|$)/.test(normalized)) {
+    return false;
+  }
+  return /^[A-Za-z0-9._%+\-\/]+$/.test(normalized);
+}
+
 function getStoragePdfBucketName() {
   return normalizeBucketName(
     state.data?.meta?.storagePdfBucket,
@@ -1336,12 +1389,16 @@ async function getMobileSignatureBaseUrl() {
 }
 
 function getQrProviderUrls(absoluteUrl) {
-  const encoded = encodeURIComponent(absoluteUrl);
-  return [
-    `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=${encoded}`,
-    `https://quickchart.io/qr?size=180&margin=0&text=${encoded}`,
-    `https://chart.googleapis.com/chart?chs=180x180&cht=qr&chl=${encoded}`,
+  if (!absoluteUrl) {
+    return [];
+  }
+  const encoded = encodeURIComponent(String(absoluteUrl || ""));
+  const providers = [
+    `/api/qr?size=180&text=${encoded}`,
+    `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encoded}`,
+    `https://chart.googleapis.com/chart?cht=qr&chs=180x180&chl=${encoded}&choe=UTF-8`,
   ];
+  return providers;
 }
 
 async function getAbsoluteMobileSignatureUrl(request) {
@@ -1406,6 +1463,15 @@ async function fillMobileSignatureShareLink(request) {
   }
   if (qrWrapper && qrImage) {
     const providerUrls = getQrProviderUrls(absoluteUrl);
+    if (!providerUrls || !providerUrls.length) {
+      qrWrapper.hidden = true;
+      if (reachabilityHintNode) {
+        const hint = getMobileSignatureReachabilityHint(absoluteUrl);
+        reachabilityHintNode.textContent = `${hint} QR INDISPONIBLE: UTILISER LE LIEN DIRECT.`;
+      }
+      qrImage.removeAttribute("src");
+      return;
+    }
     let providerIndex = 0;
     qrImage.referrerPolicy = "no-referrer";
     qrImage.decoding = "async";
@@ -1421,7 +1487,7 @@ async function fillMobileSignatureShareLink(request) {
       qrWrapper.hidden = true;
       if (reachabilityHintNode) {
         const hint = getMobileSignatureReachabilityHint(absoluteUrl);
-        reachabilityHintNode.textContent = `${hint} QR INDISPONIBLE: UTILISER LE LIEN DIRECT.`;
+        reachabilityHintNode.textContent = `${hint} Le QR n’a pas pu être généré. Utilise le lien direct ci-dessous.`;
       }
     };
     qrImage.onload = () => {
@@ -6489,12 +6555,21 @@ function getDocumentArchiveOpenPath(entry) {
   if (!raw) {
     return "";
   }
+  if (raw.startsWith("//")) {
+    return "";
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^https?:\/\//i.test(raw)) {
+    return "";
+  }
   if (/^https?:\/\//i.test(raw)) {
-    return raw;
+    return isSafeArchiveHttpUrl(raw) ? normalizeHttpUrl(raw) : "";
   }
   const storageRef = parseStorageSchemePath(raw);
   if (storageRef) {
     return getSupabaseStoragePublicUrl(storageRef.bucket, storageRef.objectPath) || "";
+  }
+  if (!isSafeArchiveRelativePath(raw)) {
+    return "";
   }
   return raw.replace(/^\/+/, "");
 }
@@ -6858,11 +6933,21 @@ function getSignatureValue(person, docType, signer) {
     return "";
   }
   const rawValue = String(person.signatures[docType][signer]?.image || "");
+  const publicUrl = String(person.signatures[docType][signer]?.storagePublicUrl || "");
+  if (publicUrl && isSafeArchiveHttpUrl(publicUrl)) {
+    return normalizeHttpUrl(publicUrl) || "";
+  }
   const storageRef = parseStorageSchemePath(rawValue);
   if (storageRef) {
     return getSupabaseStoragePublicUrl(storageRef.bucket, storageRef.objectPath) || "";
   }
-  return rawValue;
+  if (/^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(rawValue)) {
+    return rawValue;
+  }
+  if (/^https?:\/\//i.test(rawValue)) {
+    return isSafeArchiveHttpUrl(rawValue) ? normalizeHttpUrl(rawValue) : "";
+  }
+  return isSafeArchiveRelativePath(rawValue) ? rawValue.replace(/^\/+/, "") : "";
 }
 
 function getRepresentativeInfo(person, docType) {
