@@ -1395,6 +1395,8 @@ function getQrProviderUrls(absoluteUrl) {
   const encoded = encodeURIComponent(String(absoluteUrl || ""));
   const providers = [
     `/api/qr?size=180&text=${encoded}`,
+    `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encoded}`,
+    `https://chart.googleapis.com/chart?cht=qr&chs=180x180&chl=${encoded}&choe=UTF-8`,
   ];
   return providers;
 }
