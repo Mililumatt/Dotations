@@ -7635,7 +7635,10 @@ function renderMobileSignaturePage() {
         : "-";
   }
   if (dateNode) {
-    dateNode.textContent = docType === "exit" ? formatDate(person?.dateSortieReelle || person?.dateSortiePrevue) || "-" : formatDate(person?.dateEntree) || "-";
+    const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
+    const signatureDate =
+      formatSignatureTimestamp(getSignatureValidationDate(person, normalizedDocType, signer)) || formatCurrentUiTimestamp();
+    dateNode.textContent = signatureDate;
   }
 
   const representative = person ? getRepresentativeInfo(person, normalizeText(docType) === "EXIT" ? "exit" : "arrival") : null;
@@ -8724,9 +8727,9 @@ function renderArrivalDocument(personId) {
   representantFunctionNode.textContent = arrivalRepresentative.fonction || "-";
   updateRepresentativeSignatureActionState("arrival");
   signaturePersonDateNode.textContent =
-    formatSignatureTimestamp(getSignatureValidationDate(person, "arrival", "personnel")) || "-";
+    formatSignatureTimestamp(getSignatureValidationDate(person, "arrival", "personnel")) || formatCurrentUiTimestamp();
   signatureRepresentantDateNode.textContent =
-    formatSignatureTimestamp(getSignatureValidationDate(person, "arrival", "representant")) || "-";
+    formatSignatureTimestamp(getSignatureValidationDate(person, "arrival", "representant")) || formatCurrentUiTimestamp();
 
   const complementMovements = isComplement ? fallbackMovements : new Map();
 
@@ -8950,9 +8953,9 @@ function renderExitDocument(personId) {
   representantFunctionNode.textContent = exitRepresentative.fonction || "-";
   updateRepresentativeSignatureActionState("exit");
   signaturePersonDateNode.textContent =
-    formatSignatureTimestamp(getSignatureValidationDate(person, "exit", "personnel")) || "-";
+    formatSignatureTimestamp(getSignatureValidationDate(person, "exit", "personnel")) || formatCurrentUiTimestamp();
   signatureRepresentantDateNode.textContent =
-    formatSignatureTimestamp(getSignatureValidationDate(person, "exit", "representant")) || "-";
+    formatSignatureTimestamp(getSignatureValidationDate(person, "exit", "representant")) || formatCurrentUiTimestamp();
 
   body.innerHTML = sortedEffects.length
     ? `${sortedEffects
