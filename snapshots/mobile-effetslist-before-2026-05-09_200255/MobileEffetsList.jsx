@@ -12,7 +12,7 @@ const STATUT_COLORS = {
   "DETRUIT": { bg: "rgba(122,112,170,0.19)", color: "#4f447f" },
 };
 
-export default function MobileEffetsList({ effets, onEdit, person = null }) {
+export default function MobileEffetsList({ effets, onEdit }) {
   const formatCost = (value) => {
     const amount = Number(value);
     const safeAmount = Number.isFinite(amount) ? amount : 0;
@@ -34,7 +34,7 @@ export default function MobileEffetsList({ effets, onEdit, person = null }) {
   return (
     <div>
       {effets.map(e => {
-        const displayStatus = getEffectStatus(person || null, e);
+        const displayStatus = getEffectStatus(null, e);
         const sc = STATUT_COLORS[displayStatus] || STATUT_COLORS["ACTIF"];
         return (
           <button
