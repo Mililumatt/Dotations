@@ -1853,7 +1853,6 @@ function migrateDataModel() {
       quantite: Math.max(1, Number.parseInt(String(entry.quantite || 1), 10) || 1),
       motif: normalizeText(entry.motif),
       commentaire: normalizeText(entry.commentaire),
-      source: normalizeText(entry.source) === "AUTO" ? "AUTO" : "MANUEL",
       date: String(entry.date || getTodayIsoDate()),
     }))
     .filter((entry) => entry.typeEffet && entry.designation && entry.action);
@@ -4026,8 +4025,6 @@ function bindEffectForm() {
       mode === "edit"
         ? (person.effetsConfies || []).find((entry) => String(entry?.id || "") === String(effectId))
         : null;
-    const previousStatus = normalizeText(getEffectStatus(person, existingEffect || {}));
-    const nextStatus = normalizeText(getEffectStatus(person, effect));
     const nextCause = getCauseFromManualStatus(manualStatus);
     const preservedCause = normalizeEffectCause(existingEffect?.cause || existingEffect?.causeRemplacement);
     const effect = {
@@ -4060,10 +4057,6 @@ function bindEffectForm() {
       person.effetsConfies[existingIndex] = effect;
     } else {
       person.effetsConfies.push(effect);
-      addAutoStockMovement(person, effect, "SORTIE", "AFFECTATION");
-    }
-    if (mode === "edit" && ["HS", "DETRUIT", "PERDU", "VOL"].includes(nextStatus) && nextStatus !== previousStatus) {
-      addAutoStockMovement(person, effect, "INFO", nextStatus);
     }
     markEffectRowFlash(mode === "edit" ? "update" : "create", person.id, effect.id);
 
@@ -4152,9 +4145,6 @@ async function deleteEffect(personId, effectId) {
   }
 
   pushUndoSnapshot("SUPPRESSION EFFET");
-  if (effect) {
-    addAutoStockMovement(person, effect, "ENTREE", "SUPPRESSION_DOTATION");
-  }
   person.effetsConfies = person.effetsConfies.filter((effect) => effect.id !== effectId);
   markEffectTableFlash("delete", personId);
   if (state.editingEffectId === effectId) {
@@ -5277,7 +5267,6 @@ function bindStockAdjustmentForm() {
         quantite,
         motif,
         commentaire,
-        source: "MANUEL",
         date: getTodayIsoDate(),
       };
       state.data.stocksEffetsManuels.push(movement);
@@ -9065,12 +9054,7 @@ function bindExitReturnTodayToggles() {
     if (!effect) {
       return;
     }
-    const wasReturned = Boolean(String(effect.dateRetour || "").trim());
     effect.dateRetour = target.checked ? getTodayIsoDate() : "";
-    const isReturned = Boolean(String(effect.dateRetour || "").trim());
-    if (isReturned !== wasReturned) {
-      addAutoStockMovement(person, effect, isReturned ? "ENTREE" : "SORTIE", isReturned ? "RETOUR" : "ANNULATION_RETOUR");
-    }
     markDirty();
     renderPage();
     renderExitDocument(person.id);
@@ -10011,37 +9995,6 @@ function getStockMovementSignedQuantity(entry) {
   return 0;
 }
 
-function addAutoStockMovement(person, effect, action, motif, commentaire = "") {
-  if (!state.data || !effect) {
-    return;
-  }
-  if (!Array.isArray(state.data.stocksEffetsManuels)) {
-    state.data.stocksEffetsManuels = [];
-  }
-  const typeEffet = normalizeText(effect?.typeEffet);
-  if (!typeEffet) {
-    return;
-  }
-  const site = normalizeText(effect?.siteReference || referenceSiteFromEffect(effect) || getPersonSiteLabel(person) || "SANS SITE");
-  const designation = getStockGroupingDesignation(typeEffet, getEffectDisplayDesignation(effect));
-  if (!designation) {
-    return;
-  }
-  state.data.stocksEffetsManuels.push({
-    id: getNextId("STKM", state.data.stocksEffetsManuels),
-    typeEffet,
-    site,
-    referenceEffetId: String(effect?.referenceEffetId || ""),
-    designation,
-    action: normalizeText(action),
-    quantite: 1,
-    motif: normalizeText(motif),
-    commentaire: normalizeText(commentaire),
-    source: "AUTO",
-    date: getTodayIsoDate(),
-  });
-}
-
 function getStockSummaryRows() {
   const rowsByKey = new Map();
   const ensureRow = (typeEffet, site, designation) => {
@@ -10173,14 +10126,12 @@ function renderStockMovementsTable() {
     .slice()
     .sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""), "fr"));
   if (!entries.length) {
-    body.innerHTML = buildEmptyTableRow(body, "AUCUN MOUVEMENT", 9);
+    body.innerHTML = buildEmptyTableRow(body, "AUCUN MOUVEMENT MANUEL", 8);
     return;
   }
   const rowsHtml = entries.map((entry) => {
     const signedQty = getStockMovementSignedQuantity(entry);
     const qtyLabel = signedQty > 0 ? `+${signedQty}` : `${signedQty}`;
-    const source = normalizeText(entry.source) === "AUTO" ? "AUTO" : "MANUEL";
-    const canDelete = source !== "AUTO";
     return `<tr class="js-stock-movement-row" data-stock-movement-id="${escapeHtml(entry.id)}" data-site="${escapeHtml(entry.site || "")}" data-type-effet="${escapeHtml(entry.typeEffet || "")}" data-designation="${escapeHtml(entry.designation || "")}" data-reference-effet-id="${escapeHtml(String(entry.referenceEffetId || ""))}">
       <td>${escapeHtml(formatDate(entry.date) || entry.date || "-")}</td>
       <td>${escapeHtml(entry.site || "-")}</td>
@@ -10189,11 +10140,10 @@ function renderStockMovementsTable() {
       <td>${escapeHtml(entry.action || "-")}</td>
       <td>${escapeHtml(qtyLabel)}</td>
       <td>${escapeHtml(entry.motif || "-")}</td>
-      <td>${escapeHtml(source)}</td>
-      <td>${canDelete ? `<button type="button" class="table-link js-delete-stock-movement" data-stock-movement-id="${escapeHtml(entry.id)}">SUPPRIMER</button>` : "-"}</td>
+      <td><button type="button" class="table-link js-delete-stock-movement" data-stock-movement-id="${escapeHtml(entry.id)}">SUPPRIMER</button></td>
     </tr>`;
   });
-  renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUN MOUVEMENT", 9), 24);
+  renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUN MOUVEMENT MANUEL", 8), 24);
   bindStockMovementActions();
 }
 
@@ -11200,7 +11150,7 @@ function resetUiWithoutData() {
     { id: "reference-causesRemplacement-body", colspan: 2 },
     { id: "reference-effects-table-body", colspan: 5 },
     { id: "replacement-costs-body", colspan: 4 },
-    { id: "stock-movements-table-body", colspan: 9 },
+    { id: "stock-movements-table-body", colspan: 8 },
     { id: "stock-summary-table-body", colspan: 12 },
   ];
 
