@@ -3176,13 +3176,14 @@ function notifyFullySignedDocumentsOnReload(previousSignatureValidationMap = new
   if (!labels.length) {
     return;
   }
-  const personLabel = person ? `${person.nom || ""} ${person.prenom || ""}`.trim() : "CE PERSONNEL";
+  const personLabel = person ? `${person.nom || ""} ${person.prenom || ""}`.trim() : "";
   const docLabel = latestRequest?.docType === "exit" ? "SORTIE" : "ENTREE";
-  const docLabelLower = latestRequest?.docType === "exit" ? "sortie" : "entree";
   const messageLines = [
-    `UN NOUVEAU DOCUMENT DE ${docLabelLower} POUR ${personLabel} VA ETRE CREE.`,
-    "VOULEZ-VOUS LE CONSULTER ?",
-    "OK = OUI (FOCUS DOCUMENT)",
+    "DOCUMENT SIGNE (2 SIGNATURES VALIDEES) :",
+    ...labels,
+    "",
+    `VOUS AVEZ UN PDF A CREER POUR ${personLabel || "CE PERSONNEL"} - DOCUMENT DE ${docLabel}.`,
+    "OK = OUVRIR LE DOCUMENT",
   ];
 
   const shouldOpenDocument = window.confirm(messageLines.join("\n"));
@@ -3198,7 +3199,7 @@ function notifyFullySignedDocumentsOnReload(previousSignatureValidationMap = new
     } catch (error) {
       // ignore storage failures
     }
-    window.alert("DOCUMENT NON OUVERT. VOUS POURREZ LE CONSULTER DEPUIS DOCUMENTS/ARCHIVES.");
+    window.alert("VOTRE BASE N'EST PAS A JOUR");
     return;
   }
 
@@ -3219,7 +3220,7 @@ function notifyFullySignedDocumentsOnReload(previousSignatureValidationMap = new
     navigateWithAutoSave(`${pagePath}?personId=${encodeURIComponent(person.id)}&focusPdf=${encodeURIComponent(latestRequest.docType)}`);
     const seenKey = `SIG:${person.id}:${latestRequest.docType}:${latestRequest.signer}:${latestRequest.validatedAt}`;
     state.signedDocumentsPopupSeenKeys.add(seenKey);
-    window.alert(`FOCUS SUR LE DOCUMENT DE ${docLabel} POUR ${personLabel}.`);
+    window.alert("DOCUMENT OUVERT - GENERER LE PDF");
   }
 }
 
