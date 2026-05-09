@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
-import { normalizeManualStatus, normalizeText } from "@/lib/businessRules";
+import { normalizeManualStatus } from "@/lib/businessRules";
 
 function parseReadonlyFlag(value) {
   const raw = String(value ?? "").trim().toLowerCase();
@@ -469,9 +469,9 @@ function extractLegacySignatures(payload = {}, filters = {}) {
 
 function applyLegacyPersonToRaw(rawPerson = {}, data = {}) {
   const out = { ...rawPerson };
-  if (Object.prototype.hasOwnProperty.call(data, "nom")) out.nom = normalizeText(data.nom);
-  if (Object.prototype.hasOwnProperty.call(data, "prenom")) out.prenom = normalizeText(data.prenom);
-  if (Object.prototype.hasOwnProperty.call(data, "fonction")) out.fonction = normalizeText(data.fonction);
+  if (Object.prototype.hasOwnProperty.call(data, "nom")) out.nom = toString(data.nom).trim();
+  if (Object.prototype.hasOwnProperty.call(data, "prenom")) out.prenom = toString(data.prenom).trim();
+  if (Object.prototype.hasOwnProperty.call(data, "fonction")) out.fonction = toString(data.fonction).trim();
   if (Object.prototype.hasOwnProperty.call(data, "typePersonnel")) out.typePersonnel = toString(data.typePersonnel).trim();
   if (Object.prototype.hasOwnProperty.call(data, "typeContrat")) out.typeContrat = toString(data.typeContrat).trim();
   if (Object.prototype.hasOwnProperty.call(data, "dateEntree")) out.dateEntree = cleanDate(data.dateEntree);
@@ -618,9 +618,9 @@ export const db = {
         const sites = normalizeStringArray(data?.sites);
         const entry = {
           id: newId,
-          nom: normalizeText(data?.nom),
-          prenom: normalizeText(data?.prenom),
-          fonction: normalizeText(data?.fonction),
+          nom: toString(data?.nom).trim(),
+          prenom: toString(data?.prenom).trim(),
+          fonction: toString(data?.fonction).trim(),
           site: sites[0] || "",
           sitesAffectation: sites,
           typePersonnel: toString(data?.typePersonnel).trim(),
@@ -636,13 +636,7 @@ export const db = {
         await saveAppStatePayload(payload, row?.revision);
         return normalizeLegacyPerson(entry);
       }
-      const normalizedData = {
-        ...data,
-        nom: normalizeText(data?.nom),
-        prenom: normalizeText(data?.prenom),
-        fonction: normalizeText(data?.fonction),
-      };
-      return sqlPerson.create(normalizedData);
+      return sqlPerson.create(data);
     },
     async update(id, data) {
       ensureWritable('mise a jour personne');
@@ -657,11 +651,7 @@ export const db = {
           return normalizeLegacyPerson(updated);
         }
       }
-      const normalizedData = { ...data };
-      if (Object.prototype.hasOwnProperty.call(data || {}, "nom")) normalizedData.nom = normalizeText(data.nom);
-      if (Object.prototype.hasOwnProperty.call(data || {}, "prenom")) normalizedData.prenom = normalizeText(data.prenom);
-      if (Object.prototype.hasOwnProperty.call(data || {}, "fonction")) normalizedData.fonction = normalizeText(data.fonction);
-      return sqlPerson.update(id, normalizedData);
+      return sqlPerson.update(id, data);
     },
     async delete(id) {
       ensureWritable('suppression personne');
