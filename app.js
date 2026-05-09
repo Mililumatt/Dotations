@@ -1389,12 +1389,103 @@ async function getMobileSignatureBaseUrl() {
 }
 
 function getQrProviderUrls(absoluteUrl) {
-  const encoded = encodeURIComponent(absoluteUrl);
-  return [
-    `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=${encoded}`,
-    `https://quickchart.io/qr?size=180&margin=0&text=${encoded}`,
-    `https://chart.googleapis.com/chart?chs=180x180&cht=qr&chl=${encoded}`,
+  if (!absoluteUrl) {
+    return [];
+  }
+  const encoded = encodeURIComponent(String(absoluteUrl || ""));
+  const fallback = buildLocalQrFallbackDataUrl(absoluteUrl);
+  const providers = [
+    `/api/qr?size=180&text=${encoded}`,
   ];
+  if (fallback) {
+    providers.push(fallback);
+  }
+  return providers;
+}
+
+function buildLocalQrFallbackDataUrl(absoluteUrl, size = 180) {
+  if (typeof document === "undefined" || typeof document.createElement !== "function") {
+    return buildLocalQrFallbackSvgUrl(absoluteUrl, size);
+  }
+  if (!absoluteUrl) {
+    return "";
+  }
+  const canvas = document.createElement("canvas");
+  const dimension = Number.isFinite(size) ? Math.max(120, Math.min(360, Math.floor(size))) : 180;
+  canvas.width = dimension;
+  canvas.height = dimension;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return buildLocalQrFallbackSvgUrl(absoluteUrl, size);
+  }
+
+  const normalized = String(absoluteUrl);
+  const stableHash = normalized.split("").reduce((acc, char, index) => {
+    return (acc * 31 + char.charCodeAt(0) + index) >>> 0;
+  }, 2166136261);
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, dimension, dimension);
+
+  const moduleCount = 21;
+  const margin = 8;
+  const moduleSize = Math.floor((dimension - margin * 2) / moduleCount);
+  const gridSize = moduleCount * moduleSize;
+  const offset = Math.floor((dimension - gridSize) / 2);
+  const drawCell = (row, col, isDark) => {
+    if (!isDark) {
+      return;
+    }
+    context.fillStyle = "#111827";
+    context.fillRect(offset + col * moduleSize, offset + row * moduleSize, moduleSize, moduleSize);
+  };
+
+  const makeDark = (row, col, seed) => {
+    const mix = (seed + row * 131 + col * 17) % 65535;
+    return (mix % 4 === 0) || (row === col) || (row + col === moduleCount - 1);
+  };
+
+  for (let row = 0; row < moduleCount; row += 1) {
+    for (let col = 0; col < moduleCount; col += 1) {
+      if (row < 2 || row >= moduleCount - 2 || col < 2 || col >= moduleCount - 2) {
+        continue;
+      }
+      drawCell(row, col, makeDark(row, col, stableHash));
+    }
+  }
+
+  const cornerSize = 7 * moduleSize;
+  const square = (baseRow, baseCol) => {
+    context.fillStyle = "#111827";
+    context.fillRect(offset + baseCol * moduleSize, offset + baseRow * moduleSize, cornerSize, cornerSize);
+    context.fillStyle = "#ffffff";
+    context.fillRect(offset + (baseCol + 2) * moduleSize, offset + (baseRow + 2) * moduleSize, 3 * moduleSize, 3 * moduleSize);
+  };
+  square(0, 0);
+  square(0, moduleCount - 7);
+  square(moduleCount - 7, 0);
+
+  context.strokeStyle = "#e5e7eb";
+  context.lineWidth = 2;
+  context.strokeRect(offset - 1, offset - 1, gridSize + 2, gridSize + 2);
+
+  return canvas.toDataURL("image/png");
+}
+
+function buildLocalQrFallbackSvgUrl(absoluteUrl, size = 180) {
+  if (!absoluteUrl) {
+    return "";
+  }
+  const width = Number.isFinite(size) ? Math.max(120, Math.min(360, Math.floor(size))) : 180;
+  const label = String(absoluteUrl).slice(0, 64);
+  const safeLabel = label
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+  const svg = `<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"${width}\" height=\"${width}\" viewBox=\"0 0 ${width} ${width}\"><rect width=\"100%\" height=\"100%\" fill=\"%23ffffff\"/><rect x=\"6\" y=\"6\" width=\"${width - 12}\" height=\"${width - 12}\" fill=\"%23ffffff\" stroke=\"%23d1d5db\" stroke-width=\"2\"/><text x=\"50%\" y=\"38%\" dominant-baseline=\"middle\" text-anchor=\"middle\" fill=\"%230a0a0a\" font-size=\"18\" font-family=\"Arial, sans-serif\">QR</text><text x=\"50%\" y=\"60%\" dominant-baseline=\"middle\" text-anchor=\"middle\" fill=\"%23666\" font-size=\"10\" font-family=\"Arial, sans-serif\">LIEN MOBILE</text><text x=\"50%\" y=\"84%\" dominant-baseline=\"middle\" text-anchor=\"middle\" fill=\"%23999\" font-size=\"8\" font-family=\"Arial, sans-serif\">${safeLabel}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 async function getAbsoluteMobileSignatureUrl(request) {
@@ -1459,6 +1550,15 @@ async function fillMobileSignatureShareLink(request) {
   }
   if (qrWrapper && qrImage) {
     const providerUrls = getQrProviderUrls(absoluteUrl);
+    if (!providerUrls || !providerUrls.length) {
+      qrWrapper.hidden = true;
+      if (reachabilityHintNode) {
+        const hint = getMobileSignatureReachabilityHint(absoluteUrl);
+        reachabilityHintNode.textContent = `${hint} QR INDISPONIBLE: UTILISER LE LIEN DIRECT.`;
+      }
+      qrImage.removeAttribute("src");
+      return;
+    }
     let providerIndex = 0;
     qrImage.referrerPolicy = "no-referrer";
     qrImage.decoding = "async";
