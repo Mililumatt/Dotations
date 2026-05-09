@@ -14,7 +14,7 @@ function normalizeLabel(value) {
 
 function normalizeCause(value) {
   const normalized = normalizeLabel(value);
-  if (normalized === "CASSE") return "DETRUIT";
+  if (normalized === "CASSE") return "HS";
   if (normalized === "PERDU") return "PERTE";
   if (["DETRUIT", "PERTE", "VOL", "HS", "NON RENDU"].includes(normalized)) return normalized;
   return "";
@@ -154,7 +154,7 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
   const normalizeCostCause = (cause) => {
     const normalized = normalizeLabel(cause);
     if (normalized === "PERDU") return "PERTE";
-    if (normalized === "CASSE") return "DETRUIT";
+    if (normalized === "CASSE") return "HS";
     return normalized;
   };
   const costByType = new Map();

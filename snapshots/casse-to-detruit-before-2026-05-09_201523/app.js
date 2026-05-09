@@ -247,7 +247,7 @@ function normalizeAmount(value) {
 
 function normalizeEffectCause(value) {
   const normalized = normalizeText(value);
-  if (normalized === "CASSE") return "DETRUIT";
+  if (normalized === "CASSE") return "HS";
   if (normalized === "PERDU") return "PERTE";
   if (["DETRUIT", "PERTE", "VOL", "HS", "NON RENDU"].includes(normalized)) return normalized;
   return "";
@@ -263,7 +263,7 @@ function normalizePricingKey(value, { cause = false } = {}) {
   }
   if (normalized === "NON RENDU") return "NON RENDU";
   if (normalized === "PERDU") return "PERTE";
-  if (normalized === "CASSE") return "DETRUIT";
+  if (normalized === "CASSE") return "HS";
   return normalized;
 }
 
@@ -281,8 +281,7 @@ function getCauseFromManualStatus(manualStatus) {
   if (normalized === "PERDU") return "PERTE";
   if (normalized === "DETRUIT") return "DETRUIT";
   if (normalized === "VOL") return "VOL";
-  if (normalized === "HS") return "HS";
-  if (normalized === "CASSE") return "DETRUIT";
+  if (normalized === "HS" || normalized === "CASSE") return "HS";
   return "";
 }
 
@@ -1798,10 +1797,10 @@ function migrateDataModel() {
     Boolean
   );
   state.data.listes.statutsObjetManuels = Array.from(
-    new Set(state.data.listes.statutsObjetManuels.map(normalizeText).map((value) => (value === "CASSE" ? "DETRUIT" : value)))
+    new Set(state.data.listes.statutsObjetManuels.map(normalizeText).map((value) => (value === "CASSE" ? "HS" : value)))
   ).filter(Boolean);
   state.data.listes.causesRemplacement = Array.from(
-    new Set(state.data.listes.causesRemplacement.map(normalizeText).map((value) => (value === "CASSE" ? "DETRUIT" : value)))
+    new Set(state.data.listes.causesRemplacement.map(normalizeText).map((value) => (value === "CASSE" ? "HS" : value)))
   ).filter(Boolean);
   if (!state.data.listes.causesRemplacement.length) {
     state.data.listes.causesRemplacement = [...EFFECT_STATUS_CAUSES];
@@ -1809,7 +1808,7 @@ function migrateDataModel() {
   state.data.listes.coutsRemplacement = state.data.listes.coutsRemplacement
     .map((entry) => ({
       typeEffet: normalizeText(entry.typeEffet),
-      cause: normalizeText(entry.cause) === "CASSE" ? "DETRUIT" : normalizeText(entry.cause),
+      cause: normalizeText(entry.cause) === "CASSE" ? "HS" : normalizeText(entry.cause),
       montant: normalizeAmount(entry.montant),
     }))
     .filter((entry) => entry.typeEffet && entry.cause);
@@ -4038,7 +4037,7 @@ function bindEffectForm() {
         vehiculeImmatriculation,
       dateRemise: String(formData.get("dateRemise") || ""),
       dateRetour: String(formData.get("dateRetour") || ""),
-      statutManuel: manualStatus === "CASSE" ? "DETRUIT" : manualStatus,
+      statutManuel: manualStatus === "CASSE" ? "HS" : manualStatus,
       cause: preservedCause || nextCause,
       dateRemplacement,
       coutRemplacement,
@@ -5510,7 +5509,7 @@ function getReferenceCauseOptions() {
 
 function normalizeReferenceCauseLabel(value) {
   const normalized = normalizeText(value);
-  if (normalized === "CASSE") return "DETRUIT";
+  if (normalized === "CASSE") return "HS";
   if (normalized === "PERDU") return "PERTE";
   return normalized;
 }
@@ -9323,7 +9322,7 @@ function getEffectStatus(person, effect) {
   if (effect.dateRetour) return "RESTITUE";
 
   const manualStatus = normalizeText(effect.statutManuel);
-  if (manualStatus === "CASSE") return "DETRUIT";
+  if (manualStatus === "CASSE") return "HS";
   if (["PERDU", "HS", "VOL"].includes(manualStatus)) return manualStatus;
   if (isExitDue(person)) return "NON RENDU";
   return manualStatus || "ACTIF";

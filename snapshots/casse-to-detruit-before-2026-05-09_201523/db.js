@@ -98,7 +98,7 @@ function cleanDate(value) {
 
 function normalizeCause(value) {
   const normalized = toString(value).trim().toUpperCase();
-  if (normalized === "CASSE") return "DETRUIT";
+  if (normalized === "CASSE") return "HS";
   if (normalized === "PERDU") return "PERTE";
   if (["DETRUIT", "PERTE", "VOL", "HS"].includes(normalized)) return normalized;
   return "";
@@ -114,7 +114,7 @@ function normalizePricingKey(value, { cause = false } = {}) {
   if (!cause) return normalized;
   if (normalized === "NON RENDU") return "NON RENDU";
   if (normalized === "PERDU") return "PERTE";
-  if (normalized === "CASSE") return "DETRUIT";
+  if (normalized === "CASSE") return "HS";
   return normalized;
 }
 

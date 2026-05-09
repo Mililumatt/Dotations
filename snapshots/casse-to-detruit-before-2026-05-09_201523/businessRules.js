@@ -18,7 +18,7 @@ const NON_RENDU_REFERENCE_COSTS = {
 
 function normalizeCause(rawCause) {
   const cause = normalizeText(rawCause);
-  if (cause === "CASSE") return "DETRUIT";
+  if (cause === "CASSE") return "HS";
   if (cause === "PERDU") return "PERTE";
   if (["DETRUIT", "PERTE", "VOL", "HS", "NON RENDU"].includes(cause)) return cause;
   return "";
@@ -32,7 +32,7 @@ function normalizePricingKey(value, { cause = false } = {}) {
   if (!cause) return normalized;
   if (normalized === "NON RENDU") return "NON RENDU";
   if (normalized === "PERDU") return "PERTE";
-  if (normalized === "CASSE") return "DETRUIT";
+  if (normalized === "CASSE") return "HS";
   return normalized;
 }
 
@@ -73,7 +73,7 @@ function isExitDue(person) {
 export function normalizeManualStatus(rawStatus) {
   const status = normalizeText(rawStatus);
   if (status === "VOLE") return "VOL";
-  if (status === "CASSE") return "DETRUIT";
+  if (status === "CASSE") return "HS";
   if (ALLOWED_MANUAL_EFFECT_STATUSES.has(status)) return status;
   return "";
 }
