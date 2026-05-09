@@ -7047,6 +7047,18 @@ function getRepresentativeUsage(representativeId) {
   }, 0);
 }
 
+function resolveRepresentativeSelectedId(person, docType) {
+  if (!person) {
+    return "";
+  }
+  const info = getRepresentativeInfo(person, docType);
+  if (String(info.id || "").trim()) {
+    return String(info.id || "");
+  }
+  const linkedByValues = findRepresentativeByValues(info.nom, info.fonction);
+  return String(linkedByValues?.id || "");
+}
+
 function populateRepresentativeSelect(select, selectedId = "") {
   if (!(select instanceof HTMLSelectElement)) {
     return;
@@ -7220,7 +7232,7 @@ function bindRepresentativeFields() {
 
     const syncRepresentativeOptions = () => {
       const person = getCurrentPerson();
-      populateRepresentativeSelect(nameInput, person ? getRepresentativeInfo(person, docType).id : "");
+      populateRepresentativeSelect(nameInput, person ? resolveRepresentativeSelectedId(person, docType) : "");
     };
 
     const applyRepresentativeSelection = () => {
@@ -8721,7 +8733,7 @@ function renderArrivalDocument(personId) {
   dateSortiePrevueNode.textContent = formatDate(person.dateSortiePrevue) || "-";
   signatureNameNode.textContent = `${person.nom || ""} ${person.prenom || ""}`.trim() || "-";
   const arrivalRepresentative = getRepresentativeInfo(person, "arrival");
-  populateRepresentativeSelect(representantNameInput, arrivalRepresentative.id);
+  populateRepresentativeSelect(representantNameInput, resolveRepresentativeSelectedId(person, "arrival"));
   representantFunctionInput.value = arrivalRepresentative.fonction;
   representantNameNode.textContent = arrivalRepresentative.nom || "-";
   representantFunctionNode.textContent = arrivalRepresentative.fonction || "-";
@@ -8947,7 +8959,7 @@ function renderExitDocument(personId) {
   dateSortieReelleNode.textContent = formatDate(person.dateSortieReelle) || "-";
   signatureNameNode.textContent = `${person.nom || ""} ${person.prenom || ""}`.trim() || "-";
   const exitRepresentative = getRepresentativeInfo(person, "exit");
-  populateRepresentativeSelect(representantNameInput, exitRepresentative.id);
+  populateRepresentativeSelect(representantNameInput, resolveRepresentativeSelectedId(person, "exit"));
   representantFunctionInput.value = exitRepresentative.fonction;
   representantNameNode.textContent = exitRepresentative.nom || "-";
   representantFunctionNode.textContent = exitRepresentative.fonction || "-";
