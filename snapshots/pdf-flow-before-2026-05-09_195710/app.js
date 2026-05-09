@@ -2814,6 +2814,39 @@ function wait(milliseconds) {
   });
 }
 
+function buildPdfWaitingHtml() {
+  return `<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <title>GENERATION PDF</title>
+    <style>
+      body{margin:0;font-family:Segoe UI,Arial,sans-serif;background:#f4f1ea;color:#213b48;display:grid;place-items:center;min-height:100vh}
+      .wrap{width:min(420px,calc(100vw - 32px));padding:24px;border:1px solid #adbec7;border-radius:14px;background:#fffdfa;box-shadow:0 14px 30px rgba(15,30,38,.16)}
+      .eyebrow{margin:0 0 6px;font-size:11px;letter-spacing:.14em;color:#4a6170}
+      h1{margin:0 0 10px;font-size:22px}
+      p{margin:0 0 14px;color:#3f5662}
+      .status{display:flex;align-items:center;gap:10px;margin-top:6px}
+      .dot{width:14px;height:14px;border-radius:999px;background:#4c7787;box-shadow:0 0 0 0 rgba(76,119,135,.35);animation:pulse 1.2s infinite ease-out}
+      .value{font-size:12px;letter-spacing:.08em;color:#213b48}
+      @keyframes pulse{
+        0%{transform:scale(.9);box-shadow:0 0 0 0 rgba(76,119,135,.35)}
+        70%{transform:scale(1);box-shadow:0 0 0 10px rgba(76,119,135,0)}
+        100%{transform:scale(.95);box-shadow:0 0 0 0 rgba(76,119,135,0)}
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <p class="eyebrow">EXPORT PDF</p>
+      <h1>GENERATION DU PDF</h1>
+      <p>PREPARATION DU DOCUMENT EN COURS...</p>
+      <div class="status"><div class="dot"></div><div class="value">PATIENTEZ...</div></div>
+    </div>
+  </body>
+</html>`;
+}
+
 function getDocumentPagePath(docType) {
   return normalizeText(docType) === "EXIT" ? "document-sortie.html" : "document-arrivee.html";
 }
@@ -2850,6 +2883,13 @@ async function openPdfDocument(docType, personId) {
   if (!popup) {
     showDataStatus("AUTORISER L'OUVERTURE DU PDF DANS LE NAVIGATEUR");
     return;
+  }
+
+  try {
+    popup.document.write(buildPdfWaitingHtml());
+    popup.document.close();
+  } catch (popupError) {
+    console.error(popupError);
   }
 
   try {
