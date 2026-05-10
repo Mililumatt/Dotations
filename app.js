@@ -73,6 +73,7 @@ const NON_RENDU_REFERENCE_COSTS = {
 const MOBILE_SIGNATURE_REQUEST_TTL_MS = 10 * 60 * 1000;
 const SUPABASE_PROJECT_URL = "https://dphrvdhqhgycmllietuk.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_2wYXnIDj4-c8daQZW8D5hA_2Py6k7z6";
+const SUPABASE_EDGE_API_URL = "https://dphrvdhqhgycmllietuk.supabase.co/functions/v1/dotations-api";
 const SUPABASE_APP_STATE_TABLE = "app_state";
 const SUPABASE_APP_STATE_ID = "main";
 const DEFAULT_SUPABASE_PDF_BUCKET = "pdf";
@@ -356,6 +357,32 @@ function getDataBackendMode() {
 function getSupabaseRestEndpoint() {
   const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
   return `${baseUrl}/rest/v1/${SUPABASE_APP_STATE_TABLE}`;
+}
+
+async function callEdgeApi(pathname, options = {}) {
+  const baseUrl = normalizeHttpUrl(SUPABASE_EDGE_API_URL);
+  const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
+  if (!baseUrl || !key) {
+    throw new Error("EDGE_API_NOT_CONFIGURED");
+  }
+  const normalizedPath = String(pathname || "").trim().replace(/^\/+/, "");
+  const endpoint = `${baseUrl}/${normalizedPath}`;
+  const response = await fetch(endpoint, {
+    method: options.method || "GET",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    body: options.body || undefined,
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`EDGE_API_FAILED:${response.status}:${detail}`);
+  }
+  return response;
 }
 
 function getSupabaseHeaders(extra = {}, options = {}) {
@@ -719,7 +746,8 @@ async function saveSupabaseStateData(payload) {
 async function fetchLatestDataSnapshot() {
   const mode = getDataBackendMode();
   if (mode === "SUPABASE") {
-    return fetchSupabaseStateData();
+    const response = await callEdgeApi("data", { method: "GET" });
+    return response.json();
   }
   const response = await fetch(`/api/data?ts=${Date.now()}`, { cache: "no-store" });
   if (!response.ok) {
@@ -11159,19 +11187,10 @@ async function saveDataToFile(options = {}) {
       let saveAlertText = alertText || "data.json A ETE MIS A JOUR";
       let saveSource = "LOCAL";
       if (mode === "SUPABASE") {
-        // Phase 1 security: hosted UI must write through backend API, not direct DB.
-        const response = await fetch("/api/save", {
+        await callEdgeApi("save", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
           body: JSON.stringify(state.data),
         });
-        if (!response.ok) {
-          const backendError = new Error("BACKEND_SAVE_REQUIRED");
-          backendError.code = "BACKEND_SAVE_REQUIRED";
-          throw backendError;
-        }
         saveStatusText = "DONNEES SAUVEGARDEES VIA BACKEND";
         saveAlertText = alertText || "DONNEES MISES A JOUR VIA BACKEND";
         saveSource = "BACKEND";
@@ -11221,10 +11240,14 @@ async function saveDataToFile(options = {}) {
     }
     } catch (error) {
       console.error(error);
-      if (error?.code === "BACKEND_SAVE_REQUIRED" || String(error?.message || "") === "BACKEND_SAVE_REQUIRED") {
-        showDataStatus("SAUVEGARDE BLOQUEE: BACKEND /API/SAVE REQUIS");
+      if (
+        error?.code === "BACKEND_SAVE_REQUIRED" ||
+        String(error?.message || "") === "BACKEND_SAVE_REQUIRED" ||
+        String(error?.message || "").includes("EDGE_API_NOT_CONFIGURED")
+      ) {
+        showDataStatus("SAUVEGARDE BLOQUEE: BACKEND DISTANT REQUIS");
         if (!silent) {
-          window.alert("SAUVEGARDE BLOQUEE : LE BACKEND /API/SAVE EST REQUIS POUR ECRIRE EN BASE.");
+          window.alert("SAUVEGARDE BLOQUEE : LE BACKEND DISTANT EST REQUIS POUR ECRIRE EN BASE.");
         }
         return;
       }
