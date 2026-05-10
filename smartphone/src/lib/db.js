@@ -3,6 +3,14 @@ import { normalizeManualStatus, normalizeText } from "@/lib/businessRules";
 
 const WRITE_ROLES = new Set(["editor", "admin"]);
 const DELETE_ROLES = new Set(["admin"]);
+const DOC_TYPES = new Set(["arrival", "exit"]);
+const SIGNERS = new Set(["personnel", "representant"]);
+const MAX_SIGNATURE_DATA_LENGTH = 2_000_000;
+const FILTERABLE_COLUMNS = {
+  personnes: new Set(["id", "nom", "prenom", "fonction", "typePersonnel", "typeContrat", "dateEntree", "dateSortiePrevue", "dateSortieReelle", "statutDossier"]),
+  effetsConfies: new Set(["id", "personId", "typeEffet", "designation", "siteReference", "numeroIdentification", "vehiculeImmatriculation", "dateRemise", "dateRetour", "statut", "cause", "dateRemplacement"]),
+  signatures: new Set(["id", "personId", "docType", "signer", "signedAt"]),
+};
 let authContextCache = null;
 let authContextCacheTs = 0;
 const AUTH_CONTEXT_TTL_MS = 5000;
@@ -148,6 +156,44 @@ function safeJsonParse(raw) {
 
 function toString(value) {
   return value == null ? "" : String(value);
+}
+
+function ensureValidDocType(value) {
+  const docType = toString(value).trim();
+  if (!DOC_TYPES.has(docType)) {
+    throw new Error(`docType invalide: '${docType || "vide"}'`);
+  }
+  return docType;
+}
+
+function ensureValidSigner(value) {
+  const signer = toString(value).trim();
+  if (!SIGNERS.has(signer)) {
+    throw new Error(`signer invalide: '${signer || "vide"}'`);
+  }
+  return signer;
+}
+
+function normalizeSignatureData(value) {
+  const signatureData = toString(value).trim();
+  if (!signatureData) return "";
+  if (signatureData.length > MAX_SIGNATURE_DATA_LENGTH) {
+    throw new Error("Signature trop volumineuse.");
+  }
+  if (!/^data:image\/(png|jpeg|jpg);base64,[a-z0-9+/=]+$/i.test(signatureData)) {
+    throw new Error("Format de signature invalide.");
+  }
+  return signatureData;
+}
+
+function sanitizeFilterObject(table, filters = {}) {
+  const allowed = FILTERABLE_COLUMNS[table];
+  if (!allowed) return {};
+  const out = {};
+  Object.entries(filters || {}).forEach(([key, value]) => {
+    if (allowed.has(key)) out[key] = value;
+  });
+  return out;
 }
 
 function cleanDate(value) {
@@ -481,11 +527,13 @@ function normalizeLegacySignature(personId, docType, signer, raw = {}) {
 }
 
 function toSqlSignatureCreatePayload(data = {}) {
+  const docType = ensureValidDocType(data?.docType);
+  const signer = ensureValidSigner(data?.signer);
   return {
     personId: toString(data?.personId),
-    docType: toString(data?.docType),
-    signer: toString(data?.signer),
-    signatureData: toString(data?.signatureData),
+    docType,
+    signer,
+    signatureData: normalizeSignatureData(data?.signatureData),
     signedAt: cleanDate(data?.signedAt),
     signataireName: toString(data?.signataireName).trim(),
     signataireFunction: toString(data?.signataireFunction).trim(),
@@ -494,7 +542,7 @@ function toSqlSignatureCreatePayload(data = {}) {
 
 function toSqlSignatureUpdatePayload(data = {}) {
   const out = {};
-  if (Object.prototype.hasOwnProperty.call(data, "signatureData")) out.signatureData = toString(data.signatureData);
+  if (Object.prototype.hasOwnProperty.call(data, "signatureData")) out.signatureData = normalizeSignatureData(data.signatureData);
   if (Object.prototype.hasOwnProperty.call(data, "signedAt")) out.signedAt = cleanDate(data.signedAt);
   if (Object.prototype.hasOwnProperty.call(data, "signataireName")) out.signataireName = toString(data.signataireName).trim();
   if (Object.prototype.hasOwnProperty.call(data, "signataireFunction")) out.signataireFunction = toString(data.signataireFunction).trim();
@@ -624,8 +672,9 @@ const makeEntity = (table) => ({
   },
   async filter(filters = {}) {
     await requireAuthenticated(`Filtre ${table}`);
+    const safeFilters = sanitizeFilterObject(table, filters);
     let query = supabase.from(table).select("*");
-    Object.entries(filters || {}).forEach(([key, value]) => {
+    Object.entries(safeFilters).forEach(([key, value]) => {
       query = query.eq(key, value);
     });
     return runQuery(query, `Filtre ${table} impossible`);
@@ -834,8 +883,9 @@ export const db = {
       const row = await getAppStateRow();
       const payload = row?.payload;
       const personId = toString(data?.personId);
-      const docType = toString(data?.docType);
-      const signer = toString(data?.signer);
+      const docType = ensureValidDocType(data?.docType);
+      const signer = ensureValidSigner(data?.signer);
+      const signatureData = normalizeSignatureData(data?.signatureData);
       if (payload && Array.isArray(payload.personnes) && personId) {
         const person = payload.personnes.find((p) => toString(p?.id) === personId);
         if (!person) throw new Error("Creation signature impossible: personne introuvable");
@@ -844,7 +894,7 @@ export const db = {
         sigRoot[docType] = sigRoot[docType] || {};
         sigRoot[docType][signer] = {
           ...prev,
-          image: toString(data?.signatureData),
+          image: signatureData,
           validatedAt: cleanDate(data?.signedAt) || new Date().toISOString(),
           signataireId: toString(data?.signataireId),
           signataireName: toString(data?.signataireName).trim(),
@@ -873,6 +923,8 @@ export const db = {
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes) && isLegacySignatureId(id)) {
         const { personId, docType, signer } = parseLegacySignatureId(id);
+        ensureValidDocType(docType);
+        ensureValidSigner(signer);
         const person = payload.personnes.find((p) => toString(p?.id) === personId);
         if (!person) throw new Error("Mise a jour signature impossible: personne introuvable");
         const sigRoot = { ...defaultLegacySignatures(), ...(person.signatures || {}) };
@@ -880,7 +932,9 @@ export const db = {
         sigRoot[docType] = sigRoot[docType] || {};
         sigRoot[docType][signer] = {
           ...prev,
-          image: Object.prototype.hasOwnProperty.call(data || {}, "signatureData") ? toString(data.signatureData) : toString(prev.image),
+          image: Object.prototype.hasOwnProperty.call(data || {}, "signatureData")
+            ? normalizeSignatureData(data.signatureData)
+            : toString(prev.image),
           validatedAt: Object.prototype.hasOwnProperty.call(data || {}, "signedAt") ? cleanDate(data.signedAt) : cleanDate(prev.validatedAt),
           signataireId: Object.prototype.hasOwnProperty.call(data || {}, "signataireId") ? toString(data.signataireId) : toString(prev.signataireId),
           signataireName: Object.prototype.hasOwnProperty.call(data || {}, "signataireName") ? toString(data.signataireName).trim() : toString(prev.signataireName).trim(),
@@ -915,6 +969,8 @@ export const db = {
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes) && isLegacySignatureId(id)) {
         const { personId, docType, signer } = parseLegacySignatureId(id);
+        ensureValidDocType(docType);
+        ensureValidSigner(signer);
         const person = payload.personnes.find((p) => toString(p?.id) === personId);
         if (person) {
           const sigRoot = { ...defaultLegacySignatures(), ...(person.signatures || {}) };

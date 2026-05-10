@@ -380,6 +380,15 @@ async function callEdgeApi(pathname, options = {}) {
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    const detailUpper = String(detail || "").toUpperCase();
+    if (
+      response.status === 409 ||
+      response.status === 412 ||
+      detailUpper.includes("APP_STATE_CONFLICT") ||
+      detailUpper.includes("CONFLIT")
+    ) {
+      throw buildSaveConflictError();
+    }
     throw new Error(`EDGE_API_FAILED:${response.status}:${detail}`);
   }
   return response;
