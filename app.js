@@ -459,7 +459,8 @@ function isSafeArchiveRelativePath(value) {
   if (/(^|\/)\.\.(\/|$)/.test(normalized)) {
     return false;
   }
-  return /^[A-Za-z0-9._%+\-\/]+$/.test(normalized);
+  // Autorise les URLs relatives de type document-*.html?param=... tout en restant strict.
+  return /^[A-Za-z0-9._%+\-\/?&=]+$/.test(normalized);
 }
 
 function getStoragePdfBucketName() {
