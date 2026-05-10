@@ -4,6 +4,7 @@ import MobileFichePerson from "../components/mobile/MobileFichePerson";
 import MobileDocumentArrivee from "../components/mobile/MobileDocumentArrivee";
 import MobileDocumentSortie from "../components/mobile/MobileDocumentSortie";
 import { db } from "@/lib/db";
+import { getCurrentSession, onAuthStateChange, supabase } from "@/lib/supabaseClient";
 
 const TABS = [
   { id: "overview", label: "VUE D'ENSEMBLE", icon: "🏠" },
@@ -54,6 +55,12 @@ export default function Mobile() {
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("saved");
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
 
   const personsRef = useRef([]);
   const selectedPersonRef = useRef(null);
@@ -74,6 +81,10 @@ export default function Mobile() {
   };
 
   const loadData = async () => {
+    if (!session) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [pRes, eRes, bRes] = await Promise.allSettled([
@@ -107,8 +118,68 @@ export default function Mobile() {
   };
 
   useEffect(() => {
-    loadData();
+    let mounted = true;
+    getCurrentSession()
+      .then((s) => {
+        if (!mounted) return;
+        setSession(s);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setSession(null);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setAuthLoading(false);
+      });
+
+    const unsubscribe = onAuthStateChange((nextSession) => {
+      setSession(nextSession);
+      setLoginError("");
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe?.();
+    };
   }, []);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!session) {
+      setPersons([]);
+      setEffets([]);
+      setBases(DEFAULT_BASES);
+      setSelectedPerson(null);
+      setLoading(false);
+      return;
+    }
+    loadData();
+  }, [session, authLoading]);
+
+  const handleLogin = async (event) => {
+    event.preventDefault();
+    setLoginError("");
+    setLoginBusy(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: String(loginEmail || "").trim(),
+        password: String(loginPassword || ""),
+      });
+      if (error) throw error;
+      setLoginPassword("");
+    } catch (error) {
+      setLoginError(String(error?.message || "Connexion impossible."));
+    } finally {
+      setLoginBusy(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+  };
 
   useEffect(() => {
     selectedPersonRef.current = selectedPerson;
@@ -174,6 +245,44 @@ export default function Mobile() {
     };
   })();
 
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(180deg, #ebe6dc 0%, #d9e2e7 100%)", color: "#3f5662", fontSize: 12 }}>
+        VERIFICATION SESSION...
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #ebe6dc 0%, #d9e2e7 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <form onSubmit={handleLogin} style={{ width: "100%", maxWidth: 360, background: "rgba(255,255,255,0.78)", border: "1px solid rgba(63,97,112,0.25)", borderRadius: 12, padding: 16, display: "grid", gap: 10 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#1d3440" }}>CONNEXION REQUISE</div>
+          <input
+            type="email"
+            required
+            value={loginEmail}
+            onChange={(e) => setLoginEmail(e.target.value)}
+            placeholder="Email"
+            style={{ height: 38, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", padding: "0 10px" }}
+          />
+          <input
+            type="password"
+            required
+            value={loginPassword}
+            onChange={(e) => setLoginPassword(e.target.value)}
+            placeholder="Mot de passe"
+            style={{ height: 38, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", padding: "0 10px" }}
+          />
+          {loginError ? <div style={{ color: "#8e2c2c", fontSize: 12 }}>{loginError}</div> : null}
+          <button type="submit" disabled={loginBusy} style={{ height: 38, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#3f6170", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+            {loginBusy ? "CONNEXION..." : "SE CONNECTER"}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #ebe6dc 0%, #d9e2e7 100%)", display: "flex", flexDirection: "column", maxWidth: 480, margin: "0 auto", position: "relative" }}>
       <div style={{ background: "linear-gradient(180deg, #c2d2da 0%, #d9e2e7 100%)", padding: "10px 14px 8px", borderBottom: "1px solid rgba(63,97,112,0.2)", display: "flex", alignItems: "center", gap: 10 }}>
@@ -200,6 +309,9 @@ export default function Mobile() {
           </button>
           <button onClick={loadData} style={{ fontSize: 9, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(63,97,112,0.12)", color: "#213b48", cursor: "pointer" }}>
             ↻
+          </button>
+          <button onClick={handleLogout} style={{ fontSize: 9, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(63,97,112,0.12)", color: "#213b48", cursor: "pointer" }}>
+            ⎋
           </button>
         </div>
       </div>

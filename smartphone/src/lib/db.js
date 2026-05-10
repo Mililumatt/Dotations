@@ -1,6 +1,65 @@
 import { supabase } from "@/lib/supabaseClient";
 import { normalizeManualStatus, normalizeText } from "@/lib/businessRules";
 
+const WRITE_ROLES = new Set(["editor", "admin"]);
+const DELETE_ROLES = new Set(["admin"]);
+let authContextCache = null;
+let authContextCacheTs = 0;
+const AUTH_CONTEXT_TTL_MS = 5000;
+
+async function fetchAuthContext({ force = false } = {}) {
+  const now = Date.now();
+  if (!force && authContextCache && now - authContextCacheTs < AUTH_CONTEXT_TTL_MS) {
+    return authContextCache;
+  }
+
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    throw new Error(`Session Supabase indisponible: ${error.message || "Erreur inconnue"}`);
+  }
+  const session = data?.session || null;
+  const userId = session?.user?.id || "";
+  if (!userId) {
+    throw new Error("Connexion requise pour acceder aux donnees.");
+  }
+
+  let role = "viewer";
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (profileError) {
+    throw new Error(`Lecture role utilisateur impossible: ${profileError.message || "Erreur inconnue"}`);
+  }
+
+  if (profile?.role) {
+    role = String(profile.role).trim().toLowerCase() || "viewer";
+  }
+
+  authContextCache = { userId, role, session };
+  authContextCacheTs = now;
+  return authContextCache;
+}
+
+async function requireAuthenticated(actionLabel = "operation") {
+  try {
+    return await fetchAuthContext();
+  } catch (error) {
+    throw new Error(`${actionLabel}: ${error.message || "Connexion requise."}`);
+  }
+}
+
+async function requireRole(actionLabel, allowedRoles) {
+  const ctx = await requireAuthenticated(actionLabel);
+  if (allowedRoles.has(ctx.role)) {
+    return ctx;
+  }
+  throw new Error(`${actionLabel}: role '${ctx.role}' non autorise.`);
+}
+
 function parseReadonlyFlag(value) {
   const raw = String(value ?? "").trim().toLowerCase();
   if (!raw) return null;
@@ -256,6 +315,7 @@ function applySignedDocumentCompletion(person, docType) {
 }
 
 async function getAppStateRow() {
+  await requireAuthenticated("Lecture app_state");
   const rows = await runQuery(
     supabase.from("app_state").select("id,payload,revision").eq("id", "main").limit(1),
     "Lecture app_state impossible"
@@ -554,6 +614,7 @@ async function applySqlPersonCompletionFromSignatures(personId, docType) {
 
 const makeEntity = (table) => ({
   async list(order = "-created_at", limit = 200) {
+    await requireAuthenticated(`Lecture ${table}`);
     const { column, ascending } = normalizeOrder(order);
     const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(Number(limit), 1000)) : 200;
     return runQuery(
@@ -562,6 +623,7 @@ const makeEntity = (table) => ({
     );
   },
   async filter(filters = {}) {
+    await requireAuthenticated(`Filtre ${table}`);
     let query = supabase.from(table).select("*");
     Object.entries(filters || {}).forEach(([key, value]) => {
       query = query.eq(key, value);
@@ -569,6 +631,7 @@ const makeEntity = (table) => ({
     return runQuery(query, `Filtre ${table} impossible`);
   },
   async create(data) {
+    await requireRole(`Creation ${table}`, WRITE_ROLES);
     const normalized = normalizeDates(table, data);
     return runQuery(
       supabase.from(table).insert(normalized).select().single(),
@@ -576,6 +639,7 @@ const makeEntity = (table) => ({
     );
   },
   async update(id, data) {
+    await requireRole(`Mise a jour ${table}`, WRITE_ROLES);
     const normalized = normalizeDates(table, data);
     return runQuery(
       supabase.from(table).update(normalized).eq("id", id).select().single(),
@@ -583,6 +647,7 @@ const makeEntity = (table) => ({
     );
   },
   async delete(id) {
+    await requireRole(`Suppression ${table}`, DELETE_ROLES);
     const { error } = await supabase.from(table).delete().eq("id", id);
     if (error) {
       const details = [error.message, error.details, error.hint].filter(Boolean).join(" | ");
@@ -609,6 +674,7 @@ export const db = {
       return sqlPerson.filter(filters);
     },
     async create(data) {
+      await requireRole("Creation personne", WRITE_ROLES);
       ensureWritable('creation personne');
       const row = await getAppStateRow();
       const payload = row?.payload;
@@ -645,6 +711,7 @@ export const db = {
       return sqlPerson.create(normalizedData);
     },
     async update(id, data) {
+      await requireRole("Mise a jour personne", WRITE_ROLES);
       ensureWritable('mise a jour personne');
       const row = await getAppStateRow();
       const payload = row?.payload;
@@ -664,6 +731,7 @@ export const db = {
       return sqlPerson.update(id, normalizedData);
     },
     async delete(id) {
+      await requireRole("Suppression personne", DELETE_ROLES);
       ensureWritable('suppression personne');
       const row = await getAppStateRow();
       const payload = row?.payload;
@@ -691,6 +759,7 @@ export const db = {
       return sqlEffet.filter(filters);
     },
     async create(data) {
+      await requireRole("Creation effet", WRITE_ROLES);
       ensureWritable('creation effet');
       const row = await getAppStateRow();
       const payload = row?.payload;
@@ -707,6 +776,7 @@ export const db = {
       return sqlEffet.create(data);
     },
     async update(id, data) {
+      await requireRole("Mise a jour effet", WRITE_ROLES);
       ensureWritable('mise a jour effet');
       const row = await getAppStateRow();
       const payload = row?.payload;
@@ -726,6 +796,7 @@ export const db = {
       return sqlEffet.update(id, data);
     },
     async delete(id) {
+      await requireRole("Suppression effet", DELETE_ROLES);
       ensureWritable('suppression effet');
       const row = await getAppStateRow();
       const payload = row?.payload;
@@ -758,6 +829,7 @@ export const db = {
       return sqlSignature.filter(filters);
     },
     async create(data) {
+      await requireRole("Creation signature", WRITE_ROLES);
       ensureWritable('creation signature');
       const row = await getAppStateRow();
       const payload = row?.payload;
@@ -795,6 +867,7 @@ export const db = {
       return created;
     },
     async update(id, data) {
+      await requireRole("Mise a jour signature", WRITE_ROLES);
       ensureWritable('mise a jour signature');
       const row = await getAppStateRow();
       const payload = row?.payload;
@@ -836,6 +909,7 @@ export const db = {
       return updated;
     },
     async delete(id) {
+      await requireRole("Suppression signature", DELETE_ROLES);
       ensureWritable('suppression signature');
       const row = await getAppStateRow();
       const payload = row?.payload;

@@ -13,3 +13,18 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+export async function getCurrentSession() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  return data?.session || null;
+}
+
+export function onAuthStateChange(callback) {
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    callback(session || null);
+  });
+  return () => {
+    data?.subscription?.unsubscribe();
+  };
+}
