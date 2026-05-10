@@ -12,7 +12,19 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Supabase non configure: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY manquants");
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const sessionStorageAdapter =
+  typeof window !== "undefined" && window.sessionStorage
+    ? window.sessionStorage
+    : undefined;
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: sessionStorageAdapter,
+  },
+});
 
 export async function getCurrentSession() {
   const { data, error } = await supabase.auth.getSession();

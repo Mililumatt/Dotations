@@ -433,7 +433,7 @@ function getStoredSupabaseAccessToken() {
   try {
     const storageKey = getSupabaseAuthStorageKey();
     if (!storageKey) return "";
-    const raw = localStorage.getItem(storageKey);
+    const raw = sessionStorage.getItem(storageKey);
     return extractAccessTokenFromStoredSession(raw);
   } catch (error) {
     return "";
@@ -444,7 +444,7 @@ function getStoredSupabaseSession() {
   try {
     const storageKey = getSupabaseAuthStorageKey();
     if (!storageKey) return null;
-    const raw = localStorage.getItem(storageKey);
+    const raw = sessionStorage.getItem(storageKey);
     return extractSessionFromStoredSession(raw);
   } catch (error) {
     return null;
@@ -455,7 +455,7 @@ function storeSupabaseSession(session) {
   try {
     const storageKey = getSupabaseAuthStorageKey();
     if (!storageKey || !session || typeof session !== "object") return;
-    localStorage.setItem(
+    sessionStorage.setItem(
       storageKey,
       JSON.stringify({
         currentSession: session,
@@ -471,7 +471,7 @@ function clearStoredSupabaseSession() {
   try {
     const storageKey = getSupabaseAuthStorageKey();
     if (storageKey) {
-      localStorage.removeItem(storageKey);
+      sessionStorage.removeItem(storageKey);
     }
   } catch (error) {
     // ignore storage failures
