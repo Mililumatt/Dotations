@@ -31,6 +31,7 @@ const state = {
   saveButtonLatchedDirty: false,
   autoSaveInFlightPromise: null,
   autoSaveTimerId: 0,
+  actionAutoSaveTimerId: 0,
   tableSorts: {
     sheetEffects: { key: "typeEffet", dir: "asc" },
     arrivalEffects: { key: "typeEffet", dir: "asc" },
@@ -11644,6 +11645,25 @@ function showActionStatus(type, text) {
     showDataStatus(text);
     state.statusTimerId = 0;
   }, 3200);
+
+  const shouldAutoSaveAction = type === "create" || type === "update" || type === "delete";
+  if (shouldAutoSaveAction && state.isDirty && state.data) {
+    if (state.actionAutoSaveTimerId) {
+      window.clearTimeout(state.actionAutoSaveTimerId);
+      state.actionAutoSaveTimerId = 0;
+    }
+    state.actionAutoSaveTimerId = window.setTimeout(() => {
+      state.actionAutoSaveTimerId = 0;
+      saveDataToFile({
+        silent: true,
+        reloadAfter: true,
+        promptDownload: false,
+        successText: "SAUVEGARDE AUTOMATIQUE",
+      }).catch((error) => {
+        console.error(error);
+      });
+    }, 180);
+  }
 }
 
 function loadWorkingData() {
