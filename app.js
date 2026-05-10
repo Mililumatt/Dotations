@@ -479,14 +479,10 @@ function clearStoredSupabaseSession() {
 }
 
 async function promptSupabaseLoginAndStoreSession() {
-  const email = String(window.prompt("Connexion requise\nEmail Supabase:") || "").trim();
-  if (!email) {
-    throw new Error("BACKEND_AUTH_REQUIRED");
-  }
-  const password = String(window.prompt("Mot de passe Supabase:") || "");
-  if (!password) {
-    throw new Error("BACKEND_AUTH_REQUIRED");
-  }
+  const credentials = await promptSupabaseCredentialsForm();
+  const email = String(credentials?.email || "").trim();
+  const password = String(credentials?.password || "");
+  if (!email || !password) throw new Error("BACKEND_AUTH_REQUIRED");
   const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
   const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
   const response = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
@@ -508,6 +504,75 @@ async function promptSupabaseLoginAndStoreSession() {
   }
   storeSupabaseSession(data);
   return accessToken;
+}
+
+function promptSupabaseCredentialsForm() {
+  return new Promise((resolve, reject) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.position = "fixed";
+    backdrop.style.inset = "0";
+    backdrop.style.background = "rgba(0,0,0,0.35)";
+    backdrop.style.display = "flex";
+    backdrop.style.alignItems = "center";
+    backdrop.style.justifyContent = "center";
+    backdrop.style.zIndex = "99999";
+
+    const box = document.createElement("div");
+    box.style.width = "min(92vw, 420px)";
+    box.style.background = "#ffffff";
+    box.style.borderRadius = "12px";
+    box.style.padding = "16px";
+    box.style.boxShadow = "0 10px 28px rgba(0,0,0,0.25)";
+    box.innerHTML = `
+      <div style="font-weight:700;font-size:16px;margin-bottom:10px;color:#132833;">Connexion requise</div>
+      <form id="supabase-login-form" autocomplete="on">
+        <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Email Supabase</label>
+        <input id="supabase-login-email" name="username" type="email" autocomplete="username email" required
+          style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:10px;" />
+        <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Mot de passe</label>
+        <input id="supabase-login-password" name="password" type="password" autocomplete="current-password" required
+          style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:12px;" />
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button type="button" id="supabase-login-cancel"
+            style="padding:8px 12px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;">Annuler</button>
+          <button type="submit"
+            style="padding:8px 14px;border:0;background:#2f5f76;color:#fff;border-radius:8px;cursor:pointer;">Se connecter</button>
+        </div>
+      </form>
+    `;
+    backdrop.appendChild(box);
+    document.body.appendChild(backdrop);
+
+    const form = box.querySelector("#supabase-login-form");
+    const emailInput = box.querySelector("#supabase-login-email");
+    const passwordInput = box.querySelector("#supabase-login-password");
+    const cancelButton = box.querySelector("#supabase-login-cancel");
+
+    const cleanup = () => {
+      backdrop.remove();
+    };
+
+    cancelButton.addEventListener("click", () => {
+      cleanup();
+      reject(new Error("BACKEND_AUTH_REQUIRED"));
+    });
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const email = String(emailInput.value || "").trim();
+      const password = String(passwordInput.value || "");
+      cleanup();
+      if (!email || !password) {
+        reject(new Error("BACKEND_AUTH_REQUIRED"));
+        return;
+      }
+      resolve({ email, password });
+    });
+
+    window.setTimeout(() => {
+      emailInput.focus();
+    }, 0);
+  });
 }
 
 function isSessionTokenFresh(session) {
