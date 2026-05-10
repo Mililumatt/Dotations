@@ -400,6 +400,35 @@ function extractAccessTokenFromStoredSession(raw) {
   );
 }
 
+function extractSessionFromStoredSession(raw) {
+  if (!raw) return null;
+  if (typeof raw === "string") {
+    try {
+      return extractSessionFromStoredSession(JSON.parse(raw));
+    } catch (error) {
+      return null;
+    }
+  }
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      const session = extractSessionFromStoredSession(item);
+      if (session) return session;
+    }
+    return null;
+  }
+  if (typeof raw !== "object") return null;
+  if (raw.currentSession && typeof raw.currentSession === "object") {
+    return raw.currentSession;
+  }
+  if (raw.session && typeof raw.session === "object") {
+    return raw.session;
+  }
+  if (raw.access_token) {
+    return raw;
+  }
+  return null;
+}
+
 function getStoredSupabaseAccessToken() {
   try {
     const storageKey = getSupabaseAuthStorageKey();
@@ -408,6 +437,33 @@ function getStoredSupabaseAccessToken() {
     return extractAccessTokenFromStoredSession(raw);
   } catch (error) {
     return "";
+  }
+}
+
+function getStoredSupabaseSession() {
+  try {
+    const storageKey = getSupabaseAuthStorageKey();
+    if (!storageKey) return null;
+    const raw = localStorage.getItem(storageKey);
+    return extractSessionFromStoredSession(raw);
+  } catch (error) {
+    return null;
+  }
+}
+
+function storeSupabaseSession(session) {
+  try {
+    const storageKey = getSupabaseAuthStorageKey();
+    if (!storageKey || !session || typeof session !== "object") return;
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        currentSession: session,
+        expiresAt: session?.expires_at || 0,
+      })
+    );
+  } catch (error) {
+    // ignore storage failures
   }
 }
 
@@ -450,24 +506,57 @@ async function promptSupabaseLoginAndStoreSession() {
   if (!accessToken) {
     throw new Error("BACKEND_AUTH_REQUIRED");
   }
-  try {
-    const storageKey = getSupabaseAuthStorageKey();
-    if (storageKey) {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({
-          currentSession: data,
-          expiresAt: data?.expires_at || 0,
-        })
-      );
-    }
-  } catch (error) {
-    // ignore storage failures
-  }
+  storeSupabaseSession(data);
   return accessToken;
 }
 
+function isSessionTokenFresh(session) {
+  const accessToken = String(session?.access_token || "").trim();
+  if (!accessToken) return false;
+  const expiresAt = Number(session?.expires_at || 0);
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0) return true;
+  const nowSec = Math.floor(Date.now() / 1000);
+  return expiresAt - nowSec > 45;
+}
+
+async function refreshSupabaseSession(refreshToken) {
+  const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
+  const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
+  const response = await fetch(`${baseUrl}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ refresh_token: String(refreshToken || "") }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error("BACKEND_AUTH_REQUIRED");
+  }
+  const data = await response.json().catch(() => null);
+  const accessToken = String(data?.access_token || "").trim();
+  if (!accessToken) {
+    throw new Error("BACKEND_AUTH_REQUIRED");
+  }
+  storeSupabaseSession(data);
+  return data;
+}
+
 async function getSupabaseUserAccessToken() {
+  const session = getStoredSupabaseSession();
+  if (session && isSessionTokenFresh(session)) {
+    return String(session.access_token || "").trim();
+  }
+  const refreshToken = String(session?.refresh_token || "").trim();
+  if (refreshToken) {
+    try {
+      const refreshed = await refreshSupabaseSession(refreshToken);
+      return String(refreshed?.access_token || "").trim();
+    } catch (error) {
+      clearStoredSupabaseSession();
+    }
+  }
   const existing = getStoredSupabaseAccessToken();
   if (existing) return existing;
   return promptSupabaseLoginAndStoreSession();
