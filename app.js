@@ -411,6 +411,17 @@ function getStoredSupabaseAccessToken() {
   }
 }
 
+function clearStoredSupabaseSession() {
+  try {
+    const storageKey = getSupabaseAuthStorageKey();
+    if (storageKey) {
+      localStorage.removeItem(storageKey);
+    }
+  } catch (error) {
+    // ignore storage failures
+  }
+}
+
 async function promptSupabaseLoginAndStoreSession() {
   const email = String(window.prompt("Connexion requise\nEmail Supabase:") || "").trim();
   if (!email) {
@@ -462,7 +473,7 @@ async function getSupabaseUserAccessToken() {
   return promptSupabaseLoginAndStoreSession();
 }
 
-async function callEdgeApi(pathname, options = {}) {
+async function callEdgeApi(pathname, options = {}, retryOnAuthFailure = true) {
   const baseUrl = normalizeHttpUrl(SUPABASE_EDGE_API_URL);
   const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
   if (!baseUrl || !key) {
@@ -488,6 +499,10 @@ async function callEdgeApi(pathname, options = {}) {
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     const detailUpper = String(detail || "").toUpperCase();
+    if ((response.status === 401 || response.status === 403) && retryOnAuthFailure) {
+      clearStoredSupabaseSession();
+      return callEdgeApi(pathname, options, false);
+    }
     if (
       response.status === 409 ||
       response.status === 412 ||
