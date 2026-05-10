@@ -3206,51 +3206,24 @@ function notifyFullySignedDocumentsOnReload(previousSignatureValidationMap = new
   if (!labels.length) {
     return;
   }
-  const personLabel = person ? `${person.nom || ""} ${person.prenom || ""}`.trim() : "CE PERSONNEL";
-  const docLabel = latestRequest?.docType === "exit" ? "SORTIE" : "ENTREE";
-  const docLabelLower = latestRequest?.docType === "exit" ? "sortie" : "entree";
-  const messageLines = [
-    `UN NOUVEAU DOCUMENT DE ${docLabelLower} POUR ${personLabel} VA ETRE CREE.`,
-    "VOULEZ-VOUS LE CONSULTER ?",
-    "OK = OUI (FOCUS DOCUMENT)",
-  ];
-
-  const shouldOpenDocument = window.confirm(messageLines.join("\n"));
-  if (!shouldOpenDocument) {
-    reminderSnoozeMap[snoozeKey] = Date.now() + 120 * 1000;
-    setPendingPdfTaskToStorage({
-      personId: latestRequest.personId,
-      docType: latestRequest.docType,
-      validatedAt: latestRequest.validatedAt,
-    });
-    try {
-      localStorage.setItem(PENDING_PDF_REMINDER_SNOOZE_KEY, JSON.stringify(reminderSnoozeMap));
-    } catch (error) {
-      // ignore storage failures
-    }
-    window.alert("DOCUMENT NON OUVERT. VOUS POURREZ LE CONSULTER DEPUIS DOCUMENTS/ARCHIVES.");
-    return;
+  // Mode silencieux: ne jamais afficher de popup de focus document.
+  reminderSnoozeMap[snoozeKey] = Date.now() + 180 * 1000;
+  setPendingPdfTaskToStorage({
+    personId: latestRequest.personId,
+    docType: latestRequest.docType,
+    validatedAt: latestRequest.validatedAt,
+  });
+  try {
+    localStorage.setItem(PENDING_PDF_REMINDER_SNOOZE_KEY, JSON.stringify(reminderSnoozeMap));
+  } catch (error) {
+    // ignore storage failures
   }
-
   if (person && latestRequest?.docType) {
-    reminderSnoozeMap[snoozeKey] = Date.now() + 180 * 1000;
-    setPendingPdfTaskToStorage({
-      personId: latestRequest.personId,
-      docType: latestRequest.docType,
-      validatedAt: latestRequest.validatedAt,
-    });
-    try {
-      localStorage.setItem(PENDING_PDF_REMINDER_SNOOZE_KEY, JSON.stringify(reminderSnoozeMap));
-    } catch (error) {
-      // ignore storage failures
-    }
-    setCurrentPersonId(person.id, "replace");
-    const pagePath = getDocumentPagePath(latestRequest.docType);
-    navigateWithAutoSave(`${pagePath}?personId=${encodeURIComponent(person.id)}&focusPdf=${encodeURIComponent(latestRequest.docType)}`);
     const seenKey = `SIG:${person.id}:${latestRequest.docType}:${latestRequest.signer}:${latestRequest.validatedAt}`;
     state.signedDocumentsPopupSeenKeys.add(seenKey);
-    window.alert(`FOCUS SUR LE DOCUMENT DE ${docLabel} POUR ${personLabel}.`);
   }
+  showDataStatus("NOUVEAU DOCUMENT DETECTE (MODE SILENCIEUX)");
+  return;
 }
 
 function getArchiveSortValue(entry, key, resolveArchiveDisplayData) {
