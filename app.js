@@ -359,11 +359,118 @@ function getSupabaseRestEndpoint() {
   return `${baseUrl}/rest/v1/${SUPABASE_APP_STATE_TABLE}`;
 }
 
+function getSupabaseProjectRef() {
+  const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
+  if (!baseUrl) return "";
+  try {
+    return String(new URL(baseUrl).hostname || "").split(".")[0] || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function getSupabaseAuthStorageKey() {
+  const projectRef = getSupabaseProjectRef();
+  return projectRef ? `sb-${projectRef}-auth-token` : "";
+}
+
+function extractAccessTokenFromStoredSession(raw) {
+  if (!raw) return "";
+  if (typeof raw === "string") {
+    try {
+      return extractAccessTokenFromStoredSession(JSON.parse(raw));
+    } catch (error) {
+      return "";
+    }
+  }
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      const token = extractAccessTokenFromStoredSession(item);
+      if (token) return token;
+    }
+    return "";
+  }
+  if (typeof raw !== "object") return "";
+  const direct = String(raw.access_token || raw.accessToken || "").trim();
+  if (direct) return direct;
+  return (
+    extractAccessTokenFromStoredSession(raw.currentSession) ||
+    extractAccessTokenFromStoredSession(raw.session) ||
+    ""
+  );
+}
+
+function getStoredSupabaseAccessToken() {
+  try {
+    const storageKey = getSupabaseAuthStorageKey();
+    if (!storageKey) return "";
+    const raw = localStorage.getItem(storageKey);
+    return extractAccessTokenFromStoredSession(raw);
+  } catch (error) {
+    return "";
+  }
+}
+
+async function promptSupabaseLoginAndStoreSession() {
+  const email = String(window.prompt("Connexion requise\nEmail Supabase:") || "").trim();
+  if (!email) {
+    throw new Error("BACKEND_AUTH_REQUIRED");
+  }
+  const password = String(window.prompt("Mot de passe Supabase:") || "");
+  if (!password) {
+    throw new Error("BACKEND_AUTH_REQUIRED");
+  }
+  const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
+  const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
+  const response = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, password }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error("BACKEND_AUTH_REQUIRED");
+  }
+  const data = await response.json().catch(() => null);
+  const accessToken = String(data?.access_token || "").trim();
+  if (!accessToken) {
+    throw new Error("BACKEND_AUTH_REQUIRED");
+  }
+  try {
+    const storageKey = getSupabaseAuthStorageKey();
+    if (storageKey) {
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          currentSession: data,
+          expiresAt: data?.expires_at || 0,
+        })
+      );
+    }
+  } catch (error) {
+    // ignore storage failures
+  }
+  return accessToken;
+}
+
+async function getSupabaseUserAccessToken() {
+  const existing = getStoredSupabaseAccessToken();
+  if (existing) return existing;
+  return promptSupabaseLoginAndStoreSession();
+}
+
 async function callEdgeApi(pathname, options = {}) {
   const baseUrl = normalizeHttpUrl(SUPABASE_EDGE_API_URL);
   const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
   if (!baseUrl || !key) {
     throw new Error("EDGE_API_NOT_CONFIGURED");
+  }
+  const userToken = await getSupabaseUserAccessToken();
+  if (!userToken) {
+    throw new Error("BACKEND_AUTH_REQUIRED");
   }
   const normalizedPath = String(pathname || "").trim().replace(/^\/+/, "");
   const endpoint = `${baseUrl}/${normalizedPath}`;
@@ -371,7 +478,7 @@ async function callEdgeApi(pathname, options = {}) {
     method: options.method || "GET",
     headers: {
       apikey: key,
-      Authorization: `Bearer ${key}`,
+      Authorization: `Bearer ${userToken}`,
       "Content-Type": "application/json",
       ...(options.headers || {}),
     },
@@ -11225,12 +11332,14 @@ async function saveDataToFile(options = {}) {
       console.error(error);
       if (
         error?.code === "BACKEND_SAVE_REQUIRED" ||
+        error?.code === "BACKEND_AUTH_REQUIRED" ||
         String(error?.message || "") === "BACKEND_SAVE_REQUIRED" ||
+        String(error?.message || "") === "BACKEND_AUTH_REQUIRED" ||
         String(error?.message || "").includes("EDGE_API_NOT_CONFIGURED")
       ) {
-        showDataStatus("SAUVEGARDE BLOQUEE: BACKEND DISTANT REQUIS");
+        showDataStatus("SAUVEGARDE BLOQUEE: CONNEXION REQUISE");
         if (!silent) {
-          window.alert("SAUVEGARDE BLOQUEE : LE BACKEND DISTANT EST REQUIS POUR ECRIRE EN BASE.");
+          window.alert("SAUVEGARDE BLOQUEE : CONNEXION SUPABASE REQUISE.");
         }
         return;
       }
