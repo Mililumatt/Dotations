@@ -11430,7 +11430,12 @@ async function saveDataToFile(options = {}) {
       pulseSaveButtons();
     }
     if (reloadAfter) {
-      await reloadData(mode === "SUPABASE" ? "RELECTURE DES DONNEES SUPABASE..." : "RELECTURE DE data.json...");
+      try {
+        await reloadData(mode === "SUPABASE" ? "RELECTURE DES DONNEES SUPABASE..." : "RELECTURE DE data.json...");
+      } catch (reloadError) {
+        console.error(reloadError);
+        showDataStatus("SAUVEGARDE OK - RELECTURE IMPOSSIBLE");
+      }
     }
     } catch (error) {
       console.error(error);
