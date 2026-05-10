@@ -6576,6 +6576,29 @@ function getArchiveEntrySites(entry) {
   return normalizeSites(String(entry?.sites || "").split("/").map((value) => value.trim()));
 }
 
+function getLatestSignedArchivesPerPersonAndType(entries) {
+  const latestByKey = new Map();
+  (entries || []).forEach((entry) => {
+    if (getDocumentArchiveSignatureStatus(entry) !== "SIGNE") {
+      return;
+    }
+    const personKey = String(entry?.personId || "").trim() || `${normalizeText(entry?.nom || "")}|${normalizeText(entry?.prenom || "")}`;
+    const typeKey = normalizeText(entry?.typeDocument || "");
+    const key = `${personKey}|${typeKey}`;
+    const currentMs = Date.parse(String(entry?.dateArchivage || "")) || 0;
+    const existing = latestByKey.get(key);
+    if (!existing) {
+      latestByKey.set(key, entry);
+      return;
+    }
+    const existingMs = Date.parse(String(existing?.dateArchivage || "")) || 0;
+    if (currentMs >= existingMs) {
+      latestByKey.set(key, entry);
+    }
+  });
+  return Array.from(latestByKey.values());
+}
+
 function archiveEntryMatchesSite(entry, site) {
   const normalizedSite = normalizeText(site);
   if (!normalizedSite) {
@@ -6742,9 +6765,7 @@ function renderDocumentsArchivePage() {
       sites: getPersonSiteLabel(person) || entry?.sites || "-",
     };
   };
-  const signedArchives = (state.data?.documentsArchives || []).filter(
-    (entry) => getDocumentArchiveSignatureStatus(entry) === "SIGNE"
-  );
+  const signedArchives = getLatestSignedArchivesPerPersonAndType(state.data?.documentsArchives || []);
   const archiveMatchesLockedPerson = (entry) => {
     if (!lockedPersonId) {
       return true;
