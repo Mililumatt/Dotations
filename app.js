@@ -4024,14 +4024,6 @@ function bindEffectForm() {
     const vehiculeImmatriculation =
       typeEffet === "TELECOMMANDE URMET" ? normalizeText(formData.get("vehiculeImmatriculation")) : "";
 
-    const existingEffect =
-      mode === "edit"
-        ? (person.effetsConfies || []).find((entry) => String(entry?.id || "") === String(effectId))
-        : null;
-    const previousStatus = normalizeText(getEffectStatus(person, existingEffect || {}));
-    const nextStatus = normalizeText(getEffectStatus(person, effect));
-    const nextCause = getCauseFromManualStatus(manualStatus);
-    const preservedCause = normalizeEffectCause(existingEffect?.cause || existingEffect?.causeRemplacement);
     const effect = {
         id: effectId,
         typeEffet,
@@ -4043,11 +4035,20 @@ function bindEffectForm() {
       dateRemise: String(formData.get("dateRemise") || ""),
       dateRetour: String(formData.get("dateRetour") || ""),
       statutManuel: manualStatus === "CASSE" ? "DETRUIT" : manualStatus,
-      cause: preservedCause || nextCause,
+      cause: "",
       dateRemplacement,
       coutRemplacement,
       commentaire: normalizeText(formData.get("commentaire")),
     };
+    const existingEffect =
+      mode === "edit"
+        ? (person.effetsConfies || []).find((entry) => String(entry?.id || "") === String(effectId))
+        : null;
+    const previousStatus = normalizeText(getEffectStatus(person, existingEffect || {}));
+    const nextStatus = normalizeText(getEffectStatus(person, effect));
+    const nextCause = getCauseFromManualStatus(manualStatus);
+    const preservedCause = normalizeEffectCause(existingEffect?.cause || existingEffect?.causeRemplacement);
+    effect.cause = preservedCause || nextCause;
     if (usesReferenceCatalog && !effect.designation) {
       effect.designation = `EFFET ${effect.id}`;
     }
