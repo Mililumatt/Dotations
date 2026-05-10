@@ -3242,8 +3242,8 @@ function getArchiveSortValue(entry, key, resolveArchiveDisplayData) {
       return display.sites || "";
     case "statutSignature":
       return getDocumentArchiveSignatureStatus(entry) || "";
-    case "totalEffets":
-      return Number(entry?.totalEffets || 0);
+      case "totalEffets":
+        return Number(getArchiveDisplayedTotalEffets(entry) || 0);
     case "totalFacturable":
       return normalizeAmount(entry?.totalFacturable || 0);
     case "version":
@@ -6180,6 +6180,14 @@ function getDocumentArchiveVersionLabel(entry) {
   return "INITIAL";
 }
 
+function getArchiveDisplayedTotalEffets(entry) {
+  const archivedCount = Number(entry?.totalEffets || 0);
+  const personId = String(entry?.personId || "");
+  const person = (state.data?.personnes || []).find((currentPerson) => String(currentPerson?.id || "") === personId);
+  const currentCount = Array.isArray(person?.effetsConfies) ? person.effetsConfies.length : archivedCount;
+  return currentCount;
+}
+
 function getDocumentArchiveMode(person, docType) {
   if (!state.data || !person || normalizeText(docType) !== "ARRIVAL") {
     return "STANDARD";
@@ -6856,7 +6864,7 @@ function renderDocumentsArchivePage() {
         <td>${escapeHtml(formatTime(entry.dateArchivage) || "-")}</td>
         <td>${escapeHtml(display.sites)}</td>
         <td>${escapeHtml(getDocumentArchiveSignatureStatus(entry))}</td>
-        <td>${escapeHtml(String(entry.totalEffets ?? "-"))}</td>
+        <td>${escapeHtml(String(getArchiveDisplayedTotalEffets(entry)))}</td>
         <td>${formatAmountWithEuro(entry.totalFacturable || 0)}</td>
         <td>${escapeHtml(getDocumentArchiveVersionLabel(entry))}</td>
         <td class="archive-actions-cell">${openPath ? `<a class="archive-pdf-button" href="${escapeHtml(openPath)}" target="_blank" rel="noopener" aria-label="OUVRIR PDF"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>` : "-"} <button type="button" class="table-link js-delete-archive-row" data-archive-id="${escapeHtml(String(entry.id || ""))}">SUPPRIMER</button></td>
