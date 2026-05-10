@@ -4032,7 +4032,15 @@ function bindPersonSheetForm() {
     return person;
   };
 
-  form.onsubmit = (event) => {
+  const autoSaveAfterPersonChange = async (successLabel) => {
+    await saveDataToFile({
+      silent: true,
+      reloadAfter: true,
+      successText: successLabel || "SAUVEGARDE AUTOMATIQUE",
+    });
+  };
+
+  form.onsubmit = async (event) => {
     event.preventDefault();
     const person = getCurrentPerson();
     if (!person) {
@@ -4060,10 +4068,11 @@ function bindPersonSheetForm() {
     renderPage();
     renderPersonSheet(person.id);
     showActionStatus("update", `FICHE MISE A JOUR : ${person.nom} ${person.prenom}`);
+    await autoSaveAfterPersonChange("FICHE MISE A JOUR - SAUVEGARDE AUTOMATIQUE");
   };
 
   if (addButton) {
-    addButton.onclick = () => {
+    addButton.onclick = async () => {
       if (!state.data?.personnes) {
         showDataStatus("DONNEES NON CHARGEES");
         return;
@@ -4092,6 +4101,7 @@ function bindPersonSheetForm() {
       renderPage();
       renderPersonSheet(person.id);
       showActionStatus("create", `PERSONNE AJOUTEE : ${person.nom} ${person.prenom}`);
+      await autoSaveAfterPersonChange("PERSONNE AJOUTEE - SAUVEGARDE AUTOMATIQUE");
     };
   }
 
@@ -4470,7 +4480,7 @@ async function saveAfterEffectChangeWithAvenantAlert() {
   );
 }
 
-function deletePerson(personId) {
+async function deletePerson(personId) {
   if (!state.data?.personnes) {
     return;
   }
@@ -4496,6 +4506,11 @@ function deletePerson(personId) {
   markDirty();
   renderPage();
   showActionStatus("delete", `PERSONNE SUPPRIMEE : ${person.nom} ${person.prenom}`);
+  await saveDataToFile({
+    silent: true,
+    reloadAfter: true,
+    successText: "PERSONNE SUPPRIMEE - SAUVEGARDE AUTOMATIQUE",
+  });
 
   if (document.body.dataset.page === "person-sheet") {
     navigateWithAutoSave("fiche-personne.html");
