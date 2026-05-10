@@ -4200,7 +4200,7 @@ async function deleteEffect(personId, effectId) {
 async function saveAfterEffectChangeWithAvenantAlert() {
   await saveDataToFile({
     silent: true,
-    reloadAfter: false,
+    reloadAfter: true,
   });
   if (state.isDirty) {
     showDataStatus("SAUVEGARDE IMPOSSIBLE - ALERTE ANNULEE");
