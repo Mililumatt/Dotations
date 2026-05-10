@@ -11155,34 +11155,42 @@ async function saveDataToFile(options = {}) {
 
   try {
     const mode = getDataBackendMode();
-    const shouldMirrorToSupabase = mode === "LOCAL_API" && isSupabaseConfigured();
-    let saveStatusText = successText;
-    let saveAlertText = alertText || "data.json A ETE MIS A JOUR";
-    let saveSource = "LOCAL";
-    if (mode === "SUPABASE") {
-      await saveSupabaseStateData(state.data);
-      saveStatusText = "DONNEES SUPABASE SAUVEGARDEES";
-      saveAlertText = alertText || "DONNEES SUPABASE MISES A JOUR";
-      saveSource = "SUPABASE";
-    } else if (mode === "LOCAL_API") {
-      const response = await fetch("/api/save", {
-        method: "POST",
+      let saveStatusText = successText;
+      let saveAlertText = alertText || "data.json A ETE MIS A JOUR";
+      let saveSource = "LOCAL";
+      if (mode === "SUPABASE") {
+        // Phase 1 security: hosted UI must write through backend API, not direct DB.
+        const response = await fetch("/api/save", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(state.data),
+        });
+        if (!response.ok) {
+          const backendError = new Error("BACKEND_SAVE_REQUIRED");
+          backendError.code = "BACKEND_SAVE_REQUIRED";
+          throw backendError;
+        }
+        saveStatusText = "DONNEES SAUVEGARDEES VIA BACKEND";
+        saveAlertText = alertText || "DONNEES MISES A JOUR VIA BACKEND";
+        saveSource = "BACKEND";
+      } else if (mode === "LOCAL_API") {
+        const response = await fetch("/api/save", {
+          method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(state.data),
       });
 
-      if (!response.ok) {
-        throw new Error("Sauvegarde locale impossible");
-      }
-      if (shouldMirrorToSupabase) {
-        await saveSupabaseStateData(state.data);
-        saveStatusText = "DONNEES LOCALES ET SUPABASE SAUVEGARDEES";
-        saveAlertText = alertText || "DONNEES LOCALES ET SUPABASE MISES A JOUR";
-        saveSource = "LOCAL + SUPABASE";
-      }
-    } else {
+        if (!response.ok) {
+          throw new Error("Sauvegarde locale impossible");
+        }
+        saveStatusText = "DONNEES SAUVEGARDEES VIA BACKEND LOCAL";
+        saveAlertText = alertText || "DONNEES MISES A JOUR VIA BACKEND LOCAL";
+        saveSource = "BACKEND LOCAL";
+      } else {
       throw new Error("SUPABASE NON CONFIGURE");
     }
 
@@ -11211,9 +11219,16 @@ async function saveDataToFile(options = {}) {
     if (reloadAfter) {
       await reloadData(mode === "SUPABASE" ? "RELECTURE DES DONNEES SUPABASE..." : "RELECTURE DE data.json...");
     }
-  } catch (error) {
-    console.error(error);
-    if (isSaveConflictError(error)) {
+    } catch (error) {
+      console.error(error);
+      if (error?.code === "BACKEND_SAVE_REQUIRED" || String(error?.message || "") === "BACKEND_SAVE_REQUIRED") {
+        showDataStatus("SAUVEGARDE BLOQUEE: BACKEND /API/SAVE REQUIS");
+        if (!silent) {
+          window.alert("SAUVEGARDE BLOQUEE : LE BACKEND /API/SAVE EST REQUIS POUR ECRIRE EN BASE.");
+        }
+        return;
+      }
+      if (isSaveConflictError(error)) {
       if (reloadOnConflict && (getDataBackendMode() === "SUPABASE" || isSupabaseConfigured())) {
         try {
           await reloadData("CONFLIT DETECTE - RECHARGEMENT DES DONNEES DISTANTES...");
