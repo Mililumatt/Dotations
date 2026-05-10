@@ -6159,7 +6159,25 @@ function getDocumentArchiveEntryMode(entry) {
 }
 
 function getDocumentArchiveVersionLabel(entry) {
-  return getDocumentArchiveEntryMode(entry) === "COMPLEMENTAIRE" ? "AVENANT" : "INITIAL";
+  if (getDocumentArchiveEntryMode(entry) === "COMPLEMENTAIRE") {
+    return "AVENANT";
+  }
+
+  // Strict rule: any change on ARRIVEE document makes it an AVENANT.
+  if (normalizeText(entry?.typeDocument) === "ARRIVEE") {
+    const personId = String(entry?.personId || "");
+    const person = (state.data?.personnes || []).find((currentPerson) => String(currentPerson?.id || "") === personId);
+    if (!person) {
+      return "INITIAL";
+    }
+    const currentFingerprint = getDocumentFingerprint(person, "arrival");
+    const archivedFingerprint = String(entry?.fingerprint || "");
+    if (currentFingerprint && archivedFingerprint && currentFingerprint !== archivedFingerprint) {
+      return "AVENANT";
+    }
+  }
+
+  return "INITIAL";
 }
 
 function getDocumentArchiveMode(person, docType) {
