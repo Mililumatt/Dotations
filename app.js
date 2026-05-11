@@ -561,17 +561,23 @@ async function logAdminLoginEvent(accessToken, sessionPayload) {
     ).trim();
     if (!userId) return;
     const role = await fetchUserRoleFromProfile(accessToken, userId);
-    await callEdgeApi("admin/login-events", {
+    const baseUrl = normalizeHttpUrl(SUPABASE_EDGE_API_URL);
+    const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
+    if (!baseUrl || !key || !accessToken) return;
+    await fetch(`${baseUrl}/admin/login-events`, {
       method: "POST",
       headers: {
+        apikey: key,
         Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         user_id: userId,
         email,
         role,
       }),
-    });
+      cache: "no-store",
+    }).catch(() => null);
   } catch (error) {
     // login log is non-blocking
   }
