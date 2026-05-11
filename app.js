@@ -53,6 +53,7 @@ const state = {
   stockHighlightKey: "",
   isReferencePageResetting: false,
   currentUserRoleLabel: "",
+  adminCreateUserInFlight: false,
 };
 
 const WORKING_DATA_KEY = "dashboard-working-data";
@@ -668,6 +669,60 @@ function renderRoleBadge() {
   }
   const label = state.currentUserRoleLabel || "LECTURE";
   badge.textContent = `DROIT : ${label}`;
+  const canManageUsers = label === "ADMIN";
+  badge.style.cursor = canManageUsers ? "pointer" : "default";
+  badge.title = canManageUsers
+    ? "Admin: cliquer pour creer un utilisateur"
+    : "Droit utilisateur";
+  badge.onclick = canManageUsers ? openAdminCreateUserFlow : null;
+}
+
+function normalizeRequestedUserRole(role) {
+  const value = String(role || "").trim().toLowerCase();
+  if (value === "admin") return "admin";
+  if (value === "editor" || value === "edition") return "editor";
+  return "viewer";
+}
+
+async function openAdminCreateUserFlow() {
+  if (state.currentUserRoleLabel !== "ADMIN") {
+    window.alert("ACCES REFUSE : COMPTE ADMIN REQUIS.");
+    return;
+  }
+  if (state.adminCreateUserInFlight) {
+    return;
+  }
+  const email = String(window.prompt("NOUVEL UTILISATEUR - EMAIL :", "") || "").trim();
+  if (!email) return;
+  const password = String(window.prompt("MOT DE PASSE TEMPORAIRE :", "") || "");
+  if (!password) return;
+  const roleInput = String(
+    window.prompt("ROLE (viewer / editor / admin) :", "viewer") || ""
+  ).trim();
+  const role = normalizeRequestedUserRole(roleInput);
+  state.adminCreateUserInFlight = true;
+  showDataStatus("CREATION UTILISATEUR EN COURS...");
+  try {
+    const response = await callEdgeApi("admin/users", {
+      method: "POST",
+      body: JSON.stringify({ email, password, role }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    const createdEmail = String(payload?.email || email).trim();
+    const createdRole = String(payload?.role || role).trim().toLowerCase();
+    showDataStatus(`UTILISATEUR CREE : ${createdEmail} (${mapRoleToFrenchLabel(createdRole)})`);
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (message.includes("EDGE_API_FAILED:404")) {
+      window.alert("API ADMIN ABSENTE : AJOUTER /admin/users DANS dotations-api.");
+      showDataStatus("CREATION UTILISATEUR IMPOSSIBLE : API ADMIN ABSENTE");
+    } else {
+      window.alert(`CREATION UTILISATEUR IMPOSSIBLE : ${message || "ERREUR"}`);
+      showDataStatus("CREATION UTILISATEUR IMPOSSIBLE");
+    }
+  } finally {
+    state.adminCreateUserInFlight = false;
+  }
 }
 
 async function refreshCurrentUserRoleLabel() {
