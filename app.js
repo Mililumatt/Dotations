@@ -1677,6 +1677,24 @@ function isSaveConflictError(error) {
   return String(error?.code || "") === "APP_STATE_CONFLICT";
 }
 
+function isSoftDeletedEntity(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  return entry.is_deleted === true || entry.isDeleted === true;
+}
+
+function markSoftDeletedEntity(entry = {}) {
+  const nowIso = new Date().toISOString();
+  return {
+    ...(entry || {}),
+    is_deleted: true,
+    isDeleted: true,
+    deleted_at: nowIso,
+    deletedAt: nowIso,
+    updated_at: nowIso,
+    updatedAt: nowIso,
+  };
+}
+
 async function saveSupabaseStateData(payload) {
   if (!Number.isFinite(Number(state.supabaseRevision))) {
     await fetchSupabaseStateData();
@@ -2884,6 +2902,8 @@ function migrateDataModel() {
 
   cleanupExpiredMobileSignatureRequests();
 
+  state.data.personnes = (state.data.personnes || []).filter((person) => !isSoftDeletedEntity(person));
+
   (state.data.personnes || []).forEach((person) => {
     if (!person.representants || typeof person.representants !== "object") {
       person.representants = {};
@@ -2970,6 +2990,7 @@ function migrateDataModel() {
     if (!Array.isArray(person.effetsConfies)) {
       person.effetsConfies = [];
     }
+    person.effetsConfies = person.effetsConfies.filter((effect) => !isSoftDeletedEntity(effect));
 
     person.effetsConfies.forEach((effect) => {
       effect.typeEffet = normalizeText(effect.typeEffet);
@@ -5133,7 +5154,7 @@ async function deleteEffect(personId, effectId) {
 
   const effect = person.effetsConfies.find((entry) => entry.id === effectId);
   const confirmDelete = window.confirm(
-    `SUPPRIMER DEFINITIVEMENT CET EFFET${effect?.designation ? ` : ${effect.designation}` : effect?.numeroIdentification ? ` : ${effect.numeroIdentification}` : ""} ?`
+    `ARCHIVER CET EFFET${effect?.designation ? ` : ${effect.designation}` : effect?.numeroIdentification ? ` : ${effect.numeroIdentification}` : ""} ?`
   );
   if (!confirmDelete) {
     return;
@@ -5143,7 +5164,10 @@ async function deleteEffect(personId, effectId) {
   if (effect) {
     addAutoStockMovement(person, effect, "ENTREE", "SUPPRESSION_DOTATION");
   }
-  person.effetsConfies = person.effetsConfies.filter((effect) => effect.id !== effectId);
+  const effectIndex = person.effetsConfies.findIndex((entry) => entry.id === effectId);
+  if (effectIndex >= 0) {
+    person.effetsConfies[effectIndex] = markSoftDeletedEntity(person.effetsConfies[effectIndex]);
+  }
   markEffectTableFlash("delete", personId);
   if (state.editingEffectId === effectId) {
     state.editingEffectId = "";
@@ -5152,7 +5176,7 @@ async function deleteEffect(personId, effectId) {
   markDirty();
   renderPage();
   renderPersonSheet(personId);
-  showActionStatus("delete", `EFFET SUPPRIME : ${effectId}`);
+  showActionStatus("delete", `EFFET ARCHIVE : ${effectId}`);
   await saveAfterEffectChangeWithAvenantAlert();
 }
 
@@ -5181,25 +5205,28 @@ async function deletePerson(personId) {
   }
 
   const confirmDelete = window.confirm(
-    `SUPPRIMER DEFINITIVEMENT ${person.nom} ${person.prenom} ?`
+    `ARCHIVER ${person.nom} ${person.prenom} ?`
   );
   if (!confirmDelete) {
     return;
   }
 
   pushUndoSnapshot("SUPPRESSION PERSONNE");
-  state.data.personnes = state.data.personnes.filter((entry) => entry.id !== personId);
+  const personIndex = state.data.personnes.findIndex((entry) => entry.id === personId);
+  if (personIndex >= 0) {
+    state.data.personnes[personIndex] = markSoftDeletedEntity(state.data.personnes[personIndex]);
+  }
   if (getCurrentPersonId() === personId) {
     setCurrentPersonId("");
   }
   state.editingEffectId = "";
   markDirty();
   renderPage();
-  showActionStatus("delete", `PERSONNE SUPPRIMEE : ${person.nom} ${person.prenom}`);
+  showActionStatus("delete", `PERSONNE ARCHIVEE : ${person.nom} ${person.prenom}`);
   await saveDataToFile({
     silent: true,
     reloadAfter: true,
-    successText: "PERSONNE SUPPRIMEE - SAUVEGARDE AUTOMATIQUE",
+    successText: "PERSONNE ARCHIVEE - SAUVEGARDE AUTOMATIQUE",
   });
 
   if (document.body.dataset.page === "person-sheet") {

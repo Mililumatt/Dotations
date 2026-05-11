@@ -202,6 +202,26 @@ function toString(value) {
   return value == null ? "" : String(value);
 }
 
+function isSoftDeleted(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  return entry.is_deleted === true || entry.isDeleted === true;
+}
+
+function markSoftDeleted(entry = {}, deletedBy = "") {
+  const nowIso = new Date().toISOString();
+  return {
+    ...(entry || {}),
+    is_deleted: true,
+    isDeleted: true,
+    deleted_at: nowIso,
+    deletedAt: nowIso,
+    updated_at: nowIso,
+    updatedAt: nowIso,
+    updated_by: deletedBy || null,
+    updatedBy: deletedBy || null,
+  };
+}
+
 function ensureValidDocType(value) {
   const docType = toString(value).trim();
   if (!DOC_TYPES.has(docType)) {
@@ -714,14 +734,14 @@ const makeEntity = (table) => ({
     const { column, ascending } = normalizeOrder(order);
     const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(Number(limit), 1000)) : 200;
     return runQuery(
-      supabase.from(table).select("*").order(column, { ascending }).limit(safeLimit),
+      supabase.from(table).select("*").eq("is_deleted", false).order(column, { ascending }).limit(safeLimit),
       `Lecture ${table} impossible`
     );
   },
   async filter(filters = {}) {
     await requireAuthenticated(`Filtre ${table}`);
     const safeFilters = sanitizeFilterObject(table, filters);
-    let query = supabase.from(table).select("*");
+    let query = supabase.from(table).select("*").eq("is_deleted", false);
     Object.entries(safeFilters).forEach(([key, value]) => {
       query = query.eq(key, value);
     });
@@ -745,10 +765,14 @@ const makeEntity = (table) => ({
   },
   async delete(id) {
     await requireRole(`Suppression ${table}`, DELETE_ROLES);
-    const { error } = await supabase.from(table).delete().eq("id", id);
+    const { error } = await supabase
+      .from(table)
+      .update({ is_deleted: true, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("is_deleted", false);
     if (error) {
       const details = [error.message, error.details, error.hint].filter(Boolean).join(" | ");
-      throw new Error(`Suppression ${table} impossible: ${details || "Erreur inconnue"}`);
+      throw new Error(`Soft delete ${table} impossible: ${details || "Erreur inconnue"}`);
     }
     return { success: true };
   },
@@ -762,12 +786,12 @@ export const db = {
   Person: {
     async list(order = "-created_at", limit = 200) {
       const legacy = await tryLegacyData();
-      if (legacy) return sortAndLimit(legacy.persons, order, limit);
+      if (legacy) return sortAndLimit(legacy.persons.filter((p) => !isSoftDeleted(p)), order, limit);
       return sqlPerson.list(order, limit);
     },
     async filter(filters = {}) {
       const legacy = await tryLegacyData();
-      if (legacy) return legacy.persons.filter((p) => matchesFilters(p, filters));
+      if (legacy) return legacy.persons.filter((p) => !isSoftDeleted(p) && matchesFilters(p, filters));
       return sqlPerson.filter(filters);
     },
     async create(data) {
@@ -828,14 +852,14 @@ export const db = {
       return sqlPerson.update(id, normalizedData);
     },
     async delete(id) {
-      await requireRole("Suppression personne", DELETE_ROLES);
+      const ctx = await requireRole("Suppression personne", DELETE_ROLES);
       ensureWritable('suppression personne');
       const row = await getAppStateRow();
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes)) {
-        const before = payload.personnes.length;
-        payload.personnes = payload.personnes.filter((p) => toString(p?.id) !== toString(id));
-        if (payload.personnes.length !== before) {
+        const index = payload.personnes.findIndex((p) => toString(p?.id) === toString(id));
+        if (index >= 0) {
+          payload.personnes[index] = markSoftDeleted(payload.personnes[index], ctx?.userId || "");
           await saveAppStatePayload(payload, row?.revision);
           return { success: true };
         }
@@ -847,12 +871,12 @@ export const db = {
   Effet: {
     async list(order = "-created_at", limit = 200) {
       const legacy = await tryLegacyData();
-      if (legacy) return sortAndLimit(legacy.effets, order, limit);
+      if (legacy) return sortAndLimit(legacy.effets.filter((e) => !isSoftDeleted(e)), order, limit);
       return sqlEffet.list(order, limit);
     },
     async filter(filters = {}) {
       const legacy = await tryLegacyData();
-      if (legacy) return legacy.effets.filter((e) => matchesFilters(e, filters));
+      if (legacy) return legacy.effets.filter((e) => !isSoftDeleted(e) && matchesFilters(e, filters));
       return sqlEffet.filter(filters);
     },
     async create(data) {
@@ -893,15 +917,17 @@ export const db = {
       return sqlEffet.update(id, data);
     },
     async delete(id) {
-      await requireRole("Suppression effet", DELETE_ROLES);
+      const ctx = await requireRole("Suppression effet", DELETE_ROLES);
       ensureWritable('suppression effet');
       const row = await getAppStateRow();
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes)) {
         for (const person of payload.personnes) {
-          const before = ensureArray(person?.effetsConfies).length;
-          person.effetsConfies = ensureArray(person?.effetsConfies).filter((e) => toString(e?.id) !== toString(id));
-          if (person.effetsConfies.length !== before) {
+          const list = ensureArray(person?.effetsConfies);
+          const index = list.findIndex((e) => toString(e?.id) === toString(id));
+          if (index >= 0) {
+            list[index] = markSoftDeleted(list[index], ctx?.userId || "");
+            person.effetsConfies = list;
             await saveAppStatePayload(payload, row?.revision);
             return { success: true };
           }
