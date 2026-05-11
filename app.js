@@ -3166,6 +3166,40 @@ function migrateDataModel() {
     state.data.listes.referencesEffets = [];
   }
 
+  const legacyRefs = Array.isArray(state.data.referencesEffets)
+    ? state.data.referencesEffets
+    : Array.isArray(state.data.references)
+      ? state.data.references
+      : [];
+  if (state.data.listes.referencesEffets.length === 0 && legacyRefs.length > 0) {
+    const existingIds = new Set(state.data.listes.referencesEffets.map((reference) => String(reference?.id || "")));
+    legacyRefs.forEach((reference) => {
+      if (!reference) {
+        return;
+      }
+      const normalizedId = String(reference.id || "").trim();
+      if (!normalizedId) {
+        return;
+      }
+      if (existingIds.has(normalizedId)) {
+        return;
+      }
+      state.data.listes.referencesEffets.push({
+        id: normalizedId,
+        site: String(reference.site || ""),
+        sitesAffectation: Array.isArray(reference.sitesAffectation)
+          ? reference.sitesAffectation
+          : reference.site
+            ? [reference.site]
+            : [],
+        typeEffet: normalizeText(reference.typeEffet),
+        designation: normalizeText(reference.designation),
+        active: reference.active !== false,
+      });
+      existingIds.add(normalizedId);
+    });
+  }
+
   state.data.listes.referencesEffets = state.data.listes.referencesEffets
     .map((reference) => ({
       ...reference,
@@ -3188,7 +3222,10 @@ function migrateDataModel() {
       };
     });
 
-  ensureCatalogReferencesFromAssignedEffects();
+  const referencesWereReconciled = ensureCatalogReferencesFromAssignedEffects();
+  if (referencesWereReconciled) {
+    markDirty();
+  }
 
   sortListValues(state.data.listes.typesPersonnel);
   sortListValues(state.data.listes.sites);
@@ -10487,8 +10524,9 @@ function getCatalogEffectReferenceSite(person, effect) {
 
 function ensureCatalogReferencesFromAssignedEffects() {
   if (!state.data?.listes?.referencesEffets || !Array.isArray(state.data?.personnes)) {
-    return;
+    return false;
   }
+  let hasChanged = false;
 
   for (const person of state.data.personnes) {
     const effects = Array.isArray(person?.effetsConfies) ? person.effetsConfies : [];
@@ -10508,6 +10546,9 @@ function ensureCatalogReferencesFromAssignedEffects() {
       const typeEffet = normalizedEffectType;
       const site = getCatalogEffectReferenceSite(person, effect);
       const designation = normalizeReferenceDesignationByType(typeEffet, effect?.designation || "");
+      const previousReferenceId = String(effect.referenceEffetId || "");
+      const previousSiteReference = String(effect.siteReference || "");
+      const previousDesignation = String(effect.designation || "");
 
       let reference =
         (state.data.listes.referencesEffets || []).find(
@@ -10529,13 +10570,22 @@ function ensureCatalogReferencesFromAssignedEffects() {
         state.data.listes.referencesEffets.push(reference);
       }
 
-      effect.referenceEffetId = String(reference.id || "");
-      effect.siteReference = site;
-      if (!effect.designation) {
+      const nextReferenceId = String(reference.id || "");
+      if (previousReferenceId !== nextReferenceId) {
+        hasChanged = true;
+        effect.referenceEffetId = nextReferenceId;
+      }
+      if (previousSiteReference !== site) {
+        hasChanged = true;
+        effect.siteReference = site;
+      }
+      if (!previousDesignation && designation) {
+        hasChanged = true;
         effect.designation = designation;
       }
     }
   }
+  return hasChanged;
 }
 
 function findReferenceById(referenceId) {
