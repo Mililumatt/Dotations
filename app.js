@@ -3001,7 +3001,7 @@ function migrateDataModel() {
     .map((entry, index) => ({
       id: String(entry.id || `STKM${String(index + 1).padStart(4, "0")}`),
       typeEffet: normalizeText(entry.typeEffet),
-      site: normalizeText(entry.site),
+      site: normalizeText(entry.typeEffet) === "CARTE TURBOSELF" ? ALL_SITES_VALUE : normalizeText(entry.site),
       referenceEffetId: String(entry.referenceEffetId || ""),
       designation: normalizeText(entry.designation),
       action: normalizeText(entry.action),
@@ -11296,7 +11296,9 @@ function addAutoStockMovement(person, effect, action, motif, commentaire = "") {
   if (!typeEffet) {
     return;
   }
-  const site = normalizeText(effect?.siteReference || referenceSiteFromEffect(effect) || getPersonSiteLabel(person) || "SANS SITE");
+  const site = typeEffet === "CARTE TURBOSELF"
+    ? ALL_SITES_VALUE
+    : normalizeText(effect?.siteReference || referenceSiteFromEffect(effect) || getPersonSiteLabel(person) || "SANS SITE");
   const designation = getStockGroupingDesignation(typeEffet, getEffectDisplayDesignation(effect));
   if (!designation) {
     return;
