@@ -86,6 +86,8 @@ const SIGNED_POPUP_SEEN_STORAGE_KEY = "dotations-signed-popup-seen";
 const PENDING_PDF_REMINDER_SNOOZE_KEY = "dotations-pending-pdf-reminder-snooze";
 const PENDING_PDF_TASK_STORAGE_KEY = "dotations-pending-pdf-task";
 const LOGIN_EVENT_MARKER_KEY = "dotations-login-event-sent";
+const PASSWORD_RESET_COOLDOWN_KEY = "dotations-reset-password-last-sent-at";
+const PASSWORD_RESET_COOLDOWN_MS = 70 * 1000;
 const PDF_LAYOUT_VERSION = "2026-03-14-exit-layout-fix-3";
 const PDF_FORMAT_LOCK = "v1";
 let pdfModalCleanupBound = false;
@@ -528,6 +530,15 @@ async function requestSupabasePasswordReset(email) {
   if (!safeEmail) {
     throw new Error("EMAIL_OBLIGATOIRE");
   }
+  const now = Date.now();
+  const lastSentAt = Number.parseInt(String(localStorage.getItem(PASSWORD_RESET_COOLDOWN_KEY) || ""), 10);
+  if (Number.isFinite(lastSentAt)) {
+    const remainingMs = PASSWORD_RESET_COOLDOWN_MS - (now - lastSentAt);
+    if (remainingMs > 0) {
+      const remainingSec = Math.ceil(remainingMs / 1000);
+      throw new Error(`RESET_MDP_COOLDOWN:${remainingSec}`);
+    }
+  }
   const resetRedirectTo = "https://nextboard-dev.github.io/Dotations/index.html?view=desktop";
   const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
   const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
@@ -547,6 +558,7 @@ async function requestSupabasePasswordReset(email) {
     const text = await response.text().catch(() => "");
     throw new Error(`RESET_MDP_ECHEC:${response.status}:${text}`);
   }
+  localStorage.setItem(PASSWORD_RESET_COOLDOWN_KEY, String(now));
 }
 
 async function fetchUserRoleFromProfile(accessToken, userId) {
@@ -693,7 +705,10 @@ function promptSupabaseCredentialsForm() {
         statusNode.style.color = "#2f5e43";
       } catch (error) {
         const message = String(error?.message || "");
-        if (message.includes("429")) {
+        if (message.startsWith("RESET_MDP_COOLDOWN:")) {
+          const seconds = Number.parseInt(message.split(":")[1] || "60", 10) || 60;
+          statusNode.textContent = `Attends ${seconds}s avant de recommencer.`;
+        } else if (message.includes("429")) {
           statusNode.textContent = "Trop de demandes. Réessayez dans 1 heure.";
         } else {
           statusNode.textContent = "Échec envoi email de réinitialisation.";

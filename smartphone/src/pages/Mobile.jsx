@@ -8,6 +8,8 @@ import { getCurrentSession, onAuthStateChange, supabase } from "@/lib/supabaseCl
 
 const MOBILE_WINDOW_SESSION_KEY = "dotations_mobile_window_open";
 const MOBILE_BRAND_LOGO_URL = "https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/bandeau-nextboard-sidebar-detoure.png";
+const MOBILE_PASSWORD_RESET_COOLDOWN_KEY = "dotations_mobile_reset_password_last_sent_at";
+const MOBILE_PASSWORD_RESET_COOLDOWN_MS = 70 * 1000;
 
 const TABS = [
   { id: "overview", label: "VUE D'ENSEMBLE", icon: "🏠" },
@@ -277,6 +279,19 @@ export default function Mobile() {
       setLoginError("Saisir votre email puis cliquer 'Mot de passe oublié'.");
       return;
     }
+    const now = Date.now();
+    const lastSentAt = Number.parseInt(
+      String(localStorage.getItem(MOBILE_PASSWORD_RESET_COOLDOWN_KEY) || ""),
+      10
+    );
+    if (Number.isFinite(lastSentAt)) {
+      const remainingMs = MOBILE_PASSWORD_RESET_COOLDOWN_MS - (now - lastSentAt);
+      if (remainingMs > 0) {
+        const remainingSec = Math.ceil(remainingMs / 1000);
+        setLoginError(`Attends ${remainingSec}s avant de recommencer.`);
+        return;
+      }
+    }
     setLoginError("");
     setResetBusy(true);
     try {
@@ -284,6 +299,7 @@ export default function Mobile() {
         redirectTo: resetRedirectTo,
       });
       if (error) throw error;
+      localStorage.setItem(MOBILE_PASSWORD_RESET_COOLDOWN_KEY, String(now));
       setLoginError("Email de réinitialisation envoyé.");
     } catch (error) {
       const message = String(error?.message || "");
