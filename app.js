@@ -7301,24 +7301,50 @@ function getDocumentArchiveSignatureStatus(entry) {
   const person = (state.data?.personnes || []).find((currentPerson) =>
     String(currentPerson?.id || "").trim() === personId
   );
-  if (normalizedStatus !== "SIGNE" || !personId || !person || !normalizedType) {
+  if (normalizedStatus === "SIGNE") {
+    return "SIGNE";
+  }
+  if (
+    normalizedStatus === "ATTENTE DE GENERATION" ||
+    normalizedStatus === "EN ATTENTE DE SIGNATURE"
+  ) {
     return normalizedStatus;
+  }
+  if (!personId || !person || !normalizedType) {
+    return normalizedStatus || "EN ATTENTE";
   }
 
   const signatureType = normalizedType === "SORTIE" ? "exit" : "arrival";
   const isSigned = isDocumentFullySigned(person, signatureType);
-  return isSigned ? "SIGNE" : "EN ATTENTE";
+  return isSigned ? "SIGNE" : "EN ATTENTE DE SIGNATURE";
 }
 
 function getDocumentArchiveWorkflowStatus(entry, person) {
   const status = getDocumentArchiveSignatureStatus(entry);
-  if (status !== "SIGNE") {
-    const rawType = normalizeText(entry?.typeDocument);
-    const docType = rawType === "SORTIE" ? "exit" : "arrival";
-    return isDocumentFullySigned(person, docType) ? "ATTENTE DE GENERATION" : "EN ATTENTE DE SIGNATURE";
+  if (status === "SIGNE") {
+    return "SIGNE";
   }
+  if (status === "ATTENTE DE GENERATION" || status === "EN ATTENTE DE SIGNATURE") {
+    return status;
+  }
+  const rawType = normalizeText(entry?.typeDocument);
+  const docType = rawType === "SORTIE" ? "exit" : "arrival";
+  return isDocumentFullySigned(person, docType) ? "ATTENTE DE GENERATION" : "EN ATTENTE DE SIGNATURE";
+}
 
-  return "SIGNE";
+function isHostedPdfDocumentPath(pathValue) {
+  const value = String(pathValue || "").trim();
+  if (!value) return false;
+  try {
+    const parsed = new URL(value, window.location.href);
+    const pathname = String(parsed.pathname || "").toLowerCase();
+    if (parsed.origin !== window.location.origin) {
+      return false;
+    }
+    return /document-(arrivee|sortie)\.html$/i.test(pathname);
+  } catch (error) {
+    return false;
+  }
 }
 
 function getDocumentArchiveStatusCellMarkup(status) {
@@ -8202,8 +8228,10 @@ function renderDocumentsArchivePage() {
           entry?.__workflowStatus || getDocumentArchiveWorkflowStatus(entry, personsById.get(String(entry?.personId || "")))
         );
         const hasPdf = Boolean(openPath);
+        const openInNewTab = hasPdf && !isHostedPdfDocumentPath(openPath);
+        const targetAttributes = openInNewTab ? 'target="_blank" rel="noopener"' : "";
         const openButton = hasPdf
-          ? `<a class="archive-pdf-button" href="${escapeHtml(openPath)}" target="_blank" rel="noopener" aria-label="OUVRIR PDF"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>`
+          ? `<a class="archive-pdf-button" href="${escapeHtml(openPath)}" ${targetAttributes} aria-label="OUVRIR PDF"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>`
           : "-";
         const deleteButton = hasPdf && !entry?.__isWorkflowSynthetic
           ? `<button type="button" class="table-link js-delete-archive-row" data-archive-id="${escapeHtml(String(entry.id || ""))}">SUPPRIMER</button>`
