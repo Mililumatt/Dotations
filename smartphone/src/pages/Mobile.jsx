@@ -344,6 +344,23 @@ export default function Mobile() {
           <div style={{ fontSize: 9, color: "#213b48", letterSpacing: "0.08em", fontWeight: 700 }}>DROIT : {roleLabel}</div>
         </div>
         <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+          <span
+            style={{
+              height: 26,
+              padding: "0 8px",
+              borderRadius: 7,
+              border: "1px solid rgba(63,97,112,0.3)",
+              background: "rgba(63,97,112,0.12)",
+              color: "#213b48",
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              display: "inline-flex",
+              alignItems: "center",
+            }}
+          >
+            {roleLabel}
+          </span>
           <button
             type="button"
             style={{
