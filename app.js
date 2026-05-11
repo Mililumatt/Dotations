@@ -831,6 +831,7 @@ async function openAdminUsersModal() {
       <div id="admin-users-list-wrap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:10px;"></div>
       <div style="margin:8px 0 6px;font-size:12px;font-weight:700;color:#1d3440;">JOURNAL DES CONNEXIONS</div>
       <div id="admin-logins-status" style="font-size:12px;color:#355464;margin-bottom:8px;"></div>
+      <div id="admin-logins-heatmap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:auto;margin-bottom:8px;"></div>
       <div id="admin-logins-summary" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:8px;"></div>
       <div id="admin-logins-list-wrap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:10px;max-height:210px;overflow-y:auto;"></div>
       <form id="admin-users-create-form" style="display:grid;grid-template-columns:2fr 1.4fr 1fr auto;gap:8px;align-items:end;">
@@ -858,6 +859,7 @@ async function openAdminUsersModal() {
   const dragHandle = backdrop.querySelector("#admin-users-drag-handle");
   const statusNode = backdrop.querySelector("#admin-users-status");
   const loginsStatusNode = backdrop.querySelector("#admin-logins-status");
+  const loginsHeatmapNode = backdrop.querySelector("#admin-logins-heatmap");
   const loginsSummaryNode = backdrop.querySelector("#admin-logins-summary");
   const loginsListWrap = backdrop.querySelector("#admin-logins-list-wrap");
   const listWrap = backdrop.querySelector("#admin-users-list-wrap");
@@ -993,13 +995,23 @@ async function openAdminUsersModal() {
     }));
   };
   const renderLoginEvents = () => {
-    if (!loginsSummaryNode || !loginsListWrap) return;
+    if (!loginsSummaryNode || !loginsListWrap || !loginsHeatmapNode) return;
     if (!Array.isArray(loginEvents) || !loginEvents.length) {
+      loginsHeatmapNode.innerHTML =
+        `<div style="padding:10px;font-size:12px;color:#4a6170;text-align:center;">AUCUN HISTORIQUE</div>`;
       loginsSummaryNode.innerHTML =
         `<div style="padding:10px;font-size:12px;color:#4a6170;text-align:center;">AUCUN EVENEMENT</div>`;
       loginsListWrap.innerHTML =
         `<div style="padding:10px;font-size:12px;color:#4a6170;text-align:center;">AUCUN DETAIL</div>`;
       return;
+    }
+    const recentDays = 30;
+    const dayKeys = [];
+    for (let offset = recentDays - 1; offset >= 0; offset -= 1) {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - offset);
+      dayKeys.push(d.toISOString().slice(0, 10));
     }
     const byEmail = new Map();
     loginEvents.forEach((event) => {
@@ -1007,8 +1019,38 @@ async function openAdminUsersModal() {
       const prev = byEmail.get(key) || { email: key, total: 0, role: event.role };
       prev.total += Number(event.count || 1);
       prev.role = event.role || prev.role;
+      const day = String(event.at || "").slice(0, 10);
+      if (!prev.byDay) prev.byDay = {};
+      prev.byDay[day] = (Number(prev.byDay[day] || 0) + Number(event.count || 1));
       byEmail.set(key, prev);
     });
+    const heatRows = Array.from(byEmail.values())
+      .sort((a, b) => b.total - a.total || String(a.email).localeCompare(String(b.email), "fr"))
+      .map((row) => {
+        const cells = dayKeys
+          .map((day) => {
+            const value = Number(row.byDay?.[day] || 0);
+            let bg = "#edf2f5";
+            if (value >= 5) bg = "#208f5a";
+            else if (value >= 3) bg = "#39aa70";
+            else if (value >= 2) bg = "#79c89d";
+            else if (value >= 1) bg = "#b8e3ca";
+            return `<span title="${escapeHtml(day)} : ${value}" style="display:inline-block;width:11px;height:11px;border-radius:3px;background:${bg};border:1px solid rgba(55,85,101,0.18);"></span>`;
+          })
+          .join("");
+        return `<div style="display:grid;grid-template-columns:220px 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid #e2ebef;">
+          <div style="font-size:11px;color:#1d3440;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(row.email)}</div>
+          <div style="display:grid;grid-template-columns:repeat(${recentDays}, 11px);gap:3px;min-width:max-content;">${cells}</div>
+          <div style="font-size:11px;color:#3d5865;font-weight:700;">${escapeHtml(String(row.total))}</div>
+        </div>`;
+      })
+      .join("");
+    loginsHeatmapNode.innerHTML = `
+      <div style="padding:6px 8px;background:#f3f7f9;border-bottom:1px solid #e2ebef;font-size:11px;color:#3d5865;font-weight:700;">
+        ACTIVITE CONNEXIONS - 30 JOURS
+      </div>
+      <div>${heatRows}</div>
+    `;
     const summaryRows = Array.from(byEmail.values())
       .sort((a, b) => b.total - a.total || String(a.email).localeCompare(String(b.email), "fr"))
       .map((row) => {
