@@ -864,6 +864,24 @@ function toLocalDayKey(value) {
   return `${y}-${m}-${d}`;
 }
 
+const ADMIN_ARCHIVED_USERS_KEY = "dotations_admin_archived_users";
+function getAdminArchivedUserIds() {
+  try {
+    const raw = window.localStorage.getItem(ADMIN_ARCHIVED_USERS_KEY);
+    const list = JSON.parse(raw || "[]");
+    if (!Array.isArray(list)) return [];
+    return list.map((id) => String(id || "").trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+function setAdminArchivedUserIds(ids = []) {
+  try {
+    const next = Array.from(new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean)));
+    window.localStorage.setItem(ADMIN_ARCHIVED_USERS_KEY, JSON.stringify(next));
+  } catch {}
+}
+
 async function openAdminUsersModal() {
   if (state.currentUserRoleLabel !== "ADMIN") {
     window.alert("ACCES REFUSE : COMPTE ADMIN REQUIS.");
@@ -893,6 +911,7 @@ async function openAdminUsersModal() {
       </div>
       <div id="admin-users-status" style="font-size:12px;color:#355464;margin-bottom:8px;"></div>
       <div id="admin-users-list-wrap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:10px;"></div>
+      <div id="admin-restore-wrap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:10px;"></div>
       <form id="admin-users-create-form" style="display:grid;grid-template-columns:2fr 1.4fr 1fr auto;gap:8px;align-items:end;margin-bottom:10px;">
         <label style="display:block;font-size:11px;color:#3c5561;">Email
           <input name="email" type="email" required autocomplete="username email" style="width:100%;height:34px;padding:0 10px;border:1px solid #9bb2be;border-radius:8px;" />
@@ -927,6 +946,7 @@ async function openAdminUsersModal() {
   const loginsSummaryNode = backdrop.querySelector("#admin-logins-summary");
   const loginsListWrap = backdrop.querySelector("#admin-logins-list-wrap");
   const listWrap = backdrop.querySelector("#admin-users-list-wrap");
+  const restoreWrap = backdrop.querySelector("#admin-restore-wrap");
   const createForm = backdrop.querySelector("#admin-users-create-form");
 
   const setStatus = (message, variant = "info") => {
@@ -983,9 +1003,40 @@ async function openAdminUsersModal() {
 
   let users = [];
   let loginEvents = [];
+  let archivedUserIds = new Set(getAdminArchivedUserIds());
+  const getArchivedPeople = () => (state.data?.personnes || []).filter((person) => isSoftDeletedEntity(person));
+  const getArchivedEffects = () =>
+    (state.data?.personnes || []).flatMap((person) =>
+      (person?.effetsConfies || []).filter((effect) => isSoftDeletedEntity(effect))
+    );
+  const renderRestorePanel = () => {
+    if (!restoreWrap) return;
+    const archivedPeople = getArchivedPeople();
+    const archivedEffects = getArchivedEffects();
+    const archivedUsers = users.filter((user) => archivedUserIds.has(String(user.id || "")));
+    restoreWrap.innerHTML = `
+      <div style="padding:8px;background:#f3f7f9;border-bottom:1px solid #e2ebef;font-size:11px;color:#3d5865;font-weight:700;">ARCHIVES ADMIN (REINJECTION)</div>
+      <div style="padding:8px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border-bottom:1px solid #e2ebef;">
+        <div style="font-size:12px;color:#1c3440;">Personnes archivees: <b>${escapeHtml(String(archivedPeople.length))}</b></div>
+        <button type="button" data-restore-action="people" style="height:30px;padding:0 10px;border:1px solid #9bb2be;background:#fff;border-radius:7px;cursor:pointer;">Restaurer personnes</button>
+      </div>
+      <div style="padding:8px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border-bottom:1px solid #e2ebef;">
+        <div style="font-size:12px;color:#1c3440;">Effets archives: <b>${escapeHtml(String(archivedEffects.length))}</b></div>
+        <button type="button" data-restore-action="effects" style="height:30px;padding:0 10px;border:1px solid #9bb2be;background:#fff;border-radius:7px;cursor:pointer;">Restaurer effets</button>
+      </div>
+      <div style="padding:8px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border-bottom:1px solid #e2ebef;">
+        <div style="font-size:12px;color:#1c3440;">Utilisateurs archives: <b>${escapeHtml(String(archivedUsers.length))}</b></div>
+        <button type="button" data-restore-action="users" style="height:30px;padding:0 10px;border:1px solid #9bb2be;background:#fff;border-radius:7px;cursor:pointer;">Restaurer utilisateurs</button>
+      </div>
+      <div style="padding:8px;display:flex;justify-content:flex-end;">
+        <button type="button" data-restore-action="all" style="height:32px;padding:0 12px;border:0;background:#2f5f76;color:#fff;border-radius:8px;cursor:pointer;font-weight:700;">Restaurer tout</button>
+      </div>
+    `;
+  };
   const renderUsers = () => {
     if (!listWrap) return;
-    const rows = users
+    const activeUsers = users.filter((user) => !archivedUserIds.has(String(user.id || "")));
+    const rows = activeUsers
       .map(
         (user) => `
           <tr data-user-id="${escapeHtml(user.id)}">
@@ -1027,7 +1078,9 @@ async function openAdminUsersModal() {
       const payload = await response.json().catch(() => ({}));
       users = normalizeAdminUsersList(payload);
       renderUsers();
-      setStatus(`${users.length} utilisateur(s) charge(s).`, "ok");
+      const visibleCount = users.filter((user) => !archivedUserIds.has(String(user.id || ""))).length;
+      setStatus(`${visibleCount} utilisateur(s) charge(s).`, "ok");
+      renderRestorePanel();
     } catch (error) {
       const message = String(error?.message || "");
       if (message.includes("EDGE_API_FAILED:404")) {
@@ -1037,6 +1090,7 @@ async function openAdminUsersModal() {
       }
       users = [];
       renderUsers();
+      renderRestorePanel();
     }
   };
   const normalizeLoginsList = (payload) => {
@@ -1235,16 +1289,80 @@ async function openAdminUsersModal() {
         return;
       }
       if (action === "delete") {
-        if (!window.confirm("Supprimer cet utilisateur ?")) return;
-        setStatus("Suppression utilisateur...");
-        await callEdgeApi(`admin/users/${encodeURIComponent(userId)}`, {
-          method: "DELETE",
-        });
-        setStatus("Utilisateur supprime.", "ok");
-        await fetchUsers();
+        if (!window.confirm("Archiver cet utilisateur de la vue admin ?")) return;
+        archivedUserIds.add(userId);
+        setAdminArchivedUserIds(Array.from(archivedUserIds));
+        setStatus("Utilisateur archive (masque de la liste).", "ok");
+        renderUsers();
+        renderRestorePanel();
       }
     } catch (error) {
       setStatus(`Action impossible: ${String(error?.message || "erreur")}`, "error");
+    }
+  });
+
+  restoreWrap?.addEventListener("click", async (event) => {
+    const button = event.target?.closest?.("button[data-restore-action]");
+    if (!button) return;
+    const action = String(button.getAttribute("data-restore-action") || "");
+    try {
+      if (action === "users") {
+        archivedUserIds = new Set();
+        setAdminArchivedUserIds([]);
+        renderUsers();
+        renderRestorePanel();
+        setStatus("Utilisateurs reinjectes dans la liste admin.", "ok");
+        return;
+      }
+      const people = state.data?.personnes || [];
+      let changed = false;
+      if (action === "people" || action === "all") {
+        people.forEach((person) => {
+          if (isSoftDeletedEntity(person)) {
+            person.is_deleted = false;
+            person.isDeleted = false;
+            delete person.deleted_at;
+            delete person.deletedAt;
+            changed = true;
+          }
+        });
+      }
+      if (action === "effects" || action === "all") {
+        people.forEach((person) => {
+          (person?.effetsConfies || []).forEach((effect) => {
+            if (isSoftDeletedEntity(effect)) {
+              effect.is_deleted = false;
+              effect.isDeleted = false;
+              delete effect.deleted_at;
+              delete effect.deletedAt;
+              changed = true;
+            }
+          });
+        });
+      }
+      if (action === "all") {
+        archivedUserIds = new Set();
+        setAdminArchivedUserIds([]);
+      }
+      if (!changed && action !== "all") {
+        setStatus("Aucun element a restaurer.", "info");
+        renderRestorePanel();
+        return;
+      }
+      if (changed) {
+        markDirty();
+        renderPage();
+        await saveDataToFile({
+          silent: true,
+          reloadAfter: true,
+          successText: "RESTAURATION ARCHIVES - SAUVEGARDE OK",
+        });
+      }
+      renderUsers();
+      renderRestorePanel();
+      setStatus("Restauration terminee.", "ok");
+    } catch (error) {
+      setStatus(`Restauration impossible: ${String(error?.message || "erreur")}`, "error");
     }
   });
 
