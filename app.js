@@ -10496,11 +10496,12 @@ function ensureCatalogReferencesFromAssignedEffects() {
       if (isSoftDeletedEntity(effect)) {
         continue;
       }
-      if (!typeUsesReferenceCatalog(effect?.typeEffet)) {
+      const normalizedEffectType = normalizeText(effect?.typeEffet || "");
+      if (!typeUsesReferenceCatalog(normalizedEffectType) && normalizedEffectType !== "CARTE TURBOSELF") {
         continue;
       }
 
-      const typeEffet = normalizeText(effect.typeEffet);
+      const typeEffet = normalizedEffectType;
       const site = getCatalogEffectReferenceSite(person, effect);
       const designation = normalizeReferenceDesignationByType(typeEffet, effect?.designation || "");
 
