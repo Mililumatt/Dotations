@@ -6,6 +6,8 @@ import MobileDocumentSortie from "../components/mobile/MobileDocumentSortie";
 import { db } from "@/lib/db";
 import { getCurrentSession, onAuthStateChange, supabase } from "@/lib/supabaseClient";
 
+const MOBILE_WINDOW_SESSION_KEY = "dotations_mobile_window_open";
+
 const TABS = [
   { id: "overview", label: "VUE D'ENSEMBLE", icon: "🏠" },
   { id: "fiche", label: "FICHE", icon: "👤" },
@@ -119,6 +121,21 @@ export default function Mobile() {
 
   useEffect(() => {
     let mounted = true;
+    const isFreshWindowOpen = !window.sessionStorage.getItem(MOBILE_WINDOW_SESSION_KEY);
+    window.sessionStorage.setItem(MOBILE_WINDOW_SESSION_KEY, "1");
+
+    if (isFreshWindowOpen) {
+      // Force a clean auth state on fresh window open so login is required again.
+      supabase.auth.signOut().catch(() => {});
+    }
+
+    const cleanupWindowMarker = () => {
+      try {
+        window.sessionStorage.removeItem(MOBILE_WINDOW_SESSION_KEY);
+      } catch {}
+    };
+    window.addEventListener("beforeunload", cleanupWindowMarker);
+
     getCurrentSession()
       .then((s) => {
         if (!mounted) return;
@@ -141,6 +158,7 @@ export default function Mobile() {
     return () => {
       mounted = false;
       unsubscribe?.();
+      window.removeEventListener("beforeunload", cleanupWindowMarker);
     };
   }, []);
 
@@ -260,6 +278,8 @@ export default function Mobile() {
           <div style={{ fontSize: 14, fontWeight: 700, color: "#1d3440" }}>CONNEXION REQUISE</div>
           <input
             type="email"
+            name="username"
+            autoComplete="username email"
             required
             value={loginEmail}
             onChange={(e) => setLoginEmail(e.target.value)}
@@ -268,6 +288,8 @@ export default function Mobile() {
           />
           <input
             type="password"
+            name="password"
+            autoComplete="current-password"
             required
             value={loginPassword}
             onChange={(e) => setLoginPassword(e.target.value)}
