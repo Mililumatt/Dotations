@@ -2266,6 +2266,8 @@ function capturePersonSheetDraftToState() {
     typePersonnel: normalizeText(formData.get("sheetTypePersonnel")),
     typeContrat: normalizeText(formData.get("sheetTypeContrat")),
     dateEntree: String(formData.get("sheetDateEntree") || ""),
+    email: String(formData.get("sheetEmail") || "").trim(),
+    phoneMobile: String(formData.get("sheetPhoneMobile") || "").trim(),
     dateSortiePrevue: String(formData.get("sheetDateSortiePrevue") || ""),
     dateSortieReelle: String(formData.get("sheetDateSortieReelle") || ""),
   };
@@ -2278,6 +2280,8 @@ function capturePersonSheetDraftToState() {
     normalizeText(person.typePersonnel) !== draft.typePersonnel ||
     normalizeText(person.typeContrat) !== draft.typeContrat ||
     String(person.dateEntree || "") !== draft.dateEntree ||
+    String(person.email || "") !== draft.email ||
+    String(person.phoneMobile || "") !== draft.phoneMobile ||
     String(person.dateSortiePrevue || "") !== draft.dateSortiePrevue ||
     String(person.dateSortieReelle || "") !== draft.dateSortieReelle;
 
@@ -2293,6 +2297,8 @@ function capturePersonSheetDraftToState() {
   person.typePersonnel = draft.typePersonnel;
   person.typeContrat = draft.typeContrat;
   person.dateEntree = draft.dateEntree;
+  person.email = draft.email;
+  person.phoneMobile = draft.phoneMobile;
   person.dateSortiePrevue = draft.dateSortiePrevue;
   person.dateSortieReelle = draft.dateSortieReelle;
   markDirty();
@@ -3106,6 +3112,8 @@ function migrateDataModel() {
     person.typePersonnel = normalizeText(person.typePersonnel);
     person.typeContrat = normalizeText(person.typeContrat);
     person.fonction = normalizeFunctionLabel(person.fonction);
+    person.email = String(person.email || "").trim();
+    person.phoneMobile = String(person.phoneMobile || "").trim();
     person.sitesAffectation = getPersonSites(person);
     person.site = getPersonSiteLabel(person);
 
@@ -4861,6 +4869,8 @@ function bindPersonSheetForm() {
       typePersonnel: normalizeText(formData.get("sheetTypePersonnel")),
       typeContrat: normalizeText(formData.get("sheetTypeContrat")),
       dateEntree: String(formData.get("sheetDateEntree") || ""),
+      email: String(formData.get("sheetEmail") || "").trim(),
+      phoneMobile: String(formData.get("sheetPhoneMobile") || "").trim(),
       dateSortiePrevue: String(formData.get("sheetDateSortiePrevue") || ""),
       dateSortieReelle: String(formData.get("sheetDateSortieReelle") || ""),
       effetsConfies: [],
@@ -4899,6 +4909,8 @@ function bindPersonSheetForm() {
     person.typePersonnel = normalizeText(formData.get("sheetTypePersonnel"));
     person.typeContrat = normalizeText(formData.get("sheetTypeContrat"));
     person.dateEntree = String(formData.get("sheetDateEntree") || "");
+    person.email = String(formData.get("sheetEmail") || "").trim();
+    person.phoneMobile = String(formData.get("sheetPhoneMobile") || "").trim();
     person.dateSortiePrevue = String(formData.get("sheetDateSortiePrevue") || "");
     person.dateSortieReelle = String(formData.get("sheetDateSortieReelle") || "");
 
@@ -9714,6 +9726,8 @@ function fillSheetForm(person) {
     sheetTypePersonnel: person?.typePersonnel || "",
     sheetTypeContrat: person?.typeContrat || "",
     sheetDateEntree: person?.dateEntree || "",
+    sheetEmail: person?.email || "",
+    sheetPhoneMobile: person?.phoneMobile || "",
     sheetDateSortiePrevue: person?.dateSortiePrevue || "",
     sheetDateSortieReelle: person?.dateSortieReelle || "",
     sheetStatutDossier: person ? getDossierStatus(person) : "",
