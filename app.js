@@ -747,6 +747,10 @@ async function openAdminUsersModal() {
       </div>
       <div id="admin-users-status" style="font-size:12px;color:#355464;margin-bottom:8px;"></div>
       <div id="admin-users-list-wrap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:10px;"></div>
+      <div style="margin:8px 0 6px;font-size:12px;font-weight:700;color:#1d3440;">JOURNAL DES CONNEXIONS</div>
+      <div id="admin-logins-status" style="font-size:12px;color:#355464;margin-bottom:8px;"></div>
+      <div id="admin-logins-summary" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:8px;"></div>
+      <div id="admin-logins-list-wrap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:10px;max-height:210px;overflow-y:auto;"></div>
       <form id="admin-users-create-form" style="display:grid;grid-template-columns:2fr 1.4fr 1fr auto;gap:8px;align-items:end;">
         <label style="display:block;font-size:11px;color:#3c5561;">Email
           <input name="email" type="email" required autocomplete="username email" style="width:100%;height:34px;padding:0 10px;border:1px solid #9bb2be;border-radius:8px;" />
@@ -771,6 +775,9 @@ async function openAdminUsersModal() {
   const dialog = backdrop.querySelector("#admin-users-dialog");
   const dragHandle = backdrop.querySelector("#admin-users-drag-handle");
   const statusNode = backdrop.querySelector("#admin-users-status");
+  const loginsStatusNode = backdrop.querySelector("#admin-logins-status");
+  const loginsSummaryNode = backdrop.querySelector("#admin-logins-summary");
+  const loginsListWrap = backdrop.querySelector("#admin-logins-list-wrap");
   const listWrap = backdrop.querySelector("#admin-users-list-wrap");
   const createForm = backdrop.querySelector("#admin-users-create-form");
 
@@ -778,6 +785,12 @@ async function openAdminUsersModal() {
     if (!statusNode) return;
     statusNode.textContent = String(message || "");
     statusNode.style.color =
+      variant === "error" ? "#8e2c2c" : variant === "ok" ? "#2f5e43" : "#355464";
+  };
+  const setLoginsStatus = (message, variant = "info") => {
+    if (!loginsStatusNode) return;
+    loginsStatusNode.textContent = String(message || "");
+    loginsStatusNode.style.color =
       variant === "error" ? "#8e2c2c" : variant === "ok" ? "#2f5e43" : "#355464";
   };
 
@@ -821,6 +834,7 @@ async function openAdminUsersModal() {
   });
 
   let users = [];
+  let loginEvents = [];
   const renderUsers = () => {
     if (!listWrap) return;
     const rows = users
@@ -875,6 +889,108 @@ async function openAdminUsersModal() {
       }
       users = [];
       renderUsers();
+    }
+  };
+  const normalizeLoginsList = (payload) => {
+    const candidates = [
+      payload?.events,
+      payload?.data?.events,
+      payload?.items,
+      payload?.data?.items,
+      payload?.data,
+      payload,
+    ];
+    const list = candidates.find((entry) => Array.isArray(entry));
+    if (!Array.isArray(list)) return [];
+    return list.map((entry) => ({
+      at: String(entry?.at || entry?.created_at || entry?.date || "").trim(),
+      name: String(entry?.name || entry?.nom || "").trim(),
+      email: String(entry?.email || "").trim(),
+      role: normalizeAdminUserRole(entry?.role || "viewer"),
+      count: Number(entry?.count || entry?.nb || 1) || 1,
+    }));
+  };
+  const renderLoginEvents = () => {
+    if (!loginsSummaryNode || !loginsListWrap) return;
+    if (!Array.isArray(loginEvents) || !loginEvents.length) {
+      loginsSummaryNode.innerHTML =
+        `<div style="padding:10px;font-size:12px;color:#4a6170;text-align:center;">AUCUN EVENEMENT</div>`;
+      loginsListWrap.innerHTML =
+        `<div style="padding:10px;font-size:12px;color:#4a6170;text-align:center;">AUCUN DETAIL</div>`;
+      return;
+    }
+    const byEmail = new Map();
+    loginEvents.forEach((event) => {
+      const key = String(event.email || "-").toUpperCase();
+      const prev = byEmail.get(key) || { email: key, total: 0, role: event.role };
+      prev.total += Number(event.count || 1);
+      prev.role = event.role || prev.role;
+      byEmail.set(key, prev);
+    });
+    const summaryRows = Array.from(byEmail.values())
+      .sort((a, b) => b.total - a.total || String(a.email).localeCompare(String(b.email), "fr"))
+      .map((row) => {
+        return `<tr>
+          <td style="padding:6px 8px;border-bottom:1px solid #e2ebef;font-size:12px;">${escapeHtml(row.email)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e2ebef;font-size:12px;">${escapeHtml(mapRoleToFrenchLabel(row.role))}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e2ebef;font-size:12px;text-align:right;">${escapeHtml(String(row.total))}</td>
+        </tr>`;
+      })
+      .join("");
+    loginsSummaryNode.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="background:#f3f7f9;">
+          <th style="text-align:left;padding:6px 8px;font-size:11px;color:#3d5865;">EMAIL</th>
+          <th style="text-align:left;padding:6px 8px;font-size:11px;color:#3d5865;">ROLE</th>
+          <th style="text-align:right;padding:6px 8px;font-size:11px;color:#3d5865;">NB</th>
+        </tr></thead>
+        <tbody>${summaryRows}</tbody>
+      </table>
+    `;
+    const detailRows = loginEvents
+      .slice()
+      .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+      .slice(0, 100)
+      .map((row) => {
+        return `<tr>
+          <td style="padding:6px 8px;border-bottom:1px solid #e2ebef;font-size:12px;">${escapeHtml(formatAdminUserDate(row.at))}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e2ebef;font-size:12px;">${escapeHtml(row.name || "-")}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e2ebef;font-size:12px;">${escapeHtml(row.email || "-")}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e2ebef;font-size:12px;">${escapeHtml(mapRoleToFrenchLabel(row.role))}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e2ebef;font-size:12px;text-align:right;">${escapeHtml(String(row.count || 1))}</td>
+        </tr>`;
+      })
+      .join("");
+    loginsListWrap.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="background:#f3f7f9;position:sticky;top:0;">
+          <th style="text-align:left;padding:6px 8px;font-size:11px;color:#3d5865;">DATE</th>
+          <th style="text-align:left;padding:6px 8px;font-size:11px;color:#3d5865;">NOM</th>
+          <th style="text-align:left;padding:6px 8px;font-size:11px;color:#3d5865;">EMAIL</th>
+          <th style="text-align:left;padding:6px 8px;font-size:11px;color:#3d5865;">ROLE</th>
+          <th style="text-align:right;padding:6px 8px;font-size:11px;color:#3d5865;">NB</th>
+        </tr></thead>
+        <tbody>${detailRows}</tbody>
+      </table>
+    `;
+  };
+  const fetchLoginEvents = async () => {
+    setLoginsStatus("Chargement journal connexions...");
+    try {
+      const response = await callEdgeApi("admin/login-events", { method: "GET" });
+      const payload = await response.json().catch(() => ({}));
+      loginEvents = normalizeLoginsList(payload);
+      renderLoginEvents();
+      setLoginsStatus(`${loginEvents.length} evenement(s) charge(s).`, "ok");
+    } catch (error) {
+      const message = String(error?.message || "");
+      if (message.includes("EDGE_API_FAILED:404")) {
+        setLoginsStatus("API JOURNAL ABSENTE: ajouter /admin/login-events dans dotations-api.", "error");
+      } else {
+        setLoginsStatus(`Chargement journal impossible: ${message || "erreur"}`, "error");
+      }
+      loginEvents = [];
+      renderLoginEvents();
     }
   };
 
@@ -937,6 +1053,7 @@ async function openAdminUsersModal() {
   });
 
   await fetchUsers();
+  await fetchLoginEvents();
 }
 
 async function openAdminCreateUserFlow() {
