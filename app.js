@@ -52,6 +52,7 @@ const state = {
   stockTableFilters: { site: "", typeEffet: "", referenceEffetId: "" },
   stockHighlightKey: "",
   isReferencePageResetting: false,
+  currentUserRoleLabel: "",
 };
 
 const WORKING_DATA_KEY = "dashboard-working-data";
@@ -375,6 +376,13 @@ function getSupabaseAuthStorageKey() {
   return projectRef ? `sb-${projectRef}-auth-token` : "";
 }
 
+function mapRoleToFrenchLabel(role) {
+  const normalized = String(role || "").trim().toLowerCase();
+  if (normalized === "admin") return "ADMIN";
+  if (normalized === "editor") return "EDITION";
+  return "LECTURE";
+}
+
 function extractAccessTokenFromStoredSession(raw) {
   if (!raw) return "";
   if (typeof raw === "string") {
@@ -450,6 +458,11 @@ function getStoredSupabaseSession() {
   } catch (error) {
     return null;
   }
+}
+
+function getStoredSupabaseUserId() {
+  const session = getStoredSupabaseSession();
+  return String(session?.user?.id || "").trim();
 }
 
 function storeSupabaseSession(session) {
@@ -626,6 +639,62 @@ async function getSupabaseUserAccessToken() {
   const existing = getStoredSupabaseAccessToken();
   if (existing) return existing;
   return promptSupabaseLoginAndStoreSession();
+}
+
+function renderRoleBadge() {
+  let badge = document.getElementById("dotations-role-badge");
+  if (!badge) {
+    badge = document.createElement("div");
+    badge.id = "dotations-role-badge";
+    badge.style.position = "fixed";
+    badge.style.top = "10px";
+    badge.style.right = "10px";
+    badge.style.zIndex = "9999";
+    badge.style.padding = "6px 10px";
+    badge.style.borderRadius = "999px";
+    badge.style.background = "rgba(63,97,112,0.14)";
+    badge.style.border = "1px solid rgba(63,97,112,0.28)";
+    badge.style.color = "#213b48";
+    badge.style.fontSize = "11px";
+    badge.style.fontWeight = "700";
+    badge.style.letterSpacing = "0.04em";
+    document.body.appendChild(badge);
+  }
+  const label = state.currentUserRoleLabel || "LECTURE";
+  badge.textContent = `DROIT : ${label}`;
+}
+
+async function refreshCurrentUserRoleLabel() {
+  try {
+    const userId = getStoredSupabaseUserId();
+    const accessToken = getStoredSupabaseAccessToken();
+    if (!userId || !accessToken) {
+      state.currentUserRoleLabel = "";
+      renderRoleBadge();
+      return;
+    }
+    const endpoint = `${getSupabaseRestEndpoint().replace(/\/app_state$/i, "/profiles")}?id=eq.${encodeURIComponent(userId)}&select=role&limit=1`;
+    const response = await fetch(endpoint, {
+      method: "GET",
+      headers: {
+        apikey: String(SUPABASE_PUBLISHABLE_KEY || "").trim(),
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      state.currentUserRoleLabel = "";
+      renderRoleBadge();
+      return;
+    }
+    const rows = await response.json().catch(() => []);
+    const role = Array.isArray(rows) ? rows[0]?.role : "";
+    state.currentUserRoleLabel = mapRoleToFrenchLabel(role);
+    renderRoleBadge();
+  } catch (error) {
+    state.currentUserRoleLabel = "";
+    renderRoleBadge();
+  }
 }
 
 async function callEdgeApi(pathname, options = {}, retryOnAuthFailure = true) {
@@ -1935,6 +2004,8 @@ async function loadData() {
   bindArchiveFilterForm();
   bindSignatureCanvases();
   bindRepresentativeFields();
+  renderRoleBadge();
+  refreshCurrentUserRoleLabel();
 
   const workingData = loadWorkingData();
   if (workingData) {
@@ -2004,6 +2075,7 @@ async function reloadData(statusText = "RECHARGEMENT DES DONNEES...") {
     applyMeta();
     hydrateStaticLists();
     renderPage();
+    refreshCurrentUserRoleLabel();
     clearSearchInputsOnInitialLoad();
     showDataStatus(
       getDataBackendMode() === "SUPABASE" ? "DONNEES SUPABASE CHARGEES" : "DONNEES LOCALES CHARGEES"

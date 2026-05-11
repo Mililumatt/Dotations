@@ -63,6 +63,7 @@ export default function Mobile() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
+  const [roleLabel, setRoleLabel] = useState("LECTURE");
 
   const personsRef = useRef([]);
   const selectedPersonRef = useRef(null);
@@ -174,6 +175,34 @@ export default function Mobile() {
     }
     loadData();
   }, [session, authLoading]);
+
+  useEffect(() => {
+    let active = true;
+    const loadRole = async () => {
+      if (!session?.user?.id) {
+        if (active) setRoleLabel("LECTURE");
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        const role = String(data?.role || "").trim().toLowerCase();
+        const nextLabel = role === "admin" ? "ADMIN" : role === "editor" ? "EDITION" : "LECTURE";
+        if (active) setRoleLabel(nextLabel);
+      } catch {
+        if (active) setRoleLabel("LECTURE");
+      }
+    };
+    loadRole();
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.id]);
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -312,6 +341,7 @@ export default function Mobile() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 9, color: "#556d79", letterSpacing: "0.12em" }}>SUIVI DES DOTATIONS</div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#14242c", lineHeight: 1.2 }}>ENTREE / SORTIE</div>
+          <div style={{ fontSize: 9, color: "#213b48", letterSpacing: "0.08em", fontWeight: 700 }}>DROIT : {roleLabel}</div>
         </div>
         <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
           <button
