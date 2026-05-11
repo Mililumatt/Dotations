@@ -6,6 +6,8 @@ const DELETE_ROLES = new Set(["admin"]);
 const DOC_TYPES = new Set(["arrival", "exit"]);
 const SIGNERS = new Set(["personnel", "representant"]);
 const MAX_SIGNATURE_DATA_LENGTH = 2_000_000;
+const EDGE_API_URL = "https://dphrvdhqhgycmllietuk.supabase.co/functions/v1/dotations-api";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_2wYXnIDj4-c8daQZW8D5hA_2Py6k7z6";
 const FILTERABLE_COLUMNS = {
   personnes: new Set(["id", "nom", "prenom", "fonction", "typePersonnel", "typeContrat", "dateEntree", "dateSortiePrevue", "dateSortieReelle", "statutDossier"]),
   effetsConfies: new Set(["id", "personId", "typeEffet", "designation", "siteReference", "numeroIdentification", "vehiculeImmatriculation", "dateRemise", "dateRetour", "statut", "cause", "dateRemplacement"]),
@@ -152,6 +154,48 @@ function safeJsonParse(raw) {
     }
   }
   return typeof raw === "object" ? raw : {};
+}
+
+function extractPayloadFromEdgeData(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  if (raw.payload && typeof raw.payload === "object") return raw.payload;
+  if (raw.data && typeof raw.data === "object") {
+    if (raw.data.payload && typeof raw.data.payload === "object") return raw.data.payload;
+    if (Array.isArray(raw.data.personnes) || raw.data.listes) return raw.data;
+  }
+  if (Array.isArray(raw.personnes) || raw.listes) return raw;
+  return null;
+}
+
+function extractRevisionFromEdgeData(raw) {
+  const direct = Number(raw?.revision);
+  if (Number.isFinite(direct)) return direct;
+  const nested = Number(raw?.data?.revision);
+  if (Number.isFinite(nested)) return nested;
+  return 0;
+}
+
+async function getAppStateRowFromEdge(session) {
+  const token = String(session?.access_token || "").trim();
+  if (!token) return null;
+  const response = await fetch(`${EDGE_API_URL}/data`, {
+    method: "GET",
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    cache: "no-store",
+  });
+  if (!response.ok) return null;
+  const raw = await response.json().catch(() => null);
+  const payload = extractPayloadFromEdgeData(raw);
+  if (!payload) return null;
+  return {
+    id: "main",
+    payload: safeJsonParse(payload),
+    revision: extractRevisionFromEdgeData(raw),
+  };
 }
 
 function toString(value) {
@@ -361,7 +405,11 @@ function applySignedDocumentCompletion(person, docType) {
 }
 
 async function getAppStateRow() {
-  await requireAuthenticated("Lecture app_state");
+  const ctx = await requireAuthenticated("Lecture app_state");
+  try {
+    const edgeRow = await getAppStateRowFromEdge(ctx?.session);
+    if (edgeRow?.payload) return edgeRow;
+  } catch {}
   const rows = await runQuery(
     supabase.from("app_state").select("id,payload,revision").eq("id", "main").limit(1),
     "Lecture app_state impossible"
