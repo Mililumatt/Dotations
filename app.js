@@ -737,8 +737,8 @@ async function openAdminUsersModal() {
   backdrop.style.alignItems = "center";
   backdrop.style.justifyContent = "center";
   backdrop.innerHTML = `
-    <div style="width:min(94vw,920px);max-height:88vh;overflow:auto;background:#fff;border-radius:12px;border:1px solid #9bb2be;box-shadow:0 18px 36px rgba(0,0,0,0.28);padding:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+    <div id="admin-users-dialog" style="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(94vw,920px);max-height:88vh;overflow:auto;background:#fff;border-radius:12px;border:1px solid #9bb2be;box-shadow:0 18px 36px rgba(0,0,0,0.28);padding:14px;">
+      <div id="admin-users-drag-handle" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;cursor:move;user-select:none;">
         <div>
           <div style="font-size:16px;font-weight:700;color:#122430;">PILOTAGE UTILISATEURS</div>
           <div style="font-size:11px;color:#4a6170;">ACCES ADMIN UNIQUEMENT</div>
@@ -768,6 +768,8 @@ async function openAdminUsersModal() {
   document.body.appendChild(backdrop);
 
   const closeButton = backdrop.querySelector("#admin-users-close");
+  const dialog = backdrop.querySelector("#admin-users-dialog");
+  const dragHandle = backdrop.querySelector("#admin-users-drag-handle");
   const statusNode = backdrop.querySelector("#admin-users-status");
   const listWrap = backdrop.querySelector("#admin-users-list-wrap");
   const createForm = backdrop.querySelector("#admin-users-create-form");
@@ -786,6 +788,36 @@ async function openAdminUsersModal() {
   closeButton?.addEventListener("click", closeModal);
   backdrop.addEventListener("click", (event) => {
     if (event.target === backdrop) closeModal();
+  });
+
+  let dragState = null;
+  const onDragMove = (event) => {
+    if (!dragState || !dialog) return;
+    const nextLeft = event.clientX - dragState.offsetX;
+    const nextTop = event.clientY - dragState.offsetY;
+    dialog.style.left = `${Math.max(8, nextLeft)}px`;
+    dialog.style.top = `${Math.max(8, nextTop)}px`;
+    dialog.style.transform = "none";
+  };
+  const onDragEnd = () => {
+    if (!dragState) return;
+    dragState = null;
+    window.removeEventListener("mousemove", onDragMove);
+    window.removeEventListener("mouseup", onDragEnd);
+  };
+  dragHandle?.addEventListener("mousedown", (event) => {
+    if (!dialog) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest("button,input,select,textarea,a")) {
+      return;
+    }
+    const rect = dialog.getBoundingClientRect();
+    dragState = {
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
+    window.addEventListener("mousemove", onDragMove);
+    window.addEventListener("mouseup", onDragEnd);
   });
 
   let users = [];
