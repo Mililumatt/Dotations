@@ -2171,6 +2171,7 @@ function restoreNavigationContext() {
   const context = getStoredNavigationContext();
   const params = new URLSearchParams(window.location.search);
   const personIdInQuery = params.get("personId") || params.get("personld") || "";
+  const page = String(document.body?.dataset?.page || "");
 
   state.urgentMode = Boolean(context?.urgentMode);
   state.filters = {
@@ -2187,6 +2188,13 @@ function restoreNavigationContext() {
       window.history.replaceState({}, "", nextUrl);
     }
     saveNavigationContext({ personId: personIdInQuery, filters: state.filters });
+    return;
+  }
+
+  // Regle UX: si aucune personne n'est explicitement selectionnee sur la vue d'ensemble,
+  // on ne doit pas pre-remplir automatiquement la fiche personne avec un ancien contexte.
+  if (page === "overview") {
+    saveNavigationContext({ personId: "" });
     return;
   }
 
@@ -2733,6 +2741,7 @@ async function loadData() {
   applyActiveNav();
   bindHistoryNavigation();
   bindAutoSaveOnNavigation();
+  bindGlobalResetSelectionClear();
   bindGlobalShortcuts();
   bindLoadButton();
   bindSaveButtons();
@@ -12658,6 +12667,26 @@ function bindHistoryNavigation() {
   });
 
   window.__dashboardHistoryBound = true;
+}
+
+function bindGlobalResetSelectionClear() {
+  if (window.__dashboardResetSelectionBound) {
+    return;
+  }
+  document.addEventListener(
+    "click",
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest("button");
+      if (!(button instanceof HTMLButtonElement)) return;
+      const label = normalizeText(button.textContent || "");
+      if (label !== "REINITIALISER") return;
+      setCurrentPersonId("", "replace");
+    },
+    true
+  );
+  window.__dashboardResetSelectionBound = true;
 }
 
 function markDirty() {
