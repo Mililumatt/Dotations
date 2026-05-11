@@ -829,12 +829,7 @@ async function openAdminUsersModal() {
       </div>
       <div id="admin-users-status" style="font-size:12px;color:#355464;margin-bottom:8px;"></div>
       <div id="admin-users-list-wrap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:10px;"></div>
-      <div style="margin:8px 0 6px;font-size:12px;font-weight:700;color:#1d3440;">JOURNAL DES CONNEXIONS</div>
-      <div id="admin-logins-status" style="font-size:12px;color:#355464;margin-bottom:8px;"></div>
-      <div id="admin-logins-heatmap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:auto;margin-bottom:8px;"></div>
-      <div id="admin-logins-summary" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:8px;"></div>
-      <div id="admin-logins-list-wrap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:10px;max-height:210px;overflow-y:auto;"></div>
-      <form id="admin-users-create-form" style="display:grid;grid-template-columns:2fr 1.4fr 1fr auto;gap:8px;align-items:end;">
+      <form id="admin-users-create-form" style="display:grid;grid-template-columns:2fr 1.4fr 1fr auto;gap:8px;align-items:end;margin-bottom:10px;">
         <label style="display:block;font-size:11px;color:#3c5561;">Email
           <input name="email" type="email" required autocomplete="username email" style="width:100%;height:34px;padding:0 10px;border:1px solid #9bb2be;border-radius:8px;" />
         </label>
@@ -850,6 +845,11 @@ async function openAdminUsersModal() {
         </label>
         <button type="submit" style="height:34px;padding:0 12px;border:0;background:#2f5f76;color:#fff;border-radius:8px;cursor:pointer;font-weight:700;">Creer</button>
       </form>
+      <div style="margin:8px 0 6px;font-size:12px;font-weight:700;color:#1d3440;">JOURNAL DES CONNEXIONS</div>
+      <div id="admin-logins-status" style="font-size:12px;color:#355464;margin-bottom:8px;"></div>
+      <div id="admin-logins-heatmap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:auto;margin-bottom:8px;"></div>
+      <div id="admin-logins-summary" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:8px;"></div>
+      <div id="admin-logins-list-wrap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:10px;max-height:210px;overflow-y:auto;"></div>
     </div>
   `;
   document.body.appendChild(backdrop);
@@ -1030,7 +1030,7 @@ async function openAdminUsersModal() {
         const cells = dayKeys
           .map((day) => {
             const value = Number(row.byDay?.[day] || 0);
-            let bg = "#edf2f5";
+            let bg = "#d4dee6";
             if (value >= 5) bg = "#208f5a";
             else if (value >= 3) bg = "#39aa70";
             else if (value >= 2) bg = "#79c89d";
