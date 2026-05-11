@@ -85,6 +85,7 @@ const NAVIGATION_CONTEXT_KEY = "dotations-navigation-context";
 const SIGNED_POPUP_SEEN_STORAGE_KEY = "dotations-signed-popup-seen";
 const PENDING_PDF_REMINDER_SNOOZE_KEY = "dotations-pending-pdf-reminder-snooze";
 const PENDING_PDF_TASK_STORAGE_KEY = "dotations-pending-pdf-task";
+const LOGIN_EVENT_MARKER_KEY = "dotations-login-event-sent";
 const PDF_LAYOUT_VERSION = "2026-03-14-exit-layout-fix-3";
 const PDF_FORMAT_LOCK = "v1";
 let pdfModalCleanupBound = false;
@@ -576,6 +577,19 @@ async function logAdminLoginEvent(accessToken, sessionPayload) {
   }
 }
 
+async function ensureLoginEventLogged(accessToken) {
+  try {
+    const marker = sessionStorage.getItem(LOGIN_EVENT_MARKER_KEY);
+    if (marker === "1") return;
+    const session = getStoredSupabaseSession();
+    if (!session?.user?.id) return;
+    await logAdminLoginEvent(accessToken, session);
+    sessionStorage.setItem(LOGIN_EVENT_MARKER_KEY, "1");
+  } catch (error) {
+    // ignore
+  }
+}
+
 function promptSupabaseCredentialsForm() {
   return new Promise((resolve, reject) => {
     const backdrop = document.createElement("div");
@@ -681,19 +695,26 @@ async function refreshSupabaseSession(refreshToken) {
 async function getSupabaseUserAccessToken() {
   const session = getStoredSupabaseSession();
   if (session && isSessionTokenFresh(session)) {
-    return String(session.access_token || "").trim();
+    const token = String(session.access_token || "").trim();
+    await ensureLoginEventLogged(token);
+    return token;
   }
   const refreshToken = String(session?.refresh_token || "").trim();
   if (refreshToken) {
     try {
       const refreshed = await refreshSupabaseSession(refreshToken);
-      return String(refreshed?.access_token || "").trim();
+      const token = String(refreshed?.access_token || "").trim();
+      await ensureLoginEventLogged(token);
+      return token;
     } catch (error) {
       clearStoredSupabaseSession();
     }
   }
   const existing = getStoredSupabaseAccessToken();
-  if (existing) return existing;
+  if (existing) {
+    await ensureLoginEventLogged(existing);
+    return existing;
+  }
   return promptSupabaseLoginAndStoreSession();
 }
 
