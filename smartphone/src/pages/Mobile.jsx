@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { getCurrentSession, onAuthStateChange, supabase } from "@/lib/supabaseClient";
 
 const MOBILE_WINDOW_SESSION_KEY = "dotations_mobile_window_open";
+const MOBILE_BRAND_LOGO_URL = "https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/bandeau-nextboard-sidebar-detoure.png";
 
 const TABS = [
   { id: "overview", label: "VUE D'ENSEMBLE", icon: "🏠" },
@@ -82,6 +83,7 @@ export default function Mobile() {
   const [resetBusy, setResetBusy] = useState(false);
   const [roleLabel, setRoleLabel] = useState("LECTURE");
   const [loadError, setLoadError] = useState("");
+  const [brandLogoReady, setBrandLogoReady] = useState(false);
 
   const personsRef = useRef([]);
   const selectedPersonRef = useRef(null);
@@ -413,7 +415,33 @@ export default function Mobile() {
     <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #ebe6dc 0%, #d9e2e7 100%)", display: "flex", flexDirection: "column", maxWidth: 480, margin: "0 auto", position: "relative" }}>
       <div style={{ background: "linear-gradient(180deg, #c2d2da 0%, #d9e2e7 100%)", padding: "8px 10px 8px", borderBottom: "1px solid rgba(63,97,112,0.2)", display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 34 }}>
-          <img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/bandeau-nextboard-sidebar-detoure.png" alt="NextBoard" style={{ height: 26, borderRadius: 6 }} />
+          <div style={{ width: 112, height: 26, borderRadius: 6, overflow: "hidden", background: "#dce5eb", display: "grid", placeItems: "center" }}>
+            {!brandLogoReady ? (
+              <span style={{ color: "#556d79", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", opacity: 0.68 }}>
+                NEXTBOARD
+              </span>
+            ) : null}
+            <img
+              src={MOBILE_BRAND_LOGO_URL}
+              alt="NextBoard"
+              loading="eager"
+              decoding="async"
+              width={112}
+              height={26}
+              onLoad={() => setBrandLogoReady(true)}
+              onError={() => setBrandLogoReady(true)}
+              style={{
+                width: 112,
+                height: 26,
+                borderRadius: 6,
+                objectFit: "contain",
+                objectPosition: "left center",
+                display: "block",
+                opacity: brandLogoReady ? 1 : 0,
+                transition: "opacity 0.25s ease",
+              }}
+            />
+          </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 8, color: "#556d79", letterSpacing: "0.1em", lineHeight: 1.1 }}>SUIVI DES DOTATIONS</div>
             <div style={{ fontSize: 10, fontWeight: 700, color: "#14242c", lineHeight: 1.1, whiteSpace: "nowrap" }}>ENTREE / SORTIE</div>
