@@ -6991,15 +6991,9 @@ function renderPage() {
     (entry) => String(entry?.id || "") === String(currentPersonId || "")
   );
 
-  if (page === "person-sheet" && (!currentPersonId || !personExists)) {
-    const fallbackPerson =
-      (state.data?.personnes || [])[0] ||
-      persons[0] ||
-      null;
-    if (fallbackPerson?.id) {
-      setCurrentPersonId(String(fallbackPerson.id || ""), "replace");
-    }
-    currentPersonId = getCurrentPersonId();
+  if (page === "person-sheet" && currentPersonId && !personExists) {
+    setCurrentPersonId("", "replace");
+    currentPersonId = "";
   }
 
   if (page === "overview") {
