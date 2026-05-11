@@ -336,30 +336,30 @@ export default function Mobile() {
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #ebe6dc 0%, #d9e2e7 100%)", display: "flex", flexDirection: "column", maxWidth: 480, margin: "0 auto", position: "relative" }}>
-      <div style={{ background: "linear-gradient(180deg, #c2d2da 0%, #d9e2e7 100%)", padding: "10px 14px 8px", borderBottom: "1px solid rgba(63,97,112,0.2)", display: "flex", alignItems: "center", gap: 10 }}>
-        <img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/bandeau-nextboard-sidebar-detoure.png" alt="NextBoard" style={{ height: 32, borderRadius: 6 }} />
+      <div style={{ background: "linear-gradient(180deg, #c2d2da 0%, #d9e2e7 100%)", padding: "10px 12px 8px", borderBottom: "1px solid rgba(63,97,112,0.2)", display: "flex", alignItems: "center", gap: 8 }}>
+        <img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/bandeau-nextboard-sidebar-detoure.png" alt="NextBoard" style={{ height: 28, borderRadius: 6 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 9, color: "#556d79", letterSpacing: "0.12em" }}>SUIVI DES DOTATIONS</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#14242c", lineHeight: 1.2 }}>ENTREE / SORTIE</div>
-          <div style={{ fontSize: 9, color: "#213b48", letterSpacing: "0.08em", fontWeight: 700 }}>DROIT : {roleLabel}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#14242c", lineHeight: 1.2, whiteSpace: "nowrap" }}>ENTREE / SORTIE</div>
         </div>
         <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
           <span
             style={{
               height: 26,
-              padding: "0 8px",
+              padding: "0 7px",
               borderRadius: 7,
               border: "1px solid rgba(63,97,112,0.3)",
               background: "rgba(63,97,112,0.12)",
               color: "#213b48",
-              fontSize: 9,
+              fontSize: 8,
               fontWeight: 700,
-              letterSpacing: "0.04em",
+              letterSpacing: "0.03em",
               display: "inline-flex",
               alignItems: "center",
+              whiteSpace: "nowrap",
             }}
           >
-            {roleLabel}
+            DROIT : {roleLabel}
           </span>
           <button
             type="button"

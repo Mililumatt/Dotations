@@ -12,6 +12,12 @@ function statusColor(s) {
   return { bg: "rgba(93,120,134,0.12)", color: "#213b48", border: "rgba(93,120,134,0.3)" };
 }
 
+function isExitFullySigned(person) {
+  const personnelSignedAt = String(person?.signatures?.exit?.personnel?.validatedAt || "").trim();
+  const representantSignedAt = String(person?.signatures?.exit?.representant?.validatedAt || "").trim();
+  return Boolean(personnelSignedAt && representantSignedAt);
+}
+
 export default function MobileOverview({ persons, effets, onSelectPerson }) {
   const [search, setSearch] = useState("");
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -28,6 +34,7 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
   const totalEffets = effets.length;
   const nonRendus = effets.filter((e) => {
     const person = personById.get(String(e.personId));
+    if (isExitFullySigned(person)) return false;
     return getEffectStatus(person, e) === "NON RENDU";
   }).length;
   const enPoste = persons.filter((p) => getDossierStatus(p) !== "SORTI").length;
@@ -35,8 +42,9 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
     const personAlerts = [];
     const sortiePrevue = String(p.dateSortiePrevue || "");
     const sortieReelle = String(p.dateSortieReelle || "");
+    const sortieFinalisee = isExitFullySigned(p);
     const nonRendusCount = effets.filter(
-      (e) => String(e.personId) === String(p.id) && getEffectStatus(p, e) === "NON RENDU"
+      (e) => String(e.personId) === String(p.id) && !sortieFinalisee && getEffectStatus(p, e) === "NON RENDU"
     ).length;
     if (sortiePrevue && !sortieReelle && sortiePrevue < todayIso) {
       personAlerts.push({ key: `${p.id}-late`, personId: p.id, type: "dateSortiePrevue", text: `${p.nom} ${p.prenom} : SORTIE PREVUE DEPASSEE` });
