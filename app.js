@@ -10497,7 +10497,11 @@ function ensureCatalogReferencesFromAssignedEffects() {
         continue;
       }
       const normalizedEffectType = normalizeText(effect?.typeEffet || "");
-      if (!typeUsesReferenceCatalog(normalizedEffectType) && normalizedEffectType !== "CARTE TURBOSELF") {
+      const supportsAutoReference =
+        typeUsesReferenceCatalog(normalizedEffectType) ||
+        normalizedEffectType === "CARTE TURBOSELF" ||
+        normalizedEffectType === "BADGE INTRUSION";
+      if (!supportsAutoReference) {
         continue;
       }
 
