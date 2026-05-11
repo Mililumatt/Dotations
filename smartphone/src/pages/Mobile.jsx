@@ -36,6 +36,9 @@ function isAuthFailureMessage(message) {
   return (
     text.includes("jwt") ||
     text.includes("auth") ||
+    text.includes("connexion requise") ||
+    text.includes("session") ||
+    text.includes("role utilisateur impossible") ||
     text.includes("permission") ||
     text.includes("not authorized") ||
     text.includes("unauthorized") ||
@@ -120,10 +123,14 @@ export default function Mobile() {
         (eRes.status === "rejected" && eRes.reason) ||
         (bRes.status === "rejected" && bRes.reason) ||
         null;
+      const allRejected =
+        pRes.status === "rejected" &&
+        eRes.status === "rejected" &&
+        bRes.status === "rejected";
       if (firstError) {
         const message = String(firstError?.message || firstError || "").trim();
         if (message) setLoadError(`LECTURE MOBILE BLOQUEE: ${message}`);
-        if (isAuthFailureMessage(message)) {
+        if (allRejected || isAuthFailureMessage(message)) {
           await supabase.auth.signOut().catch(() => {});
           setSession(null);
           return;
