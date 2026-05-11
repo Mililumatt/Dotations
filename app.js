@@ -3148,13 +3148,15 @@ function migrateDataModel() {
         effect.designation = "";
       }
 
-      if (!typeUsesSiteField(effect.typeEffet)) {
-        effect.siteReference = "";
-      } else if (!effect.siteReference) {
-        effect.siteReference = getDefaultEffectSiteReference(person, effect);
-      } else {
-        effect.siteReference = normalizeText(effect.siteReference);
-      }
+        if (!typeUsesSiteField(effect.typeEffet)) {
+          effect.siteReference = "";
+        } else if (normalizeText(effect.typeEffet) === "CARTE TURBOSELF") {
+          effect.siteReference = ALL_SITES_VALUE;
+        } else if (!effect.siteReference) {
+          effect.siteReference = getDefaultEffectSiteReference(person, effect);
+        } else {
+          effect.siteReference = normalizeText(effect.siteReference);
+        }
 
       effect.coutRemplacement = getEffectReplacementCost(person, effect);
     });
@@ -3173,12 +3175,13 @@ function migrateDataModel() {
       designation: normalizeText(reference.designation),
       active: reference?.active !== false,
     }))
-    .map((reference) => {
-      const nextSites =
-        normalizeText(reference.designation) === "CES-PG"
-          ? [ALL_SITES_VALUE]
-          : getReferenceSites(reference);
-      return {
+      .map((reference) => {
+        const nextSites =
+          (normalizeText(reference.designation) === "CES-PG" ||
+            normalizeText(reference.typeEffet) === "CARTE TURBOSELF")
+            ? [ALL_SITES_VALUE]
+            : getReferenceSites(reference);
+        return {
         ...reference,
         sitesAffectation: nextSites,
         site: nextSites.join(" / "),
@@ -5126,6 +5129,7 @@ function bindEffectForm() {
 
     const formData = new FormData(form);
     const typeEffet = normalizeText(formData.get("typeEffet"));
+    const isTurboSelf = typeEffet === "CARTE TURBOSELF";
     const referenceSite = normalizeText(formData.get("referenceSite"));
     const usesReferenceCatalog = typeUsesReferenceCatalog(typeEffet);
     const usesSiteField = typeUsesSiteField(typeEffet);
@@ -5133,7 +5137,9 @@ function bindEffectForm() {
     const reference = findReferenceById(referenceEffetId);
     const designationLibre = usesReferenceCatalog ? normalizeText(formData.get("designationLibre")) : "";
     const availableReferenceSites = getAvailableReferenceSites(person);
-    const resolvedReferenceSite = usesReferenceCatalog
+    const resolvedReferenceSite = isTurboSelf
+      ? ALL_SITES_VALUE
+      : usesReferenceCatalog
       ? normalizeText(
           reference?.site || referenceSite || (availableReferenceSites.length === 1 ? availableReferenceSites[0] : "")
         )
@@ -6152,7 +6158,9 @@ function bindReferenceEffectForm() {
     const formData = new FormData(form);
     const normalizedTypeEffet = normalizeText(formData.get("referenceTypeEffet"));
     const referenceId = state.editingReferenceId || getNextId("REF", state.data.listes.referencesEffets);
-    const selectedSite = normalizeText(formData.get("referenceSite")) || "SANS SITE";
+    const selectedSite = normalizedTypeEffet === "CARTE TURBOSELF"
+      ? ALL_SITES_VALUE
+      : (normalizeText(formData.get("referenceSite")) || "SANS SITE");
     const normalizedDesignation = normalizeReferenceDesignationByType(
       normalizedTypeEffet,
       formData.get("referenceDesignation")
