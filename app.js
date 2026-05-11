@@ -518,7 +518,62 @@ async function promptSupabaseLoginAndStoreSession() {
     throw new Error("BACKEND_AUTH_REQUIRED");
   }
   storeSupabaseSession(data);
+  await logAdminLoginEvent(accessToken, data);
   return accessToken;
+}
+
+async function fetchUserRoleFromProfile(accessToken, userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!accessToken || !safeUserId) return "viewer";
+  try {
+    const endpoint = `${getSupabaseRestEndpoint().replace(/\/app_state$/i, "/profiles")}?id=eq.${encodeURIComponent(
+      safeUserId
+    )}&select=role&limit=1`;
+    const response = await fetch(endpoint, {
+      method: "GET",
+      headers: {
+        apikey: String(SUPABASE_PUBLISHABLE_KEY || "").trim(),
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: "no-store",
+    });
+    if (!response.ok) return "viewer";
+    const rows = await response.json().catch(() => []);
+    const role = Array.isArray(rows) ? rows[0]?.role : "";
+    return normalizeRequestedUserRole(role);
+  } catch (error) {
+    return "viewer";
+  }
+}
+
+async function logAdminLoginEvent(accessToken, sessionPayload) {
+  try {
+    const userId = String(
+      sessionPayload?.user?.id ||
+      sessionPayload?.currentSession?.user?.id ||
+      ""
+    ).trim();
+    const email = String(
+      sessionPayload?.user?.email ||
+      sessionPayload?.currentSession?.user?.email ||
+      ""
+    ).trim();
+    if (!userId) return;
+    const role = await fetchUserRoleFromProfile(accessToken, userId);
+    await callEdgeApi("admin/login-events", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        email,
+        role,
+      }),
+    });
+  } catch (error) {
+    // login log is non-blocking
+  }
 }
 
 function promptSupabaseCredentialsForm() {
