@@ -31,6 +31,19 @@ function isValidTab(tab) {
   return TABS.some((t) => t.id === tab);
 }
 
+function isAuthFailureMessage(message) {
+  const text = String(message || "").toLowerCase();
+  return (
+    text.includes("jwt") ||
+    text.includes("auth") ||
+    text.includes("permission") ||
+    text.includes("not authorized") ||
+    text.includes("unauthorized") ||
+    text.includes("403") ||
+    text.includes("401")
+  );
+}
+
 function buildUrlState(tab, personId) {
   const params = new URLSearchParams();
   params.set("tab", isValidTab(tab) ? tab : "overview");
@@ -110,6 +123,11 @@ export default function Mobile() {
       if (firstError) {
         const message = String(firstError?.message || firstError || "").trim();
         if (message) setLoadError(`LECTURE MOBILE BLOQUEE: ${message}`);
+        if (isAuthFailureMessage(message)) {
+          await supabase.auth.signOut().catch(() => {});
+          setSession(null);
+          return;
+        }
       }
 
       personsRef.current = p;
