@@ -3185,6 +3185,8 @@ function migrateDataModel() {
       };
     });
 
+  ensureCatalogReferencesFromAssignedEffects();
+
   sortListValues(state.data.listes.typesPersonnel);
   sortListValues(state.data.listes.sites);
   sortListValues(state.data.listes.typesEffets);
@@ -10459,6 +10461,67 @@ function ensureReferenceExists(site, typeEffet, designation, existingId) {
       designation,
     });
     sortReferenceEffects();
+  }
+}
+
+function getCatalogEffectReferenceSite(person, effect) {
+  const normalizedType = normalizeText(effect?.typeEffet || "");
+  if (normalizedType === "CARTE TURBOSELF") {
+    return ALL_SITES_VALUE;
+  }
+  return normalizeText(
+    effect?.siteReference ||
+      referenceSiteFromEffect(effect) ||
+      getPersonSiteLabel(person) ||
+      ALL_SITES_VALUE
+  );
+}
+
+function ensureCatalogReferencesFromAssignedEffects() {
+  if (!state.data?.listes?.referencesEffets || !Array.isArray(state.data?.personnes)) {
+    return;
+  }
+
+  for (const person of state.data.personnes) {
+    const effects = Array.isArray(person?.effetsConfies) ? person.effetsConfies : [];
+    for (const effect of effects) {
+      if (isSoftDeletedEntity(effect)) {
+        continue;
+      }
+      if (!typeUsesReferenceCatalog(effect?.typeEffet)) {
+        continue;
+      }
+
+      const typeEffet = normalizeText(effect.typeEffet);
+      const site = getCatalogEffectReferenceSite(person, effect);
+      const designation = normalizeReferenceDesignationByType(typeEffet, effect?.designation || "");
+
+      let reference =
+        (state.data.listes.referencesEffets || []).find(
+          (entry) =>
+            referenceMatchesType(entry, typeEffet) &&
+            referenceHasSite(entry, site) &&
+            normalizeText(entry.designation) === normalizeText(designation)
+        ) || null;
+
+      if (!reference) {
+        reference = {
+          id: getNextId("REF", state.data.listes.referencesEffets),
+          site,
+          sitesAffectation: [site],
+          typeEffet,
+          designation,
+          active: true,
+        };
+        state.data.listes.referencesEffets.push(reference);
+      }
+
+      effect.referenceEffetId = String(reference.id || "");
+      effect.siteReference = site;
+      if (!effect.designation) {
+        effect.designation = designation;
+      }
+    }
   }
 }
 
