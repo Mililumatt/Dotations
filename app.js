@@ -7305,8 +7305,13 @@ function getDocumentArchiveSignatureStatus(entry) {
   const person = (state.data?.personnes || []).find((currentPerson) =>
     String(currentPerson?.id || "").trim() === personId
   );
+  if (!personId || !person || !normalizedType) {
+    return normalizedStatus || "EN ATTENTE";
+  }
+
+  const signatureType = normalizedType === "SORTIE" ? "exit" : "arrival";
   if (normalizedStatus === "SIGNE") {
-    return "SIGNE";
+    return isDocumentFullySigned(person, signatureType) ? "SIGNE" : "EN ATTENTE DE SIGNATURE";
   }
   if (
     normalizedStatus === "ATTENTE DE GENERATION" ||
@@ -7314,11 +7319,6 @@ function getDocumentArchiveSignatureStatus(entry) {
   ) {
     return normalizedStatus;
   }
-  if (!personId || !person || !normalizedType) {
-    return normalizedStatus || "EN ATTENTE";
-  }
-
-  const signatureType = normalizedType === "SORTIE" ? "exit" : "arrival";
   const isSigned = isDocumentFullySigned(person, signatureType);
   return isSigned ? "SIGNE" : "EN ATTENTE DE SIGNATURE";
 }
@@ -8082,12 +8082,6 @@ function renderDocumentsArchivePage() {
     const docType = rawType === "SORTIE" ? "exit" : "arrival";
     return getCachedSignatureState(person, docType) ? "ATTENTE DE GENERATION" : "EN ATTENTE DE SIGNATURE";
   };
-  const shouldCreateSyntheticExitRow = (person, signatureState) => {
-    if (!person) return false;
-    const sortieReelle = String(person.dateSortieReelle || "").trim();
-    const sortiePrevue = String(person.dateSortiePrevue || "").trim();
-    return Boolean(sortieReelle || sortiePrevue || signatureState);
-  };
 
   const resolveArchiveDisplayData = (entry) => {
     const person = personsById.get(String(entry?.personId || ""));
@@ -8124,12 +8118,6 @@ function renderDocumentsArchivePage() {
         : getCachedSignatureState(person, signatureType)
           ? "ATTENTE DE GENERATION"
           : "EN ATTENTE DE SIGNATURE";
-      if (label === "SORTIE" && !latestEntry && signatureType === "exit") {
-        const hasExitState = getCachedSignatureState(person, "exit");
-        if (!shouldCreateSyntheticExitRow(person, hasExitState)) {
-          return;
-        }
-      }
 
       if (latestEntry) {
         archiveWorkflowRows.push({
@@ -8139,27 +8127,8 @@ function renderDocumentsArchivePage() {
         });
         return;
       }
-
-      archiveWorkflowRows.push({
-        id: `PENDING-${personId}-${label}`,
-        personId,
-        nom: String(person?.nom || ""),
-        prenom: String(person?.prenom || ""),
-        typeDocument: label,
-        dateDocument: getDocumentArchiveDate(person, signatureType),
-        sites: getPersonSiteLabel(person),
-        typePersonnel: String(person?.typePersonnel || ""),
-        typeContrat: String(person?.typeContrat || ""),
-        statutSignature: workflowStatus,
-        totalEffets: effects.length,
-        totalFacturable,
-        pdfPath: "",
-        metadataPath: "",
-        dateArchivage: "",
-        fingerprint: getDocumentFingerprint(person, signatureType),
-        __workflowStatus: workflowStatus,
-        __isWorkflowSynthetic: true,
-      });
+      // No synthetic row: archives must show only real generated documents.
+      return;
     });
   });
   const archiveMatchesLockedPerson = (entry) => {
