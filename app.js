@@ -8254,7 +8254,11 @@ function renderDocumentsArchivePage() {
   }
 
   if (!groupedArchives.length) {
-    body.innerHTML = buildEmptyTableRow(body, "AUCUN DOCUMENT ARCHIVE", 11);
+    const peopleCount = Array.isArray(state.data?.personnes) ? state.data.personnes.length : 0;
+    const emptyMessage = peopleCount === 0
+      ? "AUCUNE DONNEE CHARGEE (VERIFIER CONNEXION/SESSION)"
+      : "AUCUN DOCUMENT ARCHIVE";
+    body.innerHTML = buildEmptyTableRow(body, emptyMessage, 11);
     return;
   }
 
