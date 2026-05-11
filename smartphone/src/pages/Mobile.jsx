@@ -375,15 +375,18 @@ export default function Mobile() {
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #ebe6dc 0%, #d9e2e7 100%)", display: "flex", flexDirection: "column", maxWidth: 480, margin: "0 auto", position: "relative" }}>
-      <div style={{ background: "linear-gradient(180deg, #c2d2da 0%, #d9e2e7 100%)", padding: "10px 12px 8px", borderBottom: "1px solid rgba(63,97,112,0.2)", display: "flex", alignItems: "center", gap: 8 }}>
-        <img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/bandeau-nextboard-sidebar-detoure.png" alt="NextBoard" style={{ height: 28, borderRadius: 6 }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 9, color: "#556d79", letterSpacing: "0.12em" }}>SUIVI DES DOTATIONS</div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#14242c", lineHeight: 1.2, whiteSpace: "nowrap" }}>ENTREE / SORTIE</div>
+      <div style={{ background: "linear-gradient(180deg, #c2d2da 0%, #d9e2e7 100%)", padding: "8px 10px 8px", borderBottom: "1px solid rgba(63,97,112,0.2)", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 34 }}>
+          <img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/bandeau-nextboard-sidebar-detoure.png" alt="NextBoard" style={{ height: 26, borderRadius: 6 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 8, color: "#556d79", letterSpacing: "0.1em", lineHeight: 1.1 }}>SUIVI DES DOTATIONS</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#14242c", lineHeight: 1.1, whiteSpace: "nowrap" }}>ENTREE / SORTIE</div>
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 5, alignItems: "center", justifyContent: "flex-start", flexWrap: "nowrap", overflowX: "auto", paddingBottom: 1, minHeight: 28 }}>
           <span
             style={{
+              flex: "0 0 auto",
               height: 26,
               padding: "0 7px",
               borderRadius: 7,
@@ -403,6 +406,7 @@ export default function Mobile() {
           <button
             type="button"
             style={{
+              flex: "0 0 auto",
               fontSize: 8,
               padding: "0 9px",
               height: 26,
@@ -415,10 +419,10 @@ export default function Mobile() {
           >
             {saveStatus === "saving" ? "SAUVEGARDE..." : saveStatus === "unsaved" ? "SAUVEGARDER" : "SAUVEGARDE"}
           </button>
-          <button onClick={loadData} style={{ fontSize: 9, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(63,97,112,0.12)", color: "#213b48", cursor: "pointer" }}>
+          <button onClick={loadData} style={{ flex: "0 0 auto", fontSize: 9, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(63,97,112,0.12)", color: "#213b48", cursor: "pointer" }}>
             ↻
           </button>
-          <button onClick={handleLogout} style={{ fontSize: 9, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(63,97,112,0.12)", color: "#213b48", cursor: "pointer" }}>
+          <button onClick={handleLogout} style={{ flex: "0 0 auto", fontSize: 9, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(63,97,112,0.12)", color: "#213b48", cursor: "pointer" }}>
             ⎋
           </button>
         </div>
