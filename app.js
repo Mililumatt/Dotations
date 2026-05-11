@@ -380,7 +380,7 @@ function getSupabaseAuthStorageKey() {
 function mapRoleToFrenchLabel(role) {
   const normalized = String(role || "").trim().toLowerCase();
   if (normalized === "admin") return "ADMIN";
-  if (normalized === "editor") return "EDITION";
+  if (normalized === "editor") return "EDITEUR";
   return "LECTURE";
 }
 
@@ -756,9 +756,9 @@ async function openAdminUsersModal() {
         </label>
         <label style="display:block;font-size:11px;color:#3c5561;">Role
           <select name="role" style="width:100%;height:34px;padding:0 10px;border:1px solid #9bb2be;border-radius:8px;">
-            <option value="viewer">viewer</option>
-            <option value="editor">editor</option>
-            <option value="admin">admin</option>
+            <option value="viewer">LECTURE</option>
+            <option value="editor">EDITEUR</option>
+            <option value="admin">ADMIN</option>
           </select>
         </label>
         <button type="submit" style="height:34px;padding:0 12px;border:0;background:#2f5f76;color:#fff;border-radius:8px;cursor:pointer;font-weight:700;">Creer</button>
@@ -831,9 +831,9 @@ async function openAdminUsersModal() {
             <td style="padding:8px;border-bottom:1px solid #e2ebef;font-size:12px;color:#1c3440;">${escapeHtml(formatAdminUserDate(user.createdAt))}</td>
             <td style="padding:8px;border-bottom:1px solid #e2ebef;">
               <select data-action="role" style="height:30px;padding:0 8px;border:1px solid #9bb2be;border-radius:7px;">
-                <option value="viewer"${user.role === "viewer" ? " selected" : ""}>viewer</option>
-                <option value="editor"${user.role === "editor" ? " selected" : ""}>editor</option>
-                <option value="admin"${user.role === "admin" ? " selected" : ""}>admin</option>
+                <option value="viewer"${user.role === "viewer" ? " selected" : ""}>LECTURE</option>
+                <option value="editor"${user.role === "editor" ? " selected" : ""}>EDITEUR</option>
+                <option value="admin"${user.role === "admin" ? " selected" : ""}>ADMIN</option>
               </select>
             </td>
             <td style="padding:8px;border-bottom:1px solid #e2ebef;white-space:nowrap;">
