@@ -692,7 +692,12 @@ function promptSupabaseCredentialsForm() {
         statusNode.textContent = "Email envoyé. Vérifiez votre boîte mail.";
         statusNode.style.color = "#2f5e43";
       } catch (error) {
-        statusNode.textContent = "Échec envoi email de réinitialisation.";
+        const message = String(error?.message || "");
+        if (message.includes("429")) {
+          statusNode.textContent = "Trop de demandes. Réessayez dans 1 heure.";
+        } else {
+          statusNode.textContent = "Échec envoi email de réinitialisation.";
+        }
         statusNode.style.color = "#8e2c2c";
       }
     });

@@ -284,7 +284,12 @@ export default function Mobile() {
       if (error) throw error;
       setLoginError("Email de réinitialisation envoyé.");
     } catch (error) {
-      setLoginError(String(error?.message || "Échec envoi email de réinitialisation."));
+      const message = String(error?.message || "");
+      if (message.includes("429")) {
+        setLoginError("Trop de demandes. Réessayez dans 1 heure.");
+      } else {
+        setLoginError(message || "Échec envoi email de réinitialisation.");
+      }
     } finally {
       setResetBusy(false);
     }
