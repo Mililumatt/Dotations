@@ -64,6 +64,7 @@ export default function Mobile() {
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [roleLabel, setRoleLabel] = useState("LECTURE");
+  const [loadError, setLoadError] = useState("");
 
   const personsRef = useRef([]);
   const selectedPersonRef = useRef(null);
@@ -86,9 +87,11 @@ export default function Mobile() {
   const loadData = async () => {
     if (!session) {
       setLoading(false);
+      setLoadError("");
       return;
     }
     setLoading(true);
+    setLoadError("");
     try {
       const [pRes, eRes, bRes] = await Promise.allSettled([
         db.Person.list("-created_at", 5000),
@@ -99,6 +102,15 @@ export default function Mobile() {
       const p = pRes.status === "fulfilled" && Array.isArray(pRes.value) ? pRes.value : [];
       const e = eRes.status === "fulfilled" && Array.isArray(eRes.value) ? eRes.value : [];
       const b = bRes.status === "fulfilled" && bRes.value ? bRes.value : DEFAULT_BASES;
+      const firstError =
+        (pRes.status === "rejected" && pRes.reason) ||
+        (eRes.status === "rejected" && eRes.reason) ||
+        (bRes.status === "rejected" && bRes.reason) ||
+        null;
+      if (firstError) {
+        const message = String(firstError?.message || firstError || "").trim();
+        if (message) setLoadError(`LECTURE MOBILE BLOQUEE: ${message}`);
+      }
 
       personsRef.current = p;
       setPersons(p);
@@ -115,6 +127,7 @@ export default function Mobile() {
       setPersons([]);
       setEffets([]);
       setBases(DEFAULT_BASES);
+      setLoadError("LECTURE MOBILE BLOQUEE: connexion ou droits insuffisants.");
     } finally {
       setLoading(false);
     }
@@ -171,6 +184,7 @@ export default function Mobile() {
       setBases(DEFAULT_BASES);
       setSelectedPerson(null);
       setLoading(false);
+      setLoadError("");
       return;
     }
     loadData();
@@ -386,6 +400,22 @@ export default function Mobile() {
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", paddingBottom: 70 }}>
+        {loadError ? (
+          <div
+            style={{
+              margin: "10px 12px 0",
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid rgba(184,96,82,0.45)",
+              background: "rgba(252,234,227,0.9)",
+              color: "#7d2f22",
+              fontSize: 11,
+              fontWeight: 600,
+            }}
+          >
+            {loadError}
+          </div>
+        ) : null}
         {loading ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "#3f5662", fontSize: 12 }}>
             CHARGEMENT...
