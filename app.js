@@ -800,6 +800,15 @@ function formatAdminUserDate(value) {
   return date.toLocaleString("fr-FR");
 }
 
+function toLocalDayKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 async function openAdminUsersModal() {
   if (state.currentUserRoleLabel !== "ADMIN") {
     window.alert("ACCES REFUSE : COMPTE ADMIN REQUIS.");
@@ -1007,11 +1016,13 @@ async function openAdminUsersModal() {
     }
     const recentDays = 30;
     const dayKeys = [];
+    const dayLabels = [];
     for (let offset = recentDays - 1; offset >= 0; offset -= 1) {
       const d = new Date();
       d.setHours(0, 0, 0, 0);
       d.setDate(d.getDate() - offset);
-      dayKeys.push(d.toISOString().slice(0, 10));
+      dayKeys.push(toLocalDayKey(d));
+      dayLabels.push(`${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`);
     }
     const byEmail = new Map();
     loginEvents.forEach((event) => {
@@ -1019,7 +1030,7 @@ async function openAdminUsersModal() {
       const prev = byEmail.get(key) || { email: key, total: 0, role: event.role };
       prev.total += Number(event.count || 1);
       prev.role = event.role || prev.role;
-      const day = String(event.at || "").slice(0, 10);
+      const day = toLocalDayKey(event.at) || String(event.at || "").slice(0, 10);
       if (!prev.byDay) prev.byDay = {};
       prev.byDay[day] = (Number(prev.byDay[day] || 0) + Number(event.count || 1));
       byEmail.set(key, prev);
@@ -1061,6 +1072,13 @@ async function openAdminUsersModal() {
     loginsHeatmapNode.innerHTML = `
       <div style="padding:6px 8px;background:#f3f7f9;border-bottom:1px solid #e2ebef;font-size:11px;color:#3d5865;font-weight:700;">
         ACTIVITE CONNEXIONS - 30 JOURS
+      </div>
+      <div style="display:grid;grid-template-columns:220px 1fr auto;gap:8px;align-items:center;padding:4px 8px;border-bottom:1px solid #e2ebef;">
+        <div></div>
+        <div style="display:grid;grid-template-columns:repeat(${recentDays}, 14px);gap:3px;min-width:max-content;">
+          ${dayLabels.map((label) => `<span style="font-size:8px;color:#5a7381;transform:rotate(-65deg);transform-origin:left bottom;display:inline-block;height:16px;line-height:1;" title="${escapeHtml(label)}">${escapeHtml(label.slice(0,2))}</span>`).join("")}
+        </div>
+        <div></div>
       </div>
       <div>${heatRows}</div>
       <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;padding:6px 8px;border-top:1px solid #e2ebef;">
