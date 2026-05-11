@@ -79,6 +79,7 @@ export default function Mobile() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
   const [roleLabel, setRoleLabel] = useState("LECTURE");
   const [loadError, setLoadError] = useState("");
 
@@ -267,6 +268,25 @@ export default function Mobile() {
     } catch {}
   };
 
+  const handleForgotPassword = async () => {
+    const email = String(loginEmail || "").trim();
+    if (!email) {
+      setLoginError("Saisir votre email puis cliquer 'Mot de passe oublié'.");
+      return;
+    }
+    setLoginError("");
+    setResetBusy(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+      setLoginError("Email de réinitialisation envoyé.");
+    } catch (error) {
+      setLoginError(String(error?.message || "Échec envoi email de réinitialisation."));
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
   useEffect(() => {
     selectedPersonRef.current = selectedPerson;
   }, [selectedPerson]);
@@ -365,6 +385,14 @@ export default function Mobile() {
             style={{ height: 38, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", padding: "0 10px" }}
           />
           {loginError ? <div style={{ color: "#8e2c2c", fontSize: 12 }}>{loginError}</div> : null}
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            disabled={resetBusy}
+            style={{ height: 36, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#fff", color: "#1d3440", fontWeight: 700, cursor: "pointer" }}
+          >
+            {resetBusy ? "ENVOI..." : "MOT DE PASSE OUBLIE"}
+          </button>
           <button type="submit" disabled={loginBusy} style={{ height: 38, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#3f6170", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
             {loginBusy ? "CONNEXION..." : "SE CONNECTER"}
           </button>

@@ -523,6 +523,28 @@ async function promptSupabaseLoginAndStoreSession() {
   return accessToken;
 }
 
+async function requestSupabasePasswordReset(email) {
+  const safeEmail = String(email || "").trim();
+  if (!safeEmail) {
+    throw new Error("EMAIL_OBLIGATOIRE");
+  }
+  const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
+  const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
+  const response = await fetch(`${baseUrl}/auth/v1/recover`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email: safeEmail }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`RESET_MDP_ECHEC:${response.status}:${text}`);
+  }
+}
+
 async function fetchUserRoleFromProfile(accessToken, userId) {
   const safeUserId = String(userId || "").trim();
   if (!accessToken || !safeUserId) return "viewer";
@@ -622,7 +644,10 @@ function promptSupabaseCredentialsForm() {
         <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Mot de passe</label>
         <input id="supabase-login-password" name="password" type="password" autocomplete="current-password" required
           style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:12px;" />
+        <div id="supabase-login-status" style="font-size:12px;color:#4a6170;margin:-6px 0 10px;"></div>
         <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button type="button" id="supabase-login-forgot"
+            style="padding:8px 12px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;">Mot de passe oublié</button>
           <button type="button" id="supabase-login-cancel"
             style="padding:8px 12px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;">Annuler</button>
           <button type="submit"
@@ -636,6 +661,8 @@ function promptSupabaseCredentialsForm() {
     const form = box.querySelector("#supabase-login-form");
     const emailInput = box.querySelector("#supabase-login-email");
     const passwordInput = box.querySelector("#supabase-login-password");
+    const statusNode = box.querySelector("#supabase-login-status");
+    const forgotButton = box.querySelector("#supabase-login-forgot");
     const cancelButton = box.querySelector("#supabase-login-cancel");
 
     const cleanup = () => {
@@ -645,6 +672,25 @@ function promptSupabaseCredentialsForm() {
     cancelButton.addEventListener("click", () => {
       cleanup();
       reject(new Error("BACKEND_AUTH_REQUIRED"));
+    });
+
+    forgotButton.addEventListener("click", async () => {
+      const email = String(emailInput.value || "").trim();
+      if (!email) {
+        statusNode.textContent = "Saisissez d'abord votre email.";
+        statusNode.style.color = "#8e2c2c";
+        return;
+      }
+      statusNode.textContent = "Envoi email de réinitialisation...";
+      statusNode.style.color = "#355464";
+      try {
+        await requestSupabasePasswordReset(email);
+        statusNode.textContent = "Email envoyé. Vérifiez votre boîte mail.";
+        statusNode.style.color = "#2f5e43";
+      } catch (error) {
+        statusNode.textContent = "Échec envoi email de réinitialisation.";
+        statusNode.style.color = "#8e2c2c";
+      }
     });
 
     form.addEventListener("submit", (event) => {
