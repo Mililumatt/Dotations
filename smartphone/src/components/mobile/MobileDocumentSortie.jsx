@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { db } from "@/lib/db";
 import MobilePersonSearch from "./MobilePersonSearch";
 import MobileSignatureCanvas from "./MobileSignatureCanvas";
@@ -65,18 +65,22 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
   const [localEffets, setLocalEffets] = useState([]);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
+  const autoSaveTimerRef = useRef(null);
+  const lastSavedEffetsKeyRef = useRef("");
 
   useEffect(() => {
     if (selectedPerson) {
       loadSignatures();
       const pe = effets.filter(e => e.personId === selectedPerson.id);
-      setLocalEffets(
-        pe.map((e) => ({
+      const normalized = pe.map((e) => ({
           ...e,
           statut: normalizeManualStatus(e.statut) || "ACTIF",
           cause: normalizeCause(e.cause || e.causeRemplacement),
           _rendus: false,
-        }))
+        }));
+      setLocalEffets(normalized);
+      lastSavedEffetsKeyRef.current = JSON.stringify(
+        normalized.map((entry) => [entry.id, entry.statut, entry.cause, entry.dateRetour || "", Boolean(entry._rendus)])
       );
     }
   }, [selectedPerson, effets]);
@@ -184,7 +188,7 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
     byCause: costByType.get(type) || {},
   }));
 
-  const handleSaveEffets = async () => {
+  const handleSaveEffets = async ({ silent = false } = {}) => {
     if (!selectedPerson) return;
     setSaving(true);
     setSaveStatus("saving");
@@ -196,10 +200,15 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
           dateRetour: String(e.dateRetour || "").trim() ? String(e.dateRetour) : "",
         });
       }
+      lastSavedEffetsKeyRef.current = JSON.stringify(
+        localEffets.map((entry) => [entry.id, entry.statut, entry.cause, entry.dateRetour || "", Boolean(entry._rendus)])
+      );
       setSaveStatus("saved");
-      setMsg("MODIFICATIONS SAUVEGARDEES");
-      onDataChange();
-      setTimeout(() => setMsg(null), 2500);
+      if (!silent) {
+        setMsg("MODIFICATIONS SAUVEGARDEES");
+        setTimeout(() => setMsg(null), 2500);
+      }
+      await onDataChange();
     } catch (error) {
       console.error("Sortie save effets error:", error);
       setSaveStatus("error");
@@ -209,6 +218,30 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!selectedPerson?.id) return;
+    if (saving) return;
+    if (!localEffets.length) return;
+    const currentKey = JSON.stringify(
+      localEffets.map((entry) => [entry.id, entry.statut, entry.cause, entry.dateRetour || "", Boolean(entry._rendus)])
+    );
+    if (!lastSavedEffetsKeyRef.current) {
+      lastSavedEffetsKeyRef.current = currentKey;
+      return;
+    }
+    if (currentKey === lastSavedEffetsKeyRef.current) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      handleSaveEffets({ silent: true });
+    }, 350);
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+  }, [selectedPerson?.id, localEffets, saving]);
 
   return (
     <div style={{ padding: "12px 12px 0" }}>

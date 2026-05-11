@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { db } from "@/lib/db";
 import MobilePersonSearch from "./MobilePersonSearch";
 import MobileEffetForm from "./MobileEffetForm";
@@ -18,6 +18,7 @@ export default function MobileFichePerson({ persons, effets, selectedPerson, onS
   const [activeSection, setActiveSection] = useState("infos"); // "infos" | "effets" | "add-effet"
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
+  const autoSaveTimerRef = useRef(null);
   const fonctionsRef = Array.from(
     new Set([
       ...(Array.isArray(bases.fonctions) ? bases.fonctions.map((entry) => String(entry || "").trim()).filter(Boolean) : []),
@@ -134,6 +135,37 @@ export default function MobileFichePerson({ persons, effets, selectedPerson, onS
     if (saving) return;
     setSaveStatus(hasUnsavedChanges ? "unsaved" : "saved");
   }, [hasUnsavedChanges, saving, setSaveStatus]);
+
+  useEffect(() => {
+    if (!selectedPerson?.id) return;
+    if (saving) return;
+    if (!hasUnsavedChanges) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(async () => {
+      setSaving(true);
+      setSaveStatus("saving");
+      try {
+        await db.Person.update(selectedPerson.id, form);
+        setLastSavedForm(form);
+        setSaveStatus("saved");
+        setMsg("MODIFICATIONS SAUVEGARDEES");
+        await onDataChange();
+      } catch (error) {
+        console.error("Person autosave error:", error);
+        setSaveStatus("error");
+        setMsg(String(error?.message || "ERREUR DE SAUVEGARDE SUPABASE").toUpperCase());
+      } finally {
+        setSaving(false);
+        setTimeout(() => setMsg(null), 2500);
+      }
+    }, 350);
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+  }, [selectedPerson?.id, form, hasUnsavedChanges, saving, setSaveStatus, onDataChange]);
 
   const toggleSite = (site) => {
     setForm((prev) => {
