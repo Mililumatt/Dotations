@@ -4415,7 +4415,11 @@ function getArchiveSortValue(entry, key, resolveArchiveDisplayData) {
     case "sites":
       return display.sites || "";
     case "statutSignature":
-      return String(entry?.__workflowStatus || getDocumentArchiveSignatureStatus(entry) || "").trim();
+      return String(
+        entry?.__workflowStatus ||
+          normalizeText(entry?.statutSignature || "") ||
+          "EN ATTENTE DE SIGNATURE"
+      ).trim();
       case "totalEffets":
         return Number(getArchiveDisplayedTotalEffets(entry) || 0);
     case "totalFacturable":
@@ -7335,13 +7339,21 @@ function getDocumentArchiveWorkflowStatus(entry, person) {
 function isHostedPdfDocumentPath(pathValue) {
   const value = String(pathValue || "").trim();
   if (!value) return false;
+  const isLocalDocumentPdf =
+    /(^|\/)document-(arrivee|sortie)\.html/i.test(value) ||
+    /(^|\/)document-(arrivee|sortie)\.html\?(.*)?/i.test(value);
+  if (!isLocalDocumentPdf) {
+    return false;
+  }
+  if (!/^(?:https?:\/\/)/i.test(value)) {
+    return true;
+  }
   try {
-    const parsed = new URL(value, window.location.href);
-    const pathname = String(parsed.pathname || "").toLowerCase();
+    const parsed = new URL(value);
     if (parsed.origin !== window.location.origin) {
       return false;
     }
-    return /document-(arrivee|sortie)\.html$/i.test(pathname);
+    return isLocalDocumentPdf;
   } catch (error) {
     return false;
   }
@@ -8042,6 +8054,34 @@ function renderDocumentsArchivePage() {
     { label: "ARRIVEE", signatureType: "arrival" },
     { label: "SORTIE", signatureType: "exit" },
   ];
+  const personsToProcess = lockedPersonId
+    ? allPersons.filter((person) => String(person?.id || "") === String(lockedPersonId).trim())
+    : allPersons;
+  const signatureStateCache = new Map();
+  const getCachedSignatureState = (person, docType) => {
+    const personId = String(person?.id || "").trim();
+    const key = `${personId}|${docType}`;
+    if (!signatureStateCache.has(key)) {
+      signatureStateCache.set(key, isDocumentFullySigned(person, docType));
+    }
+    return signatureStateCache.get(key);
+  };
+  const resolveWorkflowStatus = (entry, person) => {
+    const baseStatus = getDocumentArchiveSignatureStatus(entry);
+    if (
+      baseStatus === "SIGNE" ||
+      baseStatus === "ATTENTE DE GENERATION" ||
+      baseStatus === "EN ATTENTE DE SIGNATURE"
+    ) {
+      return baseStatus;
+    }
+    if (!person) {
+      return baseStatus || "EN ATTENTE DE SIGNATURE";
+    }
+    const rawType = normalizeText(entry?.typeDocument);
+    const docType = rawType === "SORTIE" ? "exit" : "arrival";
+    return getCachedSignatureState(person, docType) ? "ATTENTE DE GENERATION" : "EN ATTENTE DE SIGNATURE";
+  };
 
   const resolveArchiveDisplayData = (entry) => {
     const person = personsById.get(String(entry?.personId || ""));
@@ -8058,9 +8098,9 @@ function renderDocumentsArchivePage() {
       sites: getPersonSiteLabel(person) || entry?.sites || "-",
     };
   };
-  const signedArchives = getLatestSignedArchivesPerPersonAndType(allArchives);
   const archiveWorkflowRows = [];
-  allPersons.forEach((person) => {
+  const latestSignedArchives = [];
+  personsToProcess.forEach((person) => {
     trackedDocumentTypes.forEach(({ label, signatureType }) => {
       const personId = String(person?.id || "");
       if (!personId) {
@@ -8074,8 +8114,8 @@ function renderDocumentsArchivePage() {
         ? effects.reduce((sum, effect) => sum + getEffectReplacementCost(person, effect), 0)
         : 0;
       const workflowStatus = latestEntry
-        ? getDocumentArchiveWorkflowStatus(latestEntry, person)
-        : isDocumentFullySigned(person, signatureType)
+        ? resolveWorkflowStatus(latestEntry, person)
+        : getCachedSignatureState(person, signatureType)
           ? "ATTENTE DE GENERATION"
           : "EN ATTENTE DE SIGNATURE";
 
@@ -8170,6 +8210,13 @@ function renderDocumentsArchivePage() {
     return true;
   });
   const groupedArchives = sortArchivesForTable(archives, resolveArchiveDisplayData);
+  latestArchivePerPersonAndType.forEach((entry) => {
+    const person = personsById.get(String(entry?.personId || ""));
+    const status = resolveWorkflowStatus(entry, person);
+    if (status === "SIGNE") {
+      latestSignedArchives.push({ ...entry, __workflowStatus: status });
+    }
+  });
 
   const totalNode = document.getElementById("archive-count-total");
   const arrivalNode = document.getElementById("archive-count-arrival");
@@ -8187,14 +8234,13 @@ function renderDocumentsArchivePage() {
   const storageArrivalNode = document.getElementById("archive-storage-arrival");
   const storageExitNode = document.getElementById("archive-storage-exit");
   const storageLastUpdateNode = document.getElementById("archive-storage-last-update");
-  const allSignedArchives = signedArchives;
-  const arrivalStorageCount = allSignedArchives.filter(
+  const arrivalStorageCount = latestSignedArchives.filter(
     (entry) => normalizeText(entry?.typeDocument) === "ARRIVEE"
   ).length;
-  const exitStorageCount = allSignedArchives.filter(
+  const exitStorageCount = latestSignedArchives.filter(
     (entry) => normalizeText(entry?.typeDocument) === "SORTIE"
   ).length;
-  const latestArchiveMs = allSignedArchives.reduce((latest, entry) => {
+  const latestArchiveMs = latestSignedArchives.reduce((latest, entry) => {
     const ms = Date.parse(String(entry?.dateArchivage || ""));
     if (!Number.isFinite(ms)) {
       return latest;
@@ -8225,7 +8271,7 @@ function renderDocumentsArchivePage() {
         const typeIcon = typeLabel === "SORTIE" ? "🔴" : typeLabel === "ARRIVEE" ? "🟢" : "⚪";
         const typeTitle = typeLabel || "TYPE INCONNU";
         const workflowStatus = String(
-          entry?.__workflowStatus || getDocumentArchiveWorkflowStatus(entry, personsById.get(String(entry?.personId || "")))
+          entry?.__workflowStatus || resolveWorkflowStatus(entry, personsById.get(String(entry?.personId || "")))
         );
         const hasPdf = Boolean(openPath);
         const openInNewTab = hasPdf && !isHostedPdfDocumentPath(openPath);
