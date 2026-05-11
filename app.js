@@ -528,6 +528,7 @@ async function requestSupabasePasswordReset(email) {
   if (!safeEmail) {
     throw new Error("EMAIL_OBLIGATOIRE");
   }
+  const resetRedirectTo = "https://nextboard-dev.github.io/Dotations/index.html?view=desktop";
   const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
   const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
   const response = await fetch(`${baseUrl}/auth/v1/recover`, {
@@ -536,7 +537,10 @@ async function requestSupabasePasswordReset(email) {
       apikey: key,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ email: safeEmail }),
+    body: JSON.stringify({
+      email: safeEmail,
+      redirect_to: resetRedirectTo,
+    }),
     cache: "no-store",
   });
   if (!response.ok) {

@@ -270,6 +270,7 @@ export default function Mobile() {
 
   const handleForgotPassword = async () => {
     const email = String(loginEmail || "").trim();
+    const resetRedirectTo = "https://nextboard-dev.github.io/Dotations/index.html?view=desktop";
     if (!email) {
       setLoginError("Saisir votre email puis cliquer 'Mot de passe oublié'.");
       return;
@@ -277,7 +278,9 @@ export default function Mobile() {
     setLoginError("");
     setResetBusy(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: resetRedirectTo,
+      });
       if (error) throw error;
       setLoginError("Email de réinitialisation envoyé.");
     } catch (error) {
