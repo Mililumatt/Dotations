@@ -1030,17 +1030,30 @@ async function openAdminUsersModal() {
         const cells = dayKeys
           .map((day) => {
             const value = Number(row.byDay?.[day] || 0);
-            let bg = "#d4dee6";
-            if (value >= 5) bg = "#208f5a";
-            else if (value >= 3) bg = "#39aa70";
-            else if (value >= 2) bg = "#79c89d";
-            else if (value >= 1) bg = "#b8e3ca";
-            return `<span title="${escapeHtml(day)} : ${value}" style="display:inline-block;width:11px;height:11px;border-radius:3px;background:${bg};border:1px solid rgba(55,85,101,0.18);"></span>`;
+            let bg = "#d7e1ea";
+            let fg = "#34515f";
+            if (value >= 8) {
+              bg = "#0b7a47";
+              fg = "#ffffff";
+            } else if (value >= 5) {
+              bg = "#1f9b5e";
+              fg = "#ffffff";
+            } else if (value >= 3) {
+              bg = "#46b979";
+              fg = "#ffffff";
+            } else if (value >= 2) {
+              bg = "#7fd09f";
+              fg = "#113a24";
+            } else if (value >= 1) {
+              bg = "#b8e5c9";
+              fg = "#1d5a39";
+            }
+            return `<span title="${escapeHtml(day)} : ${value}" style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;background:${bg};border:1px solid rgba(55,85,101,0.2);font-size:9px;font-weight:700;color:${fg};line-height:1;">${value > 0 ? escapeHtml(String(value)) : ""}</span>`;
           })
           .join("");
         return `<div style="display:grid;grid-template-columns:220px 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid #e2ebef;">
           <div style="font-size:11px;color:#1d3440;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(row.email)}</div>
-          <div style="display:grid;grid-template-columns:repeat(${recentDays}, 11px);gap:3px;min-width:max-content;">${cells}</div>
+          <div style="display:grid;grid-template-columns:repeat(${recentDays}, 14px);gap:3px;min-width:max-content;">${cells}</div>
           <div style="font-size:11px;color:#3d5865;font-weight:700;">${escapeHtml(String(row.total))}</div>
         </div>`;
       })
@@ -1050,6 +1063,16 @@ async function openAdminUsersModal() {
         ACTIVITE CONNEXIONS - 30 JOURS
       </div>
       <div>${heatRows}</div>
+      <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;padding:6px 8px;border-top:1px solid #e2ebef;">
+        <span style="font-size:10px;color:#4a6170;">MOINS</span>
+        <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#d7e1ea;border:1px solid rgba(55,85,101,0.2);"></span>
+        <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#b8e5c9;border:1px solid rgba(55,85,101,0.2);"></span>
+        <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#7fd09f;border:1px solid rgba(55,85,101,0.2);"></span>
+        <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#46b979;border:1px solid rgba(55,85,101,0.2);"></span>
+        <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#1f9b5e;border:1px solid rgba(55,85,101,0.2);"></span>
+        <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#0b7a47;border:1px solid rgba(55,85,101,0.2);"></span>
+        <span style="font-size:10px;color:#4a6170;">PLUS</span>
+      </div>
     `;
     const summaryRows = Array.from(byEmail.values())
       .sort((a, b) => b.total - a.total || String(a.email).localeCompare(String(b.email), "fr"))
