@@ -8082,6 +8082,12 @@ function renderDocumentsArchivePage() {
     const docType = rawType === "SORTIE" ? "exit" : "arrival";
     return getCachedSignatureState(person, docType) ? "ATTENTE DE GENERATION" : "EN ATTENTE DE SIGNATURE";
   };
+  const shouldCreateSyntheticExitRow = (person, signatureState) => {
+    if (!person) return false;
+    const sortieReelle = String(person.dateSortieReelle || "").trim();
+    const sortiePrevue = String(person.dateSortiePrevue || "").trim();
+    return Boolean(sortieReelle || sortiePrevue || signatureState);
+  };
 
   const resolveArchiveDisplayData = (entry) => {
     const person = personsById.get(String(entry?.personId || ""));
@@ -8118,6 +8124,12 @@ function renderDocumentsArchivePage() {
         : getCachedSignatureState(person, signatureType)
           ? "ATTENTE DE GENERATION"
           : "EN ATTENTE DE SIGNATURE";
+      if (label === "SORTIE" && !latestEntry && signatureType === "exit") {
+        const hasExitState = getCachedSignatureState(person, "exit");
+        if (!shouldCreateSyntheticExitRow(person, hasExitState)) {
+          return;
+        }
+      }
 
       if (latestEntry) {
         archiveWorkflowRows.push({
