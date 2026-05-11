@@ -672,9 +672,9 @@ function renderRoleBadge() {
   const canManageUsers = label === "ADMIN";
   badge.style.cursor = canManageUsers ? "pointer" : "default";
   badge.title = canManageUsers
-    ? "Admin: cliquer pour creer un utilisateur"
+    ? "Admin: cliquer pour gerer les utilisateurs"
     : "Droit utilisateur";
-  badge.onclick = canManageUsers ? openAdminCreateUserFlow : null;
+  badge.onclick = canManageUsers ? openAdminUsersModal : null;
 }
 
 function normalizeRequestedUserRole(role) {
@@ -684,45 +684,232 @@ function normalizeRequestedUserRole(role) {
   return "viewer";
 }
 
-async function openAdminCreateUserFlow() {
+function normalizeAdminUserRole(role) {
+  return normalizeRequestedUserRole(role);
+}
+
+function normalizeAdminUsersList(payload) {
+  const candidates = [
+    payload?.users,
+    payload?.data?.users,
+    payload?.items,
+    payload?.data?.items,
+    payload?.data,
+    payload,
+  ];
+  const list = candidates.find((entry) => Array.isArray(entry));
+  if (!Array.isArray(list)) return [];
+  return list.map((entry) => {
+    const role = normalizeAdminUserRole(entry?.role || entry?.profile?.role || "viewer");
+    return {
+      id: String(entry?.id || entry?.user_id || "").trim(),
+      email: String(entry?.email || "").trim(),
+      role,
+      createdAt: String(entry?.created_at || entry?.createdAt || "").trim(),
+    };
+  });
+}
+
+function formatAdminUserDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) return raw;
+  return date.toLocaleString("fr-FR");
+}
+
+async function openAdminUsersModal() {
   if (state.currentUserRoleLabel !== "ADMIN") {
     window.alert("ACCES REFUSE : COMPTE ADMIN REQUIS.");
     return;
   }
-  if (state.adminCreateUserInFlight) {
+  if (document.getElementById("admin-users-modal")) {
     return;
   }
-  const email = String(window.prompt("NOUVEL UTILISATEUR - EMAIL :", "") || "").trim();
-  if (!email) return;
-  const password = String(window.prompt("MOT DE PASSE TEMPORAIRE :", "") || "");
-  if (!password) return;
-  const roleInput = String(
-    window.prompt("ROLE (viewer / editor / admin) :", "viewer") || ""
-  ).trim();
-  const role = normalizeRequestedUserRole(roleInput);
-  state.adminCreateUserInFlight = true;
-  showDataStatus("CREATION UTILISATEUR EN COURS...");
-  try {
-    const response = await callEdgeApi("admin/users", {
-      method: "POST",
-      body: JSON.stringify({ email, password, role }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    const createdEmail = String(payload?.email || email).trim();
-    const createdRole = String(payload?.role || role).trim().toLowerCase();
-    showDataStatus(`UTILISATEUR CREE : ${createdEmail} (${mapRoleToFrenchLabel(createdRole)})`);
-  } catch (error) {
-    const message = String(error?.message || "");
-    if (message.includes("EDGE_API_FAILED:404")) {
-      window.alert("API ADMIN ABSENTE : AJOUTER /admin/users DANS dotations-api.");
-      showDataStatus("CREATION UTILISATEUR IMPOSSIBLE : API ADMIN ABSENTE");
-    } else {
-      window.alert(`CREATION UTILISATEUR IMPOSSIBLE : ${message || "ERREUR"}`);
-      showDataStatus("CREATION UTILISATEUR IMPOSSIBLE");
+
+  const backdrop = document.createElement("div");
+  backdrop.id = "admin-users-modal";
+  backdrop.style.position = "fixed";
+  backdrop.style.inset = "0";
+  backdrop.style.background = "rgba(12,25,33,0.45)";
+  backdrop.style.zIndex = "99999";
+  backdrop.style.display = "flex";
+  backdrop.style.alignItems = "center";
+  backdrop.style.justifyContent = "center";
+  backdrop.innerHTML = `
+    <div style="width:min(94vw,920px);max-height:88vh;overflow:auto;background:#fff;border-radius:12px;border:1px solid #9bb2be;box-shadow:0 18px 36px rgba(0,0,0,0.28);padding:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+        <div>
+          <div style="font-size:16px;font-weight:700;color:#122430;">PILOTAGE UTILISATEURS</div>
+          <div style="font-size:11px;color:#4a6170;">ACCES ADMIN UNIQUEMENT</div>
+        </div>
+        <button type="button" id="admin-users-close" style="height:30px;padding:0 10px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;">Fermer</button>
+      </div>
+      <div id="admin-users-status" style="font-size:12px;color:#355464;margin-bottom:8px;"></div>
+      <div id="admin-users-list-wrap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:10px;"></div>
+      <form id="admin-users-create-form" style="display:grid;grid-template-columns:2fr 1.4fr 1fr auto;gap:8px;align-items:end;">
+        <label style="display:block;font-size:11px;color:#3c5561;">Email
+          <input name="email" type="email" required autocomplete="username email" style="width:100%;height:34px;padding:0 10px;border:1px solid #9bb2be;border-radius:8px;" />
+        </label>
+        <label style="display:block;font-size:11px;color:#3c5561;">Mot de passe temporaire
+          <input name="password" type="text" required autocomplete="new-password" style="width:100%;height:34px;padding:0 10px;border:1px solid #9bb2be;border-radius:8px;" />
+        </label>
+        <label style="display:block;font-size:11px;color:#3c5561;">Role
+          <select name="role" style="width:100%;height:34px;padding:0 10px;border:1px solid #9bb2be;border-radius:8px;">
+            <option value="viewer">viewer</option>
+            <option value="editor">editor</option>
+            <option value="admin">admin</option>
+          </select>
+        </label>
+        <button type="submit" style="height:34px;padding:0 12px;border:0;background:#2f5f76;color:#fff;border-radius:8px;cursor:pointer;font-weight:700;">Creer</button>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+
+  const closeButton = backdrop.querySelector("#admin-users-close");
+  const statusNode = backdrop.querySelector("#admin-users-status");
+  const listWrap = backdrop.querySelector("#admin-users-list-wrap");
+  const createForm = backdrop.querySelector("#admin-users-create-form");
+
+  const setStatus = (message, variant = "info") => {
+    if (!statusNode) return;
+    statusNode.textContent = String(message || "");
+    statusNode.style.color =
+      variant === "error" ? "#8e2c2c" : variant === "ok" ? "#2f5e43" : "#355464";
+  };
+
+  const closeModal = () => {
+    backdrop.remove();
+  };
+
+  closeButton?.addEventListener("click", closeModal);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) closeModal();
+  });
+
+  let users = [];
+  const renderUsers = () => {
+    if (!listWrap) return;
+    const rows = users
+      .map(
+        (user) => `
+          <tr data-user-id="${escapeHtml(user.id)}">
+            <td style="padding:8px;border-bottom:1px solid #e2ebef;font-size:12px;color:#1c3440;">${escapeHtml(user.email || "-")}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2ebef;font-size:12px;color:#1c3440;">${escapeHtml(formatAdminUserDate(user.createdAt))}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2ebef;">
+              <select data-action="role" style="height:30px;padding:0 8px;border:1px solid #9bb2be;border-radius:7px;">
+                <option value="viewer"${user.role === "viewer" ? " selected" : ""}>viewer</option>
+                <option value="editor"${user.role === "editor" ? " selected" : ""}>editor</option>
+                <option value="admin"${user.role === "admin" ? " selected" : ""}>admin</option>
+              </select>
+            </td>
+            <td style="padding:8px;border-bottom:1px solid #e2ebef;white-space:nowrap;">
+              <button type="button" data-action="save" style="height:30px;padding:0 10px;border:1px solid #9bb2be;background:#fff;border-radius:7px;cursor:pointer;">Modifier</button>
+              <button type="button" data-action="delete" style="height:30px;padding:0 10px;border:1px solid #d7a6a6;background:#fff5f5;color:#8e2c2c;border-radius:7px;cursor:pointer;margin-left:6px;">Supprimer</button>
+            </td>
+          </tr>`
+      )
+      .join("");
+    listWrap.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#f3f7f9;">
+            <th style="text-align:left;padding:8px;font-size:11px;color:#3d5865;">EMAIL</th>
+            <th style="text-align:left;padding:8px;font-size:11px;color:#3d5865;">CREATION</th>
+            <th style="text-align:left;padding:8px;font-size:11px;color:#3d5865;">ROLE</th>
+            <th style="text-align:left;padding:8px;font-size:11px;color:#3d5865;">ACTION</th>
+          </tr>
+        </thead>
+        <tbody>${rows || `<tr><td colspan="4" style="padding:12px;text-align:center;color:#4a6170;font-size:12px;">AUCUN UTILISATEUR</td></tr>`}</tbody>
+      </table>
+    `;
+  };
+
+  const fetchUsers = async () => {
+    setStatus("Chargement utilisateurs...");
+    try {
+      const response = await callEdgeApi("admin/users", { method: "GET" });
+      const payload = await response.json().catch(() => ({}));
+      users = normalizeAdminUsersList(payload);
+      renderUsers();
+      setStatus(`${users.length} utilisateur(s) charge(s).`, "ok");
+    } catch (error) {
+      const message = String(error?.message || "");
+      if (message.includes("EDGE_API_FAILED:404")) {
+        setStatus("API ADMIN ABSENTE: ajouter /admin/users dans dotations-api.", "error");
+      } else {
+        setStatus(`Chargement impossible: ${message || "erreur"}`, "error");
+      }
+      users = [];
+      renderUsers();
     }
-  } finally {
-    state.adminCreateUserInFlight = false;
-  }
+  };
+
+  listWrap?.addEventListener("click", async (event) => {
+    const button = event.target?.closest?.("button[data-action]");
+    if (!button) return;
+    const row = button.closest("tr[data-user-id]");
+    const userId = String(row?.getAttribute("data-user-id") || "").trim();
+    if (!userId) return;
+    const roleSelect = row.querySelector('select[data-action="role"]');
+    const role = normalizeRequestedUserRole(roleSelect?.value || "viewer");
+    const action = String(button.getAttribute("data-action") || "");
+    try {
+      if (action === "save") {
+        setStatus("Mise a jour utilisateur...");
+        await callEdgeApi(`admin/users/${encodeURIComponent(userId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ role }),
+        });
+        setStatus("Role utilisateur mis a jour.", "ok");
+        await fetchUsers();
+        return;
+      }
+      if (action === "delete") {
+        if (!window.confirm("Supprimer cet utilisateur ?")) return;
+        setStatus("Suppression utilisateur...");
+        await callEdgeApi(`admin/users/${encodeURIComponent(userId)}`, {
+          method: "DELETE",
+        });
+        setStatus("Utilisateur supprime.", "ok");
+        await fetchUsers();
+      }
+    } catch (error) {
+      setStatus(`Action impossible: ${String(error?.message || "erreur")}`, "error");
+    }
+  });
+
+  createForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(createForm);
+    const email = String(formData.get("email") || "").trim();
+    const password = String(formData.get("password") || "");
+    const role = normalizeRequestedUserRole(formData.get("role") || "viewer");
+    if (!email || !password) {
+      setStatus("Email et mot de passe obligatoires.", "error");
+      return;
+    }
+    setStatus("Creation utilisateur...");
+    try {
+      await callEdgeApi("admin/users", {
+        method: "POST",
+        body: JSON.stringify({ email, password, role }),
+      });
+      setStatus("Utilisateur cree.", "ok");
+      createForm.reset();
+      await fetchUsers();
+    } catch (error) {
+      setStatus(`Creation impossible: ${String(error?.message || "erreur")}`, "error");
+    }
+  });
+
+  await fetchUsers();
+}
+
+async function openAdminCreateUserFlow() {
+  // Compat: keep old entry name if referenced elsewhere.
+  await openAdminUsersModal();
 }
 
 async function refreshCurrentUserRoleLabel() {
