@@ -646,19 +646,25 @@ function renderRoleBadge() {
   if (!badge) {
     badge = document.createElement("div");
     badge.id = "dotations-role-badge";
-    badge.style.position = "fixed";
-    badge.style.top = "10px";
-    badge.style.right = "10px";
-    badge.style.zIndex = "9999";
-    badge.style.padding = "6px 10px";
-    badge.style.borderRadius = "999px";
-    badge.style.background = "rgba(63,97,112,0.14)";
-    badge.style.border = "1px solid rgba(63,97,112,0.28)";
+    badge.style.display = "inline-flex";
+    badge.style.alignItems = "center";
+    badge.style.justifyContent = "center";
+    badge.style.height = "30px";
+    badge.style.padding = "0 10px";
+    badge.style.borderRadius = "10px";
+    badge.style.background = "rgba(63,97,112,0.12)";
+    badge.style.border = "1px solid rgba(63,97,112,0.3)";
     badge.style.color = "#213b48";
-    badge.style.fontSize = "11px";
+    badge.style.fontSize = "10px";
     badge.style.fontWeight = "700";
     badge.style.letterSpacing = "0.04em";
-    document.body.appendChild(badge);
+    badge.style.whiteSpace = "nowrap";
+    const headerActions = document.querySelector(".page-header__actions");
+    if (headerActions) {
+      headerActions.insertBefore(badge, headerActions.firstChild || null);
+    } else {
+      document.body.appendChild(badge);
+    }
   }
   const label = state.currentUserRoleLabel || "LECTURE";
   badge.textContent = `DROIT : ${label}`;
