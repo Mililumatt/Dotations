@@ -589,7 +589,7 @@ async function ensureLoginEventLogged(accessToken) {
     if (marker === "1") return;
     const session = getStoredSupabaseSession();
     if (!session?.user?.id) return;
-    await logAdminLoginEvent(accessToken, session);
+    logAdminLoginEvent(accessToken, session).catch(() => null);
     sessionStorage.setItem(LOGIN_EVENT_MARKER_KEY, "1");
   } catch (error) {
     // ignore
@@ -702,7 +702,7 @@ async function getSupabaseUserAccessToken() {
   const session = getStoredSupabaseSession();
   if (session && isSessionTokenFresh(session)) {
     const token = String(session.access_token || "").trim();
-    await ensureLoginEventLogged(token);
+    ensureLoginEventLogged(token).catch(() => null);
     return token;
   }
   const refreshToken = String(session?.refresh_token || "").trim();
@@ -710,7 +710,7 @@ async function getSupabaseUserAccessToken() {
     try {
       const refreshed = await refreshSupabaseSession(refreshToken);
       const token = String(refreshed?.access_token || "").trim();
-      await ensureLoginEventLogged(token);
+      ensureLoginEventLogged(token).catch(() => null);
       return token;
     } catch (error) {
       clearStoredSupabaseSession();
@@ -718,7 +718,7 @@ async function getSupabaseUserAccessToken() {
   }
   const existing = getStoredSupabaseAccessToken();
   if (existing) {
-    await ensureLoginEventLogged(existing);
+    ensureLoginEventLogged(existing).catch(() => null);
     return existing;
   }
   return promptSupabaseLoginAndStoreSession();
