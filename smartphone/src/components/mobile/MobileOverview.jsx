@@ -41,9 +41,6 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
     if (sortiePrevue && !sortieReelle && sortiePrevue < todayIso) {
       personAlerts.push({ key: `${p.id}-late`, personId: p.id, type: "dateSortiePrevue", text: `${p.nom} ${p.prenom} : SORTIE PREVUE DEPASSEE` });
     }
-    if (sortieReelle && sortieReelle <= todayIso && nonRendusCount > 0) {
-      personAlerts.push({ key: `${p.id}-out`, personId: p.id, type: "dateSortieReelle", text: `${p.nom} ${p.prenom} : PERSONNE SORTIE` });
-    }
     if (nonRendusCount > 0) {
       personAlerts.push({ key: `${p.id}-nr`, personId: p.id, type: "dateSortiePrevue", text: `${p.nom} ${p.prenom} : ${nonRendusCount} EFFET(S) NON RENDU(S)` });
     }
