@@ -3422,8 +3422,9 @@ body[data-pdf-mode="true"] .signature-box__mobile-link {
 
 .mobile-signature-share__qr img {
   display: block;
-  width: 164px;
-  height: 164px;
+  width: 240px;
+  height: 240px;
+  max-width: 100%;
   object-fit: contain;
   background: #ffffff;
   border: 1px solid rgba(173, 190, 199, 0.98);
