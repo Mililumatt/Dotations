@@ -606,7 +606,7 @@ async function requestSupabaseMagicLink(email) {
   if (!safeEmail) {
     throw new Error("EMAIL_OBLIGATOIRE");
   }
-  const redirectTo = "https://nextboard-dev.github.io/Dotations/index.html?view=desktop";
+  const redirectTo = "https://nextboard-dev.github.io/Dotations/";
   const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
   const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
   const response = await fetch(`${baseUrl}/auth/v1/otp`, {
