@@ -1511,7 +1511,7 @@ async function openAdminUsersModal() {
         }
       }
       if (isInviteFlow) {
-        await requestSupabaseMagicLink(email);
+        await requestSupabasePasswordReset(email, { bypassCooldown: true });
         localStorage.setItem(ADMIN_INVITE_COOLDOWN_KEY, String(Date.now()));
       }
       if (isInviteFlow && userAlreadyExists) {
