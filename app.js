@@ -525,18 +525,21 @@ async function promptSupabaseLoginAndStoreSession() {
   return accessToken;
 }
 
-async function requestSupabasePasswordReset(email) {
+async function requestSupabasePasswordReset(email, options = {}) {
   const safeEmail = String(email || "").trim();
   if (!safeEmail) {
     throw new Error("EMAIL_OBLIGATOIRE");
   }
+  const bypassCooldown = options?.bypassCooldown === true;
   const now = Date.now();
-  const lastSentAt = Number.parseInt(String(localStorage.getItem(PASSWORD_RESET_COOLDOWN_KEY) || ""), 10);
-  if (Number.isFinite(lastSentAt)) {
-    const remainingMs = PASSWORD_RESET_COOLDOWN_MS - (now - lastSentAt);
-    if (remainingMs > 0) {
-      const remainingSec = Math.ceil(remainingMs / 1000);
-      throw new Error(`RESET_MDP_COOLDOWN:${remainingSec}`);
+  if (!bypassCooldown) {
+    const lastSentAt = Number.parseInt(String(localStorage.getItem(PASSWORD_RESET_COOLDOWN_KEY) || ""), 10);
+    if (Number.isFinite(lastSentAt)) {
+      const remainingMs = PASSWORD_RESET_COOLDOWN_MS - (now - lastSentAt);
+      if (remainingMs > 0) {
+        const remainingSec = Math.ceil(remainingMs / 1000);
+        throw new Error(`RESET_MDP_COOLDOWN:${remainingSec}`);
+      }
     }
   }
   const resetRedirectTo = "https://nextboard-dev.github.io/Dotations/index.html?view=desktop";
@@ -558,7 +561,9 @@ async function requestSupabasePasswordReset(email) {
     const text = await response.text().catch(() => "");
     throw new Error(`RESET_MDP_ECHEC:${response.status}:${text}`);
   }
-  localStorage.setItem(PASSWORD_RESET_COOLDOWN_KEY, String(now));
+  if (!bypassCooldown) {
+    localStorage.setItem(PASSWORD_RESET_COOLDOWN_KEY, String(now));
+  }
 }
 
 async function fetchUserRoleFromProfile(accessToken, userId) {
@@ -934,12 +939,12 @@ async function openAdminUsersModal() {
       </div>
       <div id="admin-users-status" style="font-size:12px;color:#355464;margin-bottom:8px;"></div>
       <div id="admin-users-list-wrap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:10px;"></div>
-      <form id="admin-users-create-form" style="display:grid;grid-template-columns:2fr 1.4fr 1fr auto;gap:8px;align-items:end;margin-bottom:10px;">
+      <form id="admin-users-create-form" style="display:grid;grid-template-columns:2fr 1.4fr 1fr auto auto;gap:8px;align-items:end;margin-bottom:10px;">
         <label style="display:block;font-size:11px;color:#3c5561;">Email
           <input name="email" type="email" required autocomplete="username email" style="width:100%;height:34px;padding:0 10px;border:1px solid #9bb2be;border-radius:8px;" />
         </label>
-        <label style="display:block;font-size:11px;color:#3c5561;">Mot de passe temporaire
-          <input name="password" type="text" required autocomplete="new-password" style="width:100%;height:34px;padding:0 10px;border:1px solid #9bb2be;border-radius:8px;" />
+        <label style="display:block;font-size:11px;color:#3c5561;">Mot de passe temporaire (creation manuelle)
+          <input name="password" type="text" autocomplete="new-password" style="width:100%;height:34px;padding:0 10px;border:1px solid #9bb2be;border-radius:8px;" />
         </label>
         <label style="display:block;font-size:11px;color:#3c5561;">Role
           <select name="role" style="width:100%;height:34px;padding:0 10px;border:1px solid #9bb2be;border-radius:8px;">
@@ -948,7 +953,8 @@ async function openAdminUsersModal() {
             <option value="admin">ADMIN</option>
           </select>
         </label>
-        <button type="submit" style="height:34px;padding:0 12px;border:0;background:#2f5f76;color:#fff;border-radius:8px;cursor:pointer;font-weight:700;">Creer</button>
+        <button type="submit" data-submit-action="create" style="height:34px;padding:0 12px;border:0;background:#2f5f76;color:#fff;border-radius:8px;cursor:pointer;font-weight:700;">Creer</button>
+        <button type="submit" data-submit-action="invite" style="height:34px;padding:0 12px;border:1px solid #9bb2be;background:#fff;color:#1d3440;border-radius:8px;cursor:pointer;font-weight:700;">Envoyer invitation</button>
       </form>
       <div id="admin-restore-wrap" style="border:1px solid #d4e0e6;border-radius:10px;overflow:hidden;margin-bottom:10px;"></div>
       <div style="margin:8px 0 6px;font-size:12px;font-weight:700;color:#1d3440;">JOURNAL DES CONNEXIONS</div>
@@ -1395,17 +1401,28 @@ async function openAdminUsersModal() {
     const email = String(formData.get("email") || "").trim();
     const password = String(formData.get("password") || "");
     const role = normalizeRequestedUserRole(formData.get("role") || "viewer");
-    if (!email || !password) {
-      setStatus("Email et mot de passe obligatoires.", "error");
+    const submitter = event.submitter instanceof HTMLElement ? event.submitter : null;
+    const submitAction = String(submitter?.getAttribute("data-submit-action") || "create");
+    if (!email) {
+      setStatus("Email obligatoire.", "error");
       return;
     }
-    setStatus("Creation utilisateur...");
+    if (submitAction === "create" && !password) {
+      setStatus("Mot de passe obligatoire pour creation manuelle.", "error");
+      return;
+    }
+    const generatedPassword = `Tmp#${Math.random().toString(36).slice(2, 10)}A1`;
+    const passwordToUse = password || generatedPassword;
+    setStatus(submitAction === "invite" ? "Creation + envoi invitation..." : "Creation utilisateur...");
     try {
       await callEdgeApi("admin/users", {
         method: "POST",
-        body: JSON.stringify({ email, password, role }),
+        body: JSON.stringify({ email, password: passwordToUse, role }),
       });
-      setStatus("Utilisateur cree.", "ok");
+      if (submitAction === "invite") {
+        await requestSupabasePasswordReset(email, { bypassCooldown: true });
+      }
+      setStatus(submitAction === "invite" ? "Invitation envoyee." : "Utilisateur cree.", "ok");
       createForm.reset();
       await fetchUsers();
     } catch (error) {
