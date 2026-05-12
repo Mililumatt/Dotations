@@ -678,7 +678,7 @@ function promptSupabaseCredentialsForm() {
     backdrop.style.zIndex = "99999";
 
     const box = document.createElement("div");
-    box.style.width = "min(92vw, 420px)";
+    box.style.width = "min(94vw, 560px)";
     box.style.background = "#ffffff";
     box.style.borderRadius = "12px";
     box.style.padding = "16px";
@@ -693,15 +693,15 @@ function promptSupabaseCredentialsForm() {
         <input id="supabase-login-password" name="password" type="password" autocomplete="current-password" required
           style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:12px;" />
         <div id="supabase-login-status" style="font-size:12px;color:#4a6170;margin:-6px 0 10px;"></div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:nowrap;">
           <button type="button" id="supabase-login-forgot-id"
-            style="padding:8px 12px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;">Identifiant oublié</button>
+            style="padding:8px 12px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;white-space:nowrap;">Identifiant oublié</button>
           <button type="button" id="supabase-login-forgot"
-            style="padding:8px 12px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;">Mot de passe oublié</button>
+            style="padding:8px 12px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;white-space:nowrap;">Mot de passe oublié</button>
           <button type="button" id="supabase-login-cancel"
-            style="padding:8px 12px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;">Annuler</button>
+            style="padding:8px 12px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;white-space:nowrap;">Annuler</button>
           <button type="submit"
-            style="padding:8px 14px;border:0;background:#2f5f76;color:#fff;border-radius:8px;cursor:pointer;">Se connecter</button>
+            style="padding:8px 14px;border:0;background:#2f5f76;color:#fff;border-radius:8px;cursor:pointer;white-space:nowrap;">Se connecter</button>
         </div>
       </form>
     `;
