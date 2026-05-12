@@ -566,6 +566,33 @@ async function requestSupabasePasswordReset(email, options = {}) {
   }
 }
 
+async function requestSupabaseMagicLink(email) {
+  const safeEmail = String(email || "").trim();
+  if (!safeEmail) {
+    throw new Error("EMAIL_OBLIGATOIRE");
+  }
+  const redirectTo = "https://nextboard-dev.github.io/Dotations/index.html?view=desktop";
+  const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
+  const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
+  const response = await fetch(`${baseUrl}/auth/v1/otp`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: safeEmail,
+      create_user: false,
+      email_redirect_to: redirectTo,
+    }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`MAGIC_LINK_ECHEC:${response.status}:${text}`);
+  }
+}
+
 async function fetchUserRoleFromProfile(accessToken, userId) {
   const safeUserId = String(userId || "").trim();
   if (!accessToken || !safeUserId) return "viewer";
@@ -1420,7 +1447,7 @@ async function openAdminUsersModal() {
         body: JSON.stringify({ email, password: passwordToUse, role }),
       });
       if (submitAction === "invite") {
-        await requestSupabasePasswordReset(email, { bypassCooldown: true });
+        await requestSupabaseMagicLink(email);
       }
       setStatus(submitAction === "invite" ? "Invitation envoyee." : "Utilisateur cree.", "ok");
       createForm.reset();
