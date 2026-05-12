@@ -413,6 +413,13 @@ export default function Mobile() {
           {loginError ? <div style={{ color: "#8e2c2c", fontSize: 12 }}>{loginError}</div> : null}
           <button
             type="button"
+            onClick={() => setLoginError("Identifiant oublié : contactez un administrateur.")}
+            style={{ height: 36, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#fff", color: "#1d3440", fontWeight: 700, cursor: "pointer" }}
+          >
+            IDENTIFIANT OUBLIE
+          </button>
+          <button
+            type="button"
             onClick={handleForgotPassword}
             disabled={resetBusy}
             style={{ height: 36, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#fff", color: "#1d3440", fontWeight: 700, cursor: "pointer" }}

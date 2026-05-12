@@ -662,6 +662,8 @@ function promptSupabaseCredentialsForm() {
           style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:12px;" />
         <div id="supabase-login-status" style="font-size:12px;color:#4a6170;margin:-6px 0 10px;"></div>
         <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button type="button" id="supabase-login-forgot-id"
+            style="padding:8px 12px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;">Identifiant oublié</button>
           <button type="button" id="supabase-login-forgot"
             style="padding:8px 12px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;">Mot de passe oublié</button>
           <button type="button" id="supabase-login-cancel"
@@ -678,6 +680,7 @@ function promptSupabaseCredentialsForm() {
     const emailInput = box.querySelector("#supabase-login-email");
     const passwordInput = box.querySelector("#supabase-login-password");
     const statusNode = box.querySelector("#supabase-login-status");
+    const forgotIdButton = box.querySelector("#supabase-login-forgot-id");
     const forgotButton = box.querySelector("#supabase-login-forgot");
     const cancelButton = box.querySelector("#supabase-login-cancel");
 
@@ -688,6 +691,11 @@ function promptSupabaseCredentialsForm() {
     cancelButton.addEventListener("click", () => {
       cleanup();
       reject(new Error("BACKEND_AUTH_REQUIRED"));
+    });
+
+    forgotIdButton.addEventListener("click", () => {
+      statusNode.textContent = "Identifiant oublié : contactez un administrateur.";
+      statusNode.style.color = "#355464";
     });
 
     forgotButton.addEventListener("click", async () => {
