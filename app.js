@@ -618,6 +618,7 @@ async function requestSupabaseMagicLink(email) {
     body: JSON.stringify({
       email: safeEmail,
       create_user: false,
+      redirect_to: redirectTo,
       email_redirect_to: redirectTo,
     }),
     cache: "no-store",
