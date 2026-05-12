@@ -683,6 +683,29 @@ async function requestSupabaseMagicLink(email) {
   }
 }
 
+async function requestAdminUserInvitation(email, role) {
+  const safeEmail = String(email || "").trim();
+  if (!safeEmail) {
+    throw new Error("EMAIL_OBLIGATOIRE");
+  }
+  try {
+    await callEdgeApi("admin/users/invite", {
+      method: "POST",
+      body: JSON.stringify({ email: safeEmail, role: normalizeRequestedUserRole(role) }),
+    });
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (/email_exists/i.test(message)) {
+      throw new Error("INVITE_USER_EXISTS");
+    }
+    if (message.includes("EDGE_API_FAILED:404")) {
+      throw new Error("INVITE_ENDPOINT_ABSENT");
+    }
+    throw error;
+  }
+  return true;
+}
+
 async function fetchUserRoleFromProfile(accessToken, userId) {
   const safeUserId = String(userId || "").trim();
   if (!accessToken || !safeUserId) return "viewer";
@@ -1546,24 +1569,27 @@ async function openAdminUsersModal() {
         }
       }
     }
-    setStatus(isInviteFlow ? "Creation + envoi invitation..." : "Creation utilisateur...");
+    setStatus(isInviteFlow ? "Envoi invitation..." : "Creation utilisateur...");
     try {
       let userAlreadyExists = false;
-      try {
+      if (isInviteFlow) {
+        try {
+          await requestAdminUserInvitation(email, role);
+        } catch (error) {
+          const message = String(error?.message || "");
+          if (message === "INVITE_USER_EXISTS") {
+            userAlreadyExists = true;
+          } else {
+            throw error;
+          }
+        }
+      } else {
         await callEdgeApi("admin/users", {
           method: "POST",
           body: JSON.stringify({ email, password: passwordToUse, role }),
         });
-      } catch (error) {
-        const message = String(error?.message || "");
-        if (isInviteFlow && message.includes("email_exists")) {
-          userAlreadyExists = true;
-        } else {
-          throw error;
-        }
       }
       if (isInviteFlow) {
-        await requestSupabasePasswordReset(email, { bypassCooldown: true });
         localStorage.setItem(ADMIN_INVITE_COOLDOWN_KEY, String(Date.now()));
       }
       if (isInviteFlow && userAlreadyExists) {
@@ -1575,6 +1601,10 @@ async function openAdminUsersModal() {
       await fetchUsers();
     } catch (error) {
       const message = String(error?.message || "erreur");
+      if (message === "INVITE_ENDPOINT_ABSENT") {
+        setStatus("API INVITATION ABSENTE: ajouter /admin/users/invite dans dotations-api.", "error");
+        return;
+      }
       if (
         message.includes("MAGIC_LINK_ECHEC:429") ||
         message.includes("over_email_send_rate_limit")
