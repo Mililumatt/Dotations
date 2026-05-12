@@ -525,9 +525,11 @@ function storeSupabaseSession(session) {
 function importSupabaseSessionFromUrlIfPresent() {
   try {
     const url = new URL(window.location.href);
-    const accessToken = String(url.searchParams.get("sbat") || "").trim();
-    const refreshToken = String(url.searchParams.get("sbrt") || "").trim();
-    const expiresAtRaw = String(url.searchParams.get("sbea") || "").trim();
+    const hashParams = new URLSearchParams(url.hash ? url.hash.replace(/^\#/, "") : "");
+
+    const accessToken = String(url.searchParams.get("sbat") || hashParams.get("sbat") || "").trim();
+    const refreshToken = String(url.searchParams.get("sbrt") || hashParams.get("sbrt") || "").trim();
+    const expiresAtRaw = String(url.searchParams.get("sbea") || hashParams.get("sbea") || "").trim();
     const hasSessionBridge = Boolean(accessToken || refreshToken || expiresAtRaw);
     if (!hasSessionBridge) {
       return;
@@ -559,12 +561,8 @@ function appendSupabaseSessionBridgeParams(url) {
     }
     const nextUrl = new URL(url, window.location.href);
     nextUrl.searchParams.set("sbat", accessToken);
-    if (refreshToken) {
-      nextUrl.searchParams.set("sbrt", refreshToken);
-    }
-    if (Number.isFinite(expiresAt) && expiresAt > 0) {
-      nextUrl.searchParams.set("sbea", String(expiresAt));
-    }
+    // Keep the bridge compact to avoid oversized QR URLs.
+    // The access token is enough for session bootstrap; refresh is not required to open the signature page.
     return nextUrl.toString();
   } catch (error) {
     return url;
