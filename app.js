@@ -561,8 +561,13 @@ function appendSupabaseSessionBridgeParams(url) {
     }
     const nextUrl = new URL(url, window.location.href);
     nextUrl.searchParams.set("sbat", accessToken);
-    // Keep the bridge compact to avoid oversized QR URLs.
-    // The access token is enough for session bootstrap; refresh is not required to open the signature page.
+    // Include refresh/expiry to keep the mobile session renewable and avoid lost saves when access token expires.
+    if (refreshToken) {
+      nextUrl.searchParams.set("sbrt", refreshToken);
+    }
+    if (Number.isFinite(expiresAt) && expiresAt > 0) {
+      nextUrl.searchParams.set("sbea", String(expiresAt));
+    }
     return nextUrl.toString();
   } catch (error) {
     return url;
