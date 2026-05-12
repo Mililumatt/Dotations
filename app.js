@@ -89,6 +89,8 @@ const LOGIN_EVENT_MARKER_KEY = "dotations-login-event-sent";
 const ADMIN_CONTACT_EMAIL = "sebastien.duc@outlook.fr";
 const PASSWORD_RESET_COOLDOWN_KEY = "dotations-reset-password-last-sent-at";
 const PASSWORD_RESET_COOLDOWN_MS = 70 * 1000;
+const ADMIN_INVITE_COOLDOWN_KEY = "dotations-admin-invite-last-sent-at";
+const ADMIN_INVITE_COOLDOWN_MS = 70 * 1000;
 const PDF_LAYOUT_VERSION = "2026-03-14-exit-layout-fix-3";
 const PDF_FORMAT_LOCK = "v1";
 let pdfModalCleanupBound = false;
@@ -1480,6 +1482,18 @@ async function openAdminUsersModal() {
     const generatedPassword = `Tmp#${Math.random().toString(36).slice(2, 10)}A1`;
     const passwordToUse = password || generatedPassword;
     const isInviteFlow = submitAction === "invite";
+    if (isInviteFlow) {
+      const now = Date.now();
+      const lastInviteAt = Number.parseInt(String(localStorage.getItem(ADMIN_INVITE_COOLDOWN_KEY) || ""), 10);
+      if (Number.isFinite(lastInviteAt)) {
+        const remainingMs = ADMIN_INVITE_COOLDOWN_MS - (now - lastInviteAt);
+        if (remainingMs > 0) {
+          const remainingSec = Math.ceil(remainingMs / 1000);
+          setStatus(`Invitation recente: attends ${remainingSec}s avant un nouvel envoi.`, "error");
+          return;
+        }
+      }
+    }
     setStatus(isInviteFlow ? "Creation + envoi invitation..." : "Creation utilisateur...");
     try {
       let userAlreadyExists = false;
@@ -1498,6 +1512,7 @@ async function openAdminUsersModal() {
       }
       if (isInviteFlow) {
         await requestSupabaseMagicLink(email);
+        localStorage.setItem(ADMIN_INVITE_COOLDOWN_KEY, String(Date.now()));
       }
       if (isInviteFlow && userAlreadyExists) {
         setStatus("Compte deja existant: invitation renvoyee.", "ok");
