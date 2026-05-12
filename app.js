@@ -8826,6 +8826,43 @@ function drawSignatureFromDataUrl(canvas, dataUrl) {
   image.src = dataUrl;
 }
 
+function isCanvasSignatureBlank(canvas) {
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    return true;
+  }
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return true;
+  }
+  try {
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    const values = imageData.data;
+    for (let i = 3; i < values.length; i += 4) {
+      if (values[i] > 0) {
+        return false;
+      }
+    }
+    return true;
+  } catch (error) {
+    return true;
+  }
+}
+
+function getCanvasSignaturePayload(canvas, stateRef) {
+  const storedValue = String(stateRef?.pendingDataUrl || "").trim();
+  if (storedValue) {
+    return storedValue;
+  }
+  if (!(canvas instanceof HTMLCanvasElement) || isCanvasSignatureBlank(canvas)) {
+    return "";
+  }
+  try {
+    return String(canvas.toDataURL("image/png"));
+  } catch (error) {
+    return "";
+  }
+}
+
 function refreshDocumentSignatureCanvases(docType) {
   document.querySelectorAll(`.js-signature-canvas[data-doc-type="${docType}"]`).forEach((canvas) => {
     const person = getCurrentPerson();
@@ -8995,10 +9032,20 @@ function bindSignatureCanvases() {
         return;
       }
       const wasFullySigned = isDocumentFullySigned(person, docType);
-      const nextValue = stateRef.pendingDataUrl || "";
+      const nextValue = getCanvasSignaturePayload(canvas, stateRef);
       const validatedAt = nextValue ? getCurrentSignatureTimestamp() : "";
       let signatureStorageRef = "";
       let signatureStoragePublicUrl = "";
+      const currentMobileRequest =
+        document.body.dataset.page === "mobile-signature"
+          ? getCurrentMobileSignatureRequest()
+          : null;
+      const requestMatchesCanvas =
+        currentMobileRequest &&
+        normalizeText(currentMobileRequest.docType) === normalizeText(docType) &&
+        normalizeMobileSignatureSigner(currentMobileRequest.signer || "") === signer;
+
+      stateRef.pendingDataUrl = nextValue;
       if (nextValue && isSupabaseConfigured()) {
         try {
           const signatureUpload = await uploadSignatureImageToSupabaseStorage(docType, person, signer, nextValue);
@@ -9051,6 +9098,9 @@ function bindSignatureCanvases() {
       showActionStatus(nextValue ? "update" : "delete", saveText);
       const isMobileSignaturePage = document.body.dataset.page === "mobile-signature";
       const mustAlertAndClose = Boolean(nextValue) && isMobileSignaturePage;
+      if (isMobileSignaturePage && requestMatchesCanvas && nextValue) {
+        markMobileSignatureRequestSigned(currentMobileRequest);
+      }
       await saveDataToFile({
         silent: !mustAlertAndClose,
         reloadAfter: !mustAlertAndClose,
@@ -9058,18 +9108,15 @@ function bindSignatureCanvases() {
         alertText: "DONNEES SUPABASE MISES A JOUR",
         closeAfterAlert: mustAlertAndClose,
       });
-      if (document.body.dataset.page === "mobile-signature" && nextValue) {
-        const request = getCurrentMobileSignatureRequest();
-        if (
-          request &&
-          normalizeText(request.docType) === normalizeText(docType) &&
-          normalizeMobileSignatureSigner(request.signer || "") === signer
-        ) {
-          markMobileSignatureRequestSigned(request);
-        }
-      }
       if (document.body.dataset.page === "mobile-signature") {
-        renderMobileSignaturePage();
+        try {
+          const latest = await fetchLatestDataSnapshot();
+          state.data = latest;
+          migrateDataModel();
+          renderMobileSignaturePage();
+        } catch (error) {
+          console.error(error);
+        }
       }
     };
 
