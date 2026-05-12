@@ -377,18 +377,23 @@ function openAdminContactMailto(contextLabel = "") {
   const requestedAt = new Date().toLocaleString("fr-FR");
   const body = encodeURIComponent(
     [
-      "Bonjour,",
+      "SUIVI DES DOTATIONS - ENTREE / SORTIE",
+      "--------------------------------------",
       "",
-      "Demande utilisateur: identifiant de connexion oublié.",
+      "DEMANDE : IDENTIFIANT OUBLIE",
+      "Une demande utilisateur a ete declenchee.",
       "",
-      "Application: SUIVI DES DOTATIONS ENTREE / SORTIE",
-      `Contexte: ${context || "N/A"}`,
-      `Date: ${requestedAt}`,
-      `Page: ${pageUrl || "N/A"}`,
+      "CONTEXTE",
+      `- Application : SUIVI DES DOTATIONS ENTREE / SORTIE`,
+      `- Canal       : ${context || "N/A"}`,
+      `- Date        : ${requestedAt}`,
+      `- Page        : ${pageUrl || "N/A"}`,
       "",
-      "Merci de verifier le compte et de communiquer l'identifiant a l'utilisateur.",
+      "ACTION ADMIN DEMANDEE",
+      "- Verifier le compte utilisateur.",
+      "- Communiquer l'identifiant de connexion a l'utilisateur.",
       "",
-      "Cordialement,",
+      "Message genere automatiquement depuis la page de connexion.",
     ].join("\n")
   );
   window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;

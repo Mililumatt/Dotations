@@ -324,18 +324,23 @@ export default function Mobile() {
     const requestedAt = new Date().toLocaleString("fr-FR");
     const body = encodeURIComponent(
       [
-        "Bonjour,",
+        "SUIVI DES DOTATIONS - ENTREE / SORTIE",
+        "--------------------------------------",
         "",
-        "Demande utilisateur: identifiant de connexion oublié.",
+        "DEMANDE : IDENTIFIANT OUBLIE",
+        "Une demande utilisateur a ete declenchee.",
         "",
-        "Application: SUIVI DES DOTATIONS ENTREE / SORTIE",
-        "Contexte: MOBILE",
-        `Date: ${requestedAt}`,
-        `Page: ${String(window.location.href || "N/A")}`,
+        "CONTEXTE",
+        "- Application : SUIVI DES DOTATIONS ENTREE / SORTIE",
+        "- Canal       : MOBILE",
+        `- Date        : ${requestedAt}`,
+        `- Page        : ${String(window.location.href || "N/A")}`,
         "",
-        "Merci de verifier le compte et de communiquer l'identifiant a l'utilisateur.",
+        "ACTION ADMIN DEMANDEE",
+        "- Verifier le compte utilisateur.",
+        "- Communiquer l'identifiant de connexion a l'utilisateur.",
         "",
-        "Cordialement,",
+        "Message genere automatiquement depuis la page de connexion mobile.",
       ].join("\n")
     );
     window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
