@@ -1522,7 +1522,15 @@ async function openAdminUsersModal() {
       createForm.reset();
       await fetchUsers();
     } catch (error) {
-      setStatus(`Creation impossible: ${String(error?.message || "erreur")}`, "error");
+      const message = String(error?.message || "erreur");
+      if (
+        message.includes("MAGIC_LINK_ECHEC:429") ||
+        message.includes("over_email_send_rate_limit")
+      ) {
+        setStatus("Quota email Supabase atteint. Reessayez dans environ 1 heure.", "error");
+      } else {
+        setStatus(`Creation impossible: ${message}`, "error");
+      }
     }
   });
 
