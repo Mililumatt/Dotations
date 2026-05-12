@@ -14,7 +14,7 @@ Date de mise a jour: 10/05/2026
 - Avant toute modification: faire un snapshot cible hors repo.
 - Le nom du snapshot doit etre en francais, clair et date (exemple: `avant-correction-signature-2026-05-10_1430`).
 - Dossier autorise pour snapshots:
-  `C:\Users\sebastien.duc\CLOUD\02_ARCHIVAGE PERSONNEL\DASHBOARDS\GESTION DES ACCÈS & EFFETS SENSIBLES\SNAPSHOTS_HORS_REPO`.
+  `C:\Users\sebastien.duc\CLOUD\02_ARCHIVAGE PERSONNEL\DASHBOARDS\DOTATIONS SNAPSHOTS`.
 
 ## 3) Pipeline de travail (obligatoire)
 
