@@ -8,6 +8,7 @@ import { getCurrentSession, onAuthStateChange, supabase } from "@/lib/supabaseCl
 
 const MOBILE_WINDOW_SESSION_KEY = "dotations_mobile_window_open";
 const MOBILE_BRAND_LOGO_URL = "https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/bandeau-nextboard-sidebar-detoure.png";
+const MOBILE_ADMIN_CONTACT_EMAIL = "sebastien.duc@outlook.fr";
 const MOBILE_PASSWORD_RESET_COOLDOWN_KEY = "dotations_mobile_reset_password_last_sent_at";
 const MOBILE_PASSWORD_RESET_COOLDOWN_MS = 70 * 1000;
 
@@ -313,6 +314,20 @@ export default function Mobile() {
     }
   };
 
+  const handleForgotLogin = () => {
+    const email = String(MOBILE_ADMIN_CONTACT_EMAIL || "").trim();
+    if (!email) {
+      setLoginError("Contact administrateur indisponible.");
+      return;
+    }
+    const subject = encodeURIComponent("DOTATIONS - Identifiant oublié");
+    const body = encodeURIComponent(
+      "Bonjour,\n\nJ'ai oublié mon identifiant de connexion DOTATIONS (mobile).\n\nMerci."
+    );
+    window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+    setLoginError("Email pre-rempli ouvert vers l'administrateur.");
+  };
+
   useEffect(() => {
     selectedPersonRef.current = selectedPerson;
   }, [selectedPerson]);
@@ -413,7 +428,7 @@ export default function Mobile() {
           {loginError ? <div style={{ color: "#8e2c2c", fontSize: 12 }}>{loginError}</div> : null}
           <button
             type="button"
-            onClick={() => setLoginError("Identifiant oublié : contactez un administrateur.")}
+            onClick={handleForgotLogin}
             style={{ height: 36, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#fff", color: "#1d3440", fontWeight: 700, cursor: "pointer" }}
           >
             IDENTIFIANT OUBLIE

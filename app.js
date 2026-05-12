@@ -86,6 +86,7 @@ const SIGNED_POPUP_SEEN_STORAGE_KEY = "dotations-signed-popup-seen";
 const PENDING_PDF_REMINDER_SNOOZE_KEY = "dotations-pending-pdf-reminder-snooze";
 const PENDING_PDF_TASK_STORAGE_KEY = "dotations-pending-pdf-task";
 const LOGIN_EVENT_MARKER_KEY = "dotations-login-event-sent";
+const ADMIN_CONTACT_EMAIL = "sebastien.duc@outlook.fr";
 const PASSWORD_RESET_COOLDOWN_KEY = "dotations-reset-password-last-sent-at";
 const PASSWORD_RESET_COOLDOWN_MS = 70 * 1000;
 const PDF_LAYOUT_VERSION = "2026-03-14-exit-layout-fix-3";
@@ -363,6 +364,20 @@ function getDataBackendMode() {
 function getSupabaseRestEndpoint() {
   const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
   return `${baseUrl}/rest/v1/${SUPABASE_APP_STATE_TABLE}`;
+}
+
+function openAdminContactMailto(contextLabel = "") {
+  const email = String(ADMIN_CONTACT_EMAIL || "").trim();
+  if (!email) {
+    return false;
+  }
+  const subject = encodeURIComponent("DOTATIONS - Identifiant oublié");
+  const context = String(contextLabel || "").trim();
+  const body = encodeURIComponent(
+    `Bonjour,\n\nJ'ai oublié mon identifiant de connexion DOTATIONS.\nContexte: ${context || "N/A"}\n\nMerci.`
+  );
+  window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+  return true;
 }
 
 function getSupabaseProjectRef() {
@@ -726,8 +741,11 @@ function promptSupabaseCredentialsForm() {
     });
 
     forgotIdButton.addEventListener("click", () => {
-      statusNode.textContent = "Identifiant oublié : contactez un administrateur.";
-      statusNode.style.color = "#355464";
+      const opened = openAdminContactMailto("PC");
+      statusNode.textContent = opened
+        ? "Email pre-rempli ouvert vers l'administrateur."
+        : "Contact administrateur indisponible.";
+      statusNode.style.color = opened ? "#2f5e43" : "#8e2c2c";
     });
 
     forgotButton.addEventListener("click", async () => {
