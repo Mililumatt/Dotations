@@ -1478,16 +1478,31 @@ async function openAdminUsersModal() {
     }
     const generatedPassword = `Tmp#${Math.random().toString(36).slice(2, 10)}A1`;
     const passwordToUse = password || generatedPassword;
-    setStatus(submitAction === "invite" ? "Creation + envoi invitation..." : "Creation utilisateur...");
+    const isInviteFlow = submitAction === "invite";
+    setStatus(isInviteFlow ? "Creation + envoi invitation..." : "Creation utilisateur...");
     try {
-      await callEdgeApi("admin/users", {
-        method: "POST",
-        body: JSON.stringify({ email, password: passwordToUse, role }),
-      });
-      if (submitAction === "invite") {
+      let userAlreadyExists = false;
+      try {
+        await callEdgeApi("admin/users", {
+          method: "POST",
+          body: JSON.stringify({ email, password: passwordToUse, role }),
+        });
+      } catch (error) {
+        const message = String(error?.message || "");
+        if (isInviteFlow && message.includes("email_exists")) {
+          userAlreadyExists = true;
+        } else {
+          throw error;
+        }
+      }
+      if (isInviteFlow) {
         await requestSupabaseMagicLink(email);
       }
-      setStatus(submitAction === "invite" ? "Invitation envoyee." : "Utilisateur cree.", "ok");
+      if (isInviteFlow && userAlreadyExists) {
+        setStatus("Compte deja existant: invitation renvoyee.", "ok");
+      } else {
+        setStatus(isInviteFlow ? "Invitation envoyee." : "Utilisateur cree.", "ok");
+      }
       createForm.reset();
       await fetchUsers();
     } catch (error) {
