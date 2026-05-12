@@ -371,10 +371,25 @@ function openAdminContactMailto(contextLabel = "") {
   if (!email) {
     return false;
   }
-  const subject = encodeURIComponent("DOTATIONS - Identifiant oublié");
+  const subject = encodeURIComponent("SUIVI DES DOTATIONS - Demande identifiant oublié");
   const context = String(contextLabel || "").trim();
+  const pageUrl = String(window.location.href || "");
+  const requestedAt = new Date().toLocaleString("fr-FR");
   const body = encodeURIComponent(
-    `Bonjour,\n\nJ'ai oublié mon identifiant de connexion DOTATIONS.\nContexte: ${context || "N/A"}\n\nMerci.`
+    [
+      "Bonjour,",
+      "",
+      "Demande utilisateur: identifiant de connexion oublié.",
+      "",
+      "Application: SUIVI DES DOTATIONS ENTREE / SORTIE",
+      `Contexte: ${context || "N/A"}`,
+      `Date: ${requestedAt}`,
+      `Page: ${pageUrl || "N/A"}`,
+      "",
+      "Merci de verifier le compte et de communiquer l'identifiant a l'utilisateur.",
+      "",
+      "Cordialement,",
+    ].join("\n")
   );
   window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
   return true;

@@ -320,9 +320,23 @@ export default function Mobile() {
       setLoginError("Contact administrateur indisponible.");
       return;
     }
-    const subject = encodeURIComponent("DOTATIONS - Identifiant oublié");
+    const subject = encodeURIComponent("SUIVI DES DOTATIONS - Demande identifiant oublié");
+    const requestedAt = new Date().toLocaleString("fr-FR");
     const body = encodeURIComponent(
-      "Bonjour,\n\nJ'ai oublié mon identifiant de connexion DOTATIONS (mobile).\n\nMerci."
+      [
+        "Bonjour,",
+        "",
+        "Demande utilisateur: identifiant de connexion oublié.",
+        "",
+        "Application: SUIVI DES DOTATIONS ENTREE / SORTIE",
+        "Contexte: MOBILE",
+        `Date: ${requestedAt}`,
+        `Page: ${String(window.location.href || "N/A")}`,
+        "",
+        "Merci de verifier le compte et de communiquer l'identifiant a l'utilisateur.",
+        "",
+        "Cordialement,",
+      ].join("\n")
     );
     window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
     setLoginError("Email pre-rempli ouvert vers l'administrateur.");
