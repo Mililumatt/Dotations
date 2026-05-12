@@ -60,6 +60,23 @@ Date de mise a jour: 10/05/2026
 - Donner ensuite le resultat concret.
 - Ne pas pousser automatiquement.
 
+### Communication attendue (niveau enfant)
+
+- Avant toute action, expliquer en termes simples:
+  - le probleme,
+  - le plan,
+  - les etapes.
+- Avant d'executer, annoncer :
+  - ce que je vais faire,
+  - pourquoi,
+  - ce que tu dois attendre.
+- Attendre le `GO` de l'utilisateur avant de coder.
+- Apres action, expliquer clairement:
+  - ce qui a été modifie,
+  - pourquoi,
+  - ce que tu dois verifier.
+- Toujours donner un resultat attendu concret et lisible.
+
 ## 7) Commits
 
 - Format recommande: `type(scope): resume court`.
