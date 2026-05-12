@@ -77,7 +77,22 @@ Date de mise a jour: 10/05/2026
   - ce que tu dois verifier.
 - Toujours donner un resultat attendu concret et lisible.
 
-## 7) Commits
+## 7) Regles de mails (authentification)
+
+- Mot de passe oublié:
+  - Message envoyé par Supabase avec lien de réinitialisation.
+  - Le lien doit mener à `index.html?view=desktop` après clic (ou autre page définie).
+- Identifiant oublié:
+  - Pas de mail automatique Supabase.
+  - Ouverture d'un mail préparé pour l'administrateur (`ADMIN_CONTACT_EMAIL`).
+  - Sujet: `SUIVI DES DOTATIONS - Demande identifiant oublié`.
+- Invitation utilisateur:
+  - Le bouton `Envoyer invitation` appelle l'API `admin/users/invite`.
+  - Le mail part vers l'utilisateur saisi.
+  - Il doit contenir un clic direct pour rejoindre le tableau de bord.
+  - Aucun appel à `requestSupabasePasswordReset` sur ce chemin.
+
+## 8) Commits
 
 - Format recommande: `type(scope): resume court`.
 - La phrase de commit doit etre en francais.
