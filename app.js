@@ -9178,13 +9178,24 @@ function bindSignatureCanvases() {
       if (isMobileSignaturePage && requestMatchesCanvas && nextValue) {
         markMobileSignatureRequestSigned(currentMobileRequest);
       }
-      await saveDataToFile({
-        silent: !mustAlertAndClose,
-        reloadAfter: !mustAlertAndClose,
-        successText: saveText,
-        alertText: isMobileSignaturePage ? "SIGNATURE ENREGISTREE" : "DONNEES SUPABASE MISES A JOUR",
-        closeAfterAlert: mustAlertAndClose,
-      });
+      await saveDataToFile(
+        isMobileSignaturePage
+          ? {
+              // Mobile signature: keep UI stable, avoid immediate stale reload wiping the just-signed value.
+              silent: false,
+              reloadAfter: false,
+              successText: saveText,
+              alertText: "SIGNATURE ENREGISTREE",
+              closeAfterAlert: false,
+            }
+          : {
+              silent: !mustAlertAndClose,
+              reloadAfter: !mustAlertAndClose,
+              successText: saveText,
+              alertText: "DONNEES SUPABASE MISES A JOUR",
+              closeAfterAlert: mustAlertAndClose,
+            }
+      );
       if (document.body.dataset.page === "mobile-signature") {
         try {
           const expectedPersonId = String(person?.id || "");
@@ -9367,7 +9378,15 @@ function markMobileSignatureRequestSigned(request) {
 
 function renderMobileSignaturePage() {
   const request = getCurrentMobileSignatureRequest();
-  const person = getCurrentPerson();
+  const personFromContext = getCurrentPerson();
+  const personIdFromUrl = String(new URLSearchParams(window.location.search).get("personId") || "").trim();
+  const personIdFromRequest = String(request?.personId || "").trim();
+  const effectivePersonId = personIdFromRequest || personIdFromUrl;
+  const personFromData =
+    effectivePersonId && Array.isArray(state.data?.personnes)
+      ? state.data.personnes.find((entry) => String(entry?.id || "") === effectivePersonId) || null
+      : null;
+  const person = personFromData || personFromContext;
   const docType = getCurrentMobileSignatureDocType();
   const signerFromUrl = getCurrentMobileSignatureSigner();
   const signerFromRequest = normalizeMobileSignatureSigner(request?.signer || "");
