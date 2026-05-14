@@ -16,6 +16,7 @@ const FILTERABLE_COLUMNS = {
 let authContextCache = null;
 let authContextCacheTs = 0;
 const AUTH_CONTEXT_TTL_MS = 5000;
+let appStateSaveQueue = Promise.resolve();
 
 async function fetchAuthContext({ force = false } = {}) {
   const now = Date.now();
@@ -450,7 +451,7 @@ function buildAppStateConflictError() {
   return error;
 }
 
-async function saveAppStatePayload(payload, expectedRevision, attempt = 0) {
+async function saveAppStatePayloadOnce(payload, expectedRevision, attempt = 0) {
   const normalizedPayload = payload && typeof payload === "object" ? payload : {};
   const revision = Number(expectedRevision);
   if (!Number.isFinite(revision)) {
@@ -468,12 +469,13 @@ async function saveAppStatePayload(payload, expectedRevision, attempt = 0) {
   }
   const updated = Array.isArray(data) ? data[0] : null;
   if (!updated?.id) {
-    if (attempt < 1) {
+    if (attempt < 4) {
       try {
         const latestRow = await getAppStateRow();
         const latestRevision = Number(latestRow?.revision);
         if (Number.isFinite(latestRevision) && latestRevision !== revision) {
-          return saveAppStatePayload(normalizedPayload, latestRevision, attempt + 1);
+          await new Promise((resolve) => setTimeout(resolve, 120));
+          return saveAppStatePayloadOnce(normalizedPayload, latestRevision, attempt + 1);
         }
       } catch {}
     }
@@ -481,6 +483,14 @@ async function saveAppStatePayload(payload, expectedRevision, attempt = 0) {
   }
   const nextRevision = Number(updated.revision);
   return Number.isFinite(nextRevision) ? nextRevision : revision + 1;
+}
+
+async function saveAppStatePayload(payload, expectedRevision) {
+  // Serialize app_state writes on mobile to avoid local concurrent revision conflicts.
+  appStateSaveQueue = appStateSaveQueue
+    .catch(() => {})
+    .then(() => saveAppStatePayloadOnce(payload, expectedRevision, 0));
+  return appStateSaveQueue;
 }
 
 async function getAppStatePayload() {
