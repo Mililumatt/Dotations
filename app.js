@@ -7734,6 +7734,14 @@ function isDocumentFullySigned(person, docType) {
   return hasPersonnelSignature && hasRepresentativeSignature;
 }
 
+function getDocumentLatestSignatureTimestampMs(person, docType) {
+  const personnelDate = String(getSignatureValidationDate(person, docType, "personnel") || "");
+  const representantDate = String(getSignatureValidationDate(person, docType, "representant") || "");
+  const personnelMs = Date.parse(personnelDate) || 0;
+  const representantMs = Date.parse(representantDate) || 0;
+  return Math.max(personnelMs, representantMs);
+}
+
 function hasCurrentSignedPdfForDocumentType(person, docType) {
   const normalizedDocType = normalizeText(docType);
   if (!state.data || !person) {
@@ -7745,7 +7753,7 @@ function hasCurrentSignedPdfForDocumentType(person, docType) {
   if (!typeLabel) {
     return false;
   }
-  return (state.data.documentsArchives || []).some((entry) => {
+  const archives = (state.data.documentsArchives || []).filter((entry) => {
     if (String(entry?.personId || "") !== String(person.id || "")) {
       return false;
     }
@@ -7755,19 +7763,56 @@ function hasCurrentSignedPdfForDocumentType(person, docType) {
     if (!String(entry?.pdfPath || "").trim()) {
       return false;
     }
-    if (String(entry?.fingerprint || "").trim()) {
-      return String(entry.fingerprint || "").trim() === fingerprint;
-    }
-    return false;
+    return true;
   });
+
+  if (!archives.length) {
+    return false;
+  }
+
+  const hasFingerprintMatch = archives.some(
+    (entry) => String(entry?.fingerprint || "").trim() && String(entry.fingerprint || "").trim() === fingerprint
+  );
+  if (hasFingerprintMatch) {
+    return true;
+  }
+
+  const latestSignatureMs = getDocumentLatestSignatureTimestampMs(person, normalizedFingerprintType);
+  const hasSignedArchiveAfterSignature = archives.some((entry) => {
+    if (normalizeText(entry?.statutSignature) !== "SIGNE") {
+      return false;
+    }
+    if (!latestSignatureMs) {
+      return true;
+    }
+    const archivedMs = Date.parse(String(entry?.dateArchivage || "")) || 0;
+    return archivedMs >= latestSignatureMs;
+  });
+  if (hasSignedArchiveAfterSignature) {
+    return true;
+  }
+
+  return false;
 }
 
 function getSignaturePdfPendingAlerts(person) {
   const alerts = [];
+  const currentEffectsCount = getCurrentAssignedEffects(person).length;
+  const missingArrivalSignatures =
+    currentEffectsCount > 0 && !isDocumentFullySigned(person, "arrival");
   const missingArrivalPdf =
     isDocumentFullySigned(person, "arrival") && !hasCurrentSignedPdfForDocumentType(person, "arrival");
   const missingExitPdf =
     isDocumentFullySigned(person, "exit") && !hasCurrentSignedPdfForDocumentType(person, "exit");
+
+  if (missingArrivalSignatures) {
+    alerts.push({
+      docType: "ARRIVEE",
+      message:
+        "ALERTE : EFFET(S) ATTRIBUE(S) MAIS DOCUMENT D'ARRIVEE NON SIGNE (PERSONNEL + REPRESENTANT OBLIGATOIRES).",
+      type: "signaturePdf",
+    });
+  }
 
   if (missingArrivalPdf) {
     alerts.push({
