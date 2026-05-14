@@ -9173,7 +9173,8 @@ function bindSignatureCanvases() {
       }
       showActionStatus(nextValue ? "update" : "delete", saveText);
       const isMobileSignaturePage = document.body.dataset.page === "mobile-signature";
-      const mustAlertAndClose = Boolean(nextValue) && isMobileSignaturePage;
+      // Keep mobile signature page open to show explicit confirmation and refreshed UI.
+      const mustAlertAndClose = false;
       if (isMobileSignaturePage && requestMatchesCanvas && nextValue) {
         markMobileSignatureRequestSigned(currentMobileRequest);
       }
@@ -9181,7 +9182,7 @@ function bindSignatureCanvases() {
         silent: !mustAlertAndClose,
         reloadAfter: !mustAlertAndClose,
         successText: saveText,
-        alertText: "DONNEES SUPABASE MISES A JOUR",
+        alertText: isMobileSignaturePage ? "SIGNATURE ENREGISTREE" : "DONNEES SUPABASE MISES A JOUR",
         closeAfterAlert: mustAlertAndClose,
       });
       if (document.body.dataset.page === "mobile-signature") {
@@ -9189,9 +9190,11 @@ function bindSignatureCanvases() {
           const latest = await fetchLatestDataSnapshot();
           state.data = latest;
           migrateDataModel();
-          renderMobileSignaturePage();
         } catch (error) {
           console.error(error);
+        } finally {
+          renderMobileSignaturePage();
+          showDataStatus("SIGNATURE ENREGISTREE");
         }
       }
     };
