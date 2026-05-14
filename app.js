@@ -1354,10 +1354,16 @@ async function openAdminUsersModal() {
       <div style="padding:6px 8px;background:#f3f7f9;border-bottom:1px solid #e2ebef;font-size:11px;color:#3d5865;font-weight:700;">
         ACTIVITE CONNEXIONS - 30 JOURS
       </div>
-      <div style="display:grid;grid-template-columns:220px 1fr auto;gap:8px;align-items:center;padding:4px 8px;border-bottom:1px solid #e2ebef;">
+      <div style="display:grid;grid-template-columns:220px 1fr auto;gap:8px;align-items:end;padding:4px 8px;border-bottom:1px solid #e2ebef;">
         <div></div>
         <div style="display:grid;grid-template-columns:repeat(${recentDays}, 14px);gap:3px;min-width:max-content;">
-          ${dayLabels.map((label) => `<span style="font-size:8px;color:#5a7381;transform:rotate(-65deg);transform-origin:left bottom;display:inline-block;height:16px;line-height:1;" title="${escapeHtml(label)}">${escapeHtml(label.slice(0,2))}</span>`).join("")}
+          ${dayLabels
+            .map(
+              (label) => `<span style="width:14px;height:16px;display:flex;align-items:flex-end;justify-content:center;overflow:visible;" title="${escapeHtml(label)}">
+            <span style="font-size:8px;color:#5a7381;transform:rotate(-65deg);transform-origin:center bottom;display:block;line-height:1;white-space:nowrap;">${escapeHtml(label.slice(0, 2))}</span>
+          </span>`
+            )
+            .join("")}
         </div>
         <div></div>
       </div>
