@@ -3048,7 +3048,7 @@ async function loadData() {
   const workingData = loadWorkingData();
   if (workingData) {
     state.data = workingData;
-    migrateDataModel();
+    migrateDataModel({ suppressDirty: true });
     state.isDirty = true;
     clearUndoStack();
     applyMeta();
@@ -3152,7 +3152,8 @@ function applyMeta() {
   });
 }
 
-function migrateDataModel() {
+function migrateDataModel(options = {}) {
+  const suppressDirty = options?.suppressDirty === true;
   if (!state.data) {
     return;
   }
@@ -3493,7 +3494,7 @@ function migrateDataModel() {
     });
 
   const referencesWereReconciled = ensureCatalogReferencesFromAssignedEffects();
-  if (referencesWereReconciled) {
+  if (referencesWereReconciled && !suppressDirty) {
     markDirty();
   }
 
@@ -3610,7 +3611,7 @@ async function pollMobileSignatureRequest() {
     const previousValidatedAtRepresentant = getSignatureValidationDate(previousPerson, docType, "representant");
 
     state.data = json;
-    migrateDataModel();
+    migrateDataModel({ suppressDirty: true });
 
     const nextRequestsByToken = new Map(
       trackedRequests
@@ -9213,7 +9214,7 @@ function bindSignatureCanvases() {
           // Avoid UI regression when backend read is temporarily stale right after save.
           if (latestHasExpectedSignature) {
             state.data = latest;
-            migrateDataModel();
+    migrateDataModel({ suppressDirty: true });
           }
         } catch (error) {
           console.error(error);
