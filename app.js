@@ -13167,7 +13167,9 @@ function showActionStatus(type, text) {
     state.statusTimerId = 0;
   }, 3200);
 
-  const shouldAutoSaveAction = type === "create" || type === "update" || type === "delete";
+  const isMobileSignaturePage = String(document?.body?.dataset?.page || "") === "mobile-signature";
+  const shouldAutoSaveAction =
+    (type === "create" || type === "update" || type === "delete") && !isMobileSignaturePage;
   if (shouldAutoSaveAction && state.isDirty && state.data) {
     if (state.actionAutoSaveTimerId) {
       window.clearTimeout(state.actionAutoSaveTimerId);
