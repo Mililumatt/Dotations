@@ -934,16 +934,39 @@ async function refreshSupabaseSession(refreshToken) {
   return data;
 }
 
-async function getSupabaseUserAccessToken() {
-  const searchParams = new URLSearchParams(String(window.location.search || ""));
-  const hasMobileSignatureToken = Boolean(String(searchParams.get("token") || "").trim());
-  const hasSessionBridgeParams =
-    Boolean(String(searchParams.get("sbat") || "").trim()) ||
-    Boolean(String(searchParams.get("sbrt") || "").trim()) ||
-    Boolean(String(searchParams.get("sbea") || "").trim());
-  const isMobileSignaturePage =
+function isMobileSignaturePageContext() {
+  return (
     String(document?.body?.dataset?.page || "") === "mobile-signature" ||
-    /signature-mobile\.html$/i.test(String(window.location.pathname || ""));
+    /signature-mobile\.html$/i.test(String(window.location.pathname || ""))
+  );
+}
+
+function getUrlSearchParamsSafe() {
+  try {
+    return new URLSearchParams(String(window.location.search || ""));
+  } catch (error) {
+    return new URLSearchParams("");
+  }
+}
+
+function hasMobileSignatureTokenInUrl() {
+  const params = getUrlSearchParamsSafe();
+  return Boolean(String(params.get("token") || "").trim());
+}
+
+function hasSessionBridgeParamsInUrl() {
+  const params = getUrlSearchParamsSafe();
+  return (
+    Boolean(String(params.get("sbat") || "").trim()) ||
+    Boolean(String(params.get("sbrt") || "").trim()) ||
+    Boolean(String(params.get("sbea") || "").trim())
+  );
+}
+
+async function getSupabaseUserAccessToken() {
+  const hasMobileSignatureToken = hasMobileSignatureTokenInUrl();
+  const hasSessionBridgeParams = hasSessionBridgeParamsInUrl();
+  const isMobileSignaturePage = isMobileSignaturePageContext();
   const session = getStoredSupabaseSession();
   if (session && isSessionTokenFresh(session)) {
     const token = String(session.access_token || "").trim();
@@ -9458,12 +9481,23 @@ function renderMobileSignaturePage() {
       signerFromRequest === signer &&
       representativeReady
   );
+  const isAlreadySigned = Boolean(request && normalizeText(request.status) === "SIGNEE");
   if (panelNode) {
     panelNode.hidden = !valid;
   }
   if (saveButton instanceof HTMLButtonElement) {
-    saveButton.disabled = !valid;
-    saveButton.classList.toggle("is-disabled", !valid);
+    if (!saveButton.dataset.defaultLabel) {
+      saveButton.dataset.defaultLabel = saveButton.textContent || "VALIDER LA SIGNATURE";
+    }
+    if (isAlreadySigned) {
+      saveButton.disabled = true;
+      saveButton.classList.add("is-disabled");
+      saveButton.textContent = "VALIDE";
+    } else {
+      saveButton.disabled = !valid;
+      saveButton.classList.toggle("is-disabled", !valid);
+      saveButton.textContent = saveButton.dataset.defaultLabel;
+    }
   }
   if (clearButton instanceof HTMLButtonElement) {
     clearButton.disabled = !valid;
@@ -13201,7 +13235,7 @@ function showActionStatus(type, text) {
     state.statusTimerId = 0;
   }, 3200);
 
-  const isMobileSignaturePage = String(document?.body?.dataset?.page || "") === "mobile-signature";
+  const isMobileSignaturePage = isMobileSignaturePageContext();
   const shouldAutoSaveAction =
     (type === "create" || type === "update" || type === "delete") && !isMobileSignaturePage;
   if (shouldAutoSaveAction && state.isDirty && state.data) {
