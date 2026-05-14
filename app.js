@@ -550,23 +550,33 @@ function importSupabaseSessionFromUrlIfPresent() {
   }
 }
 
-function appendSupabaseSessionBridgeParams(url) {
+function appendSupabaseSessionBridgeParams(url, options = {}) {
   try {
     const session = getStoredSupabaseSession();
     const accessToken = String(session?.access_token || "").trim();
     const refreshToken = String(session?.refresh_token || "").trim();
     const expiresAt = Number.parseInt(String(session?.expires_at || "0"), 10);
-    if (!accessToken) {
+    const includeAccessToken = options?.includeAccessToken !== false;
+    const includeRefreshToken = options?.includeRefreshToken !== false;
+    const includeExpiresAt = options?.includeExpiresAt !== false;
+    if (!accessToken && !refreshToken) {
       return url;
     }
     const nextUrl = new URL(url, window.location.href);
-    nextUrl.searchParams.set("sbat", accessToken);
-    // Include refresh/expiry to keep the mobile session renewable and avoid lost saves when access token expires.
-    if (refreshToken) {
-      nextUrl.searchParams.set("sbrt", refreshToken);
+    if (includeAccessToken && accessToken) {
+      nextUrl.searchParams.set("sbat", accessToken);
+    } else {
+      nextUrl.searchParams.delete("sbat");
     }
-    if (Number.isFinite(expiresAt) && expiresAt > 0) {
+    if (includeRefreshToken && refreshToken) {
+      nextUrl.searchParams.set("sbrt", refreshToken);
+    } else {
+      nextUrl.searchParams.delete("sbrt");
+    }
+    if (includeExpiresAt && Number.isFinite(expiresAt) && expiresAt > 0) {
       nextUrl.searchParams.set("sbea", String(expiresAt));
+    } else {
+      nextUrl.searchParams.delete("sbea");
     }
     return nextUrl.toString();
   } catch (error) {
@@ -927,6 +937,10 @@ async function refreshSupabaseSession(refreshToken) {
 async function getSupabaseUserAccessToken() {
   const searchParams = new URLSearchParams(String(window.location.search || ""));
   const hasMobileSignatureToken = Boolean(String(searchParams.get("token") || "").trim());
+  const hasSessionBridgeParams =
+    Boolean(String(searchParams.get("sbat") || "").trim()) ||
+    Boolean(String(searchParams.get("sbrt") || "").trim()) ||
+    Boolean(String(searchParams.get("sbea") || "").trim());
   const isMobileSignaturePage =
     String(document?.body?.dataset?.page || "") === "mobile-signature" ||
     /signature-mobile\.html$/i.test(String(window.location.pathname || ""));
@@ -952,7 +966,7 @@ async function getSupabaseUserAccessToken() {
     ensureLoginEventLogged(existing).catch(() => null);
     return existing;
   }
-  if (isMobileSignaturePage || hasMobileSignatureToken) {
+  if ((isMobileSignaturePage || hasMobileSignatureToken) && !hasSessionBridgeParams) {
     throw new Error("BACKEND_AUTH_REQUIRED");
   }
   return promptSupabaseLoginAndStoreSession();
@@ -2723,12 +2737,12 @@ function createMobileSignatureRequest(personId, docType, signer = "personnel") {
 }
 
 function getMobileSignaturePageUrl(request, options = {}) {
-  const includeSessionBridge = options?.includeSessionBridge === true;
+  const includeSessionBridge = options?.includeSessionBridge !== false;
   const docType = normalizeText(request?.docType) === "EXIT" ? "exit" : "arrival";
   const signer = normalizeMobileSignatureSigner(request?.signer || "");
   const relativeUrl = `signature-mobile.html?personId=${encodeURIComponent(request?.personId || "")}&docType=${encodeURIComponent(docType)}&token=${encodeURIComponent(request?.token || "")}&signer=${encodeURIComponent(signer)}`;
   if (includeSessionBridge) {
-    return appendSupabaseSessionBridgeParams(relativeUrl);
+    return appendSupabaseSessionBridgeParams(relativeUrl, options?.sessionBridgeOptions || {});
   }
   return relativeUrl;
 }
@@ -2852,8 +2866,15 @@ async function fillMobileSignatureShareLink(request) {
     return;
   }
 
-  // Keep QR links short for camera readability: no session-bridge params.
-  const absoluteUrl = await getAbsoluteMobileSignatureUrl(request, { includeSessionBridge: false });
+  // Keep QR links camera-friendly while preserving silent auth: refresh token only.
+  const absoluteUrl = await getAbsoluteMobileSignatureUrl(request, {
+    includeSessionBridge: true,
+    sessionBridgeOptions: {
+      includeAccessToken: false,
+      includeRefreshToken: true,
+      includeExpiresAt: false,
+    },
+  });
 
   wrapper.hidden = false;
   input.value = absoluteUrl;
