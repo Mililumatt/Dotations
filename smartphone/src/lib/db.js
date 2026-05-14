@@ -450,7 +450,7 @@ function buildAppStateConflictError() {
   return error;
 }
 
-async function saveAppStatePayload(payload, expectedRevision) {
+async function saveAppStatePayload(payload, expectedRevision, attempt = 0) {
   const normalizedPayload = payload && typeof payload === "object" ? payload : {};
   const revision = Number(expectedRevision);
   if (!Number.isFinite(revision)) {
@@ -468,9 +468,15 @@ async function saveAppStatePayload(payload, expectedRevision) {
   }
   const updated = Array.isArray(data) ? data[0] : null;
   if (!updated?.id) {
-    try {
-      await getAppStateRow();
-    } catch {}
+    if (attempt < 1) {
+      try {
+        const latestRow = await getAppStateRow();
+        const latestRevision = Number(latestRow?.revision);
+        if (Number.isFinite(latestRevision) && latestRevision !== revision) {
+          return saveAppStatePayload(normalizedPayload, latestRevision, attempt + 1);
+        }
+      } catch {}
+    }
     throw buildAppStateConflictError();
   }
   const nextRevision = Number(updated.revision);
