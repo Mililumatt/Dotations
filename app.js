@@ -1709,6 +1709,7 @@ async function callEdgeApi(pathname, options = {}, retryOnAuthFailure = true) {
 
 function getSupabaseHeaders(extra = {}, options = {}) {
   const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
+  const userAccessToken = String(getStoredSupabaseAccessToken() || "").trim();
   const includeAuthorization = options?.includeAuthorization ?? "auto";
   const headers = {
     apikey: key,
@@ -1720,7 +1721,7 @@ function getSupabaseHeaders(extra = {}, options = {}) {
     includeAuthorization === true ||
     (includeAuthorization === "auto" && (keyLooksLikeJwt || keyLooksLikeSupabasePublishable));
   if (shouldAddAuthorization) {
-    headers.Authorization = `Bearer ${key}`;
+    headers.Authorization = `Bearer ${userAccessToken || key}`;
   }
   return headers;
 }
