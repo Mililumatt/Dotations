@@ -445,6 +445,22 @@ async function getAppStateRow() {
   };
 }
 
+async function getAppStateRowDirect() {
+  await requireAuthenticated("Lecture app_state");
+  const rows = await runQuery(
+    supabase.from("app_state").select("id,payload,revision").eq("id", "main").limit(1),
+    "Lecture app_state impossible"
+  );
+  const row = rows?.[0];
+  if (!row) return null;
+  const revision = Number(row.revision);
+  return {
+    id: row.id,
+    payload: safeJsonParse(row.payload),
+    revision: Number.isFinite(revision) ? revision : 0,
+  };
+}
+
 function buildAppStateConflictError() {
   const error = new Error("Conflit de sauvegarde : les donnees ont ete modifiees ailleurs. Recharge puis reessaie.");
   error.code = "APP_STATE_CONFLICT";
@@ -471,7 +487,7 @@ async function saveAppStatePayloadOnce(payload, expectedRevision, attempt = 0) {
   if (!updated?.id) {
     if (attempt < 4) {
       try {
-        const latestRow = await getAppStateRow();
+        const latestRow = await getAppStateRowDirect();
         const latestRevision = Number(latestRow?.revision);
         if (Number.isFinite(latestRevision) && latestRevision !== revision) {
           await new Promise((resolve) => setTimeout(resolve, 120));
