@@ -7772,7 +7772,9 @@ function getSignaturePdfPendingAlerts(person) {
   if (missingArrivalPdf) {
     alerts.push({
       docType: "ARRIVEE",
-      message: `ALERTE : ATTENTION ARRIVEE SIGNEE - PDF NON GENERE. CLIQUEZ SUR "GENERER LE PDF".`,
+      message:
+        "ALERTE : ARRIVEE SIGNEE (2 SIGNATURES), MAIS PDF ABSENT OU NON MIS A JOUR POUR CETTE VERSION. " +
+        "RE-SIGNEZ LES DEUX PARTIES PUIS CLIQUEZ SUR \"GENERER LE PDF\".",
       type: "signaturePdf",
     });
   }
@@ -7780,7 +7782,9 @@ function getSignaturePdfPendingAlerts(person) {
   if (missingExitPdf) {
     alerts.push({
       docType: "SORTIE",
-      message: `ALERTE : ATTENTION SORTIE SIGNEE - PDF NON GENERE. CLIQUEZ SUR "GENERER LE PDF".`,
+      message:
+        "ALERTE : SORTIE SIGNEE (2 SIGNATURES), MAIS PDF ABSENT OU NON MIS A JOUR POUR CETTE VERSION. " +
+        "RE-SIGNEZ LES DEUX PARTIES PUIS CLIQUEZ SUR \"GENERER LE PDF\".",
       type: "signaturePdf",
     });
   }
