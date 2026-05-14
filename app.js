@@ -9492,10 +9492,12 @@ function renderMobileSignaturePage() {
     if (isAlreadySigned) {
       saveButton.disabled = true;
       saveButton.classList.add("is-disabled");
+      saveButton.classList.add("button--validated");
       saveButton.textContent = "VALIDE";
     } else {
       saveButton.disabled = !valid;
       saveButton.classList.toggle("is-disabled", !valid);
+      saveButton.classList.remove("button--validated");
       saveButton.textContent = saveButton.dataset.defaultLabel;
     }
   }

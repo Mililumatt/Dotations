@@ -1919,6 +1919,15 @@ body[data-page="reference-bases"] .table-wrap--reference-large {
   pointer-events: auto;
 }
 
+.button.button--validated,
+.button.button--validated:disabled {
+  background: #2f9e44;
+  border-color: #2f9e44;
+  color: #ffffff;
+  opacity: 1;
+  cursor: default;
+}
+
 .form-actions--filters {
   align-self: end;
   justify-content: flex-end;
