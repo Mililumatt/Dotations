@@ -2714,11 +2714,15 @@ function createMobileSignatureRequest(personId, docType, signer = "personnel") {
   return request;
 }
 
-function getMobileSignaturePageUrl(request) {
+function getMobileSignaturePageUrl(request, options = {}) {
+  const includeSessionBridge = options?.includeSessionBridge === true;
   const docType = normalizeText(request?.docType) === "EXIT" ? "exit" : "arrival";
   const signer = normalizeMobileSignatureSigner(request?.signer || "");
   const relativeUrl = `signature-mobile.html?personId=${encodeURIComponent(request?.personId || "")}&docType=${encodeURIComponent(docType)}&token=${encodeURIComponent(request?.token || "")}&signer=${encodeURIComponent(signer)}`;
-  return appendSupabaseSessionBridgeParams(relativeUrl);
+  if (includeSessionBridge) {
+    return appendSupabaseSessionBridgeParams(relativeUrl);
+  }
+  return relativeUrl;
 }
 
 async function getMobileSignatureBaseUrl() {
@@ -2788,11 +2792,11 @@ function getQrProviderUrls(absoluteUrl) {
   return providers;
 }
 
-async function getAbsoluteMobileSignatureUrl(request) {
+async function getAbsoluteMobileSignatureUrl(request, options = {}) {
   if (!request) {
     return "";
   }
-  const relativeUrl = getMobileSignaturePageUrl(request);
+  const relativeUrl = getMobileSignaturePageUrl(request, options);
   const baseUrl = await getMobileSignatureBaseUrl();
   let resolvedBaseUrl = String(baseUrl || window.location.origin || "").trim();
   try {
@@ -2840,7 +2844,8 @@ async function fillMobileSignatureShareLink(request) {
     return;
   }
 
-  const absoluteUrl = await getAbsoluteMobileSignatureUrl(request);
+  // Keep QR links short for camera readability: no session-bridge params.
+  const absoluteUrl = await getAbsoluteMobileSignatureUrl(request, { includeSessionBridge: false });
 
   wrapper.hidden = false;
   input.value = absoluteUrl;
