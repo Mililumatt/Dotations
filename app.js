@@ -9922,7 +9922,7 @@ function renderOverview(persons) {
   if (body) {
     const sortedPersons = sortPersonsForOverview(persons);
     const rowsHtml = buildOverviewRows(sortedPersons);
-    renderTableRowsProgressively(body, [rowsHtml], buildEmptyTableRow("overview-table-body", "AUCUNE DONNEE A AFFICHER", 13), 1);
+    renderTableRowsProgressively(body, [rowsHtml], buildEmptyTableRow("overview-table-body", "AUCUNE DONNEE A AFFICHER", 14), 1);
     bindPersonRowActions();
     bindDeletePersonButtons();
     updateSortableHeaders("overviewPersons");
@@ -9969,12 +9969,16 @@ function renderOverview(persons) {
 
 function buildOverviewRows(persons) {
   if (!persons.length) {
-    return buildEmptyTableRow("overview-table-body", "AUCUNE DONNEE A AFFICHER", 13);
+    return buildEmptyTableRow("overview-table-body", "AUCUNE DONNEE A AFFICHER", 14);
   }
   return persons
     .map((person) => {
       const currentEffects = getCurrentAssignedEffects(person);
       const totalEffects = currentEffects.length;
+      const totalCosts = currentEffects.reduce(
+        (sum, effect) => sum + getEffectReplacementCost(person, effect),
+        0
+      );
       const nonRendus = currentEffects.filter(
         (effect) => getEffectStatus(person, effect) === "NON RENDU"
       ).length;
@@ -10014,6 +10018,7 @@ function buildOverviewRows(persons) {
         <td>${getDossierStatusCellMarkup(getDossierStatus(person))}</td>
         <td>${totalEffects}</td>
         <td>${nonRendus > 0 ? '<span class="row-alert-dot" aria-hidden="true"></span>' : ""}${nonRendus}</td>
+        <td>${totalCosts > 0 ? formatAmountWithEuro(totalCosts) : "-"}</td>
         <td>${movementMarkup || "-"}</td>
         <td>
           <a class="table-link js-open-person-link" data-person-id="${person.id}" href="fiche-personne.html?personId=${person.id}">VOIR</a>
@@ -10031,7 +10036,7 @@ function renderGlobalTable(persons) {
   }
 
   if (!persons.length) {
-    body.innerHTML = buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 13);
+    body.innerHTML = buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 14);
     return;
   }
 
@@ -10039,6 +10044,10 @@ function renderGlobalTable(persons) {
     .map((person) => {
       const currentEffects = getCurrentAssignedEffects(person);
       const totalEffects = currentEffects.length;
+      const totalCosts = currentEffects.reduce(
+        (sum, effect) => sum + getEffectReplacementCost(person, effect),
+        0
+      );
       const nonRendus = currentEffects.filter(
         (effect) => getEffectStatus(person, effect) === "NON RENDU"
       ).length;
@@ -10078,6 +10087,7 @@ function renderGlobalTable(persons) {
         <td>${getDossierStatusCellMarkup(getDossierStatus(person))}</td>
         <td>${totalEffects}</td>
         <td>${nonRendus > 0 ? '<span class="row-alert-dot" aria-hidden="true"></span>' : ""}${nonRendus}</td>
+        <td>${totalCosts > 0 ? formatAmountWithEuro(totalCosts) : "-"}</td>
         <td>${movementMarkup || "-"}</td>
         <td>
           <a class="table-link js-open-person-link" data-person-id="${person.id}" href="fiche-personne.html?personId=${person.id}">VOIR</a>
@@ -10087,7 +10097,7 @@ function renderGlobalTable(persons) {
     })
     ;
 
-  renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 13), 24);
+  renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 14), 24);
 
   bindPersonRowActions();
   bindDeletePersonButtons();
@@ -13214,8 +13224,8 @@ async function saveDataToFile(options = {}) {
 
 function resetUiWithoutData() {
   const targets = [
-    { id: "overview-table-body", colspan: 13 },
-    { id: "global-table-body", colspan: 13 },
+    { id: "overview-table-body", colspan: 14 },
+    { id: "global-table-body", colspan: 14 },
     { id: "sheet-effects-body", colspan: 11 },
     { id: "reference-sites-body", colspan: 2 },
     { id: "reference-typesPersonnel-body", colspan: 2 },
