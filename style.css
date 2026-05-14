@@ -1057,6 +1057,18 @@ body.has-modal-open {
   border-left-color: rgba(171, 21, 21, 0.98);
 }
 
+.overview-alert-item--signaturePdf {
+  border-color: rgba(93, 112, 196, 0.3);
+  border-left-color: rgba(55, 82, 177, 0.95);
+  background: linear-gradient(90deg, rgba(170, 188, 248, 0.2) 0%, rgba(128, 154, 232, 0.08) 100%);
+  color: #33447a;
+}
+
+.overview-alert-item--signaturePdf:hover {
+  box-shadow: 0 8px 18px rgba(51, 68, 122, 0.14);
+  border-left-color: rgba(36, 67, 180, 0.98);
+}
+
 .overview-alert-item__icon {
   display: inline-flex;
   align-items: center;
@@ -1079,6 +1091,12 @@ body.has-modal-open {
   background: linear-gradient(180deg, #ef6a6a 0%, #ce3535 100%);
   color: #ffffff;
   box-shadow: 0 4px 10px rgba(206, 53, 53, 0.28);
+}
+
+.overview-alert-item__icon--signaturePdf {
+  background: linear-gradient(180deg, #8fa0f6 0%, #5f77eb 100%);
+  color: #f8faff;
+  box-shadow: 0 4px 10px rgba(95, 119, 235, 0.28);
 }
 
 .overview-alert-item__content {

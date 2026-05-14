@@ -7734,6 +7734,67 @@ function isDocumentFullySigned(person, docType) {
   return hasPersonnelSignature && hasRepresentativeSignature;
 }
 
+function hasCurrentSignedPdfForDocumentType(person, docType) {
+  const normalizedDocType = normalizeText(docType);
+  if (!state.data || !person) {
+    return false;
+  }
+  const normalizedFingerprintType = normalizedDocType === "SORTIE" || normalizedDocType === "EXIT" ? "exit" : "arrival";
+  const typeLabel = getDocumentTypeLabel(normalizedFingerprintType);
+  const fingerprint = getDocumentFingerprint(person, normalizedFingerprintType);
+  if (!typeLabel) {
+    return false;
+  }
+  return (state.data.documentsArchives || []).some((entry) => {
+    if (String(entry?.personId || "") !== String(person.id || "")) {
+      return false;
+    }
+    if (normalizeText(entry?.typeDocument) !== typeLabel) {
+      return false;
+    }
+    if (!String(entry?.pdfPath || "").trim()) {
+      return false;
+    }
+    if (String(entry?.fingerprint || "").trim()) {
+      return String(entry.fingerprint || "").trim() === fingerprint;
+    }
+    return false;
+  });
+}
+
+function getSignaturePdfPendingAlerts(person) {
+  const alerts = [];
+  const missingArrivalPdf =
+    isDocumentFullySigned(person, "arrival") && !hasCurrentSignedPdfForDocumentType(person, "arrival");
+  const missingExitPdf =
+    isDocumentFullySigned(person, "exit") && !hasCurrentSignedPdfForDocumentType(person, "exit");
+
+  if (missingArrivalPdf) {
+    alerts.push({
+      docType: "ARRIVEE",
+      message: `ALERTE : ATTENTION ARRIVEE SIGNEE - PDF NON GENERE. CLIQUEZ SUR "GENERER LE PDF".`,
+      type: "signaturePdf",
+    });
+  }
+
+  if (missingExitPdf) {
+    alerts.push({
+      docType: "SORTIE",
+      message: `ALERTE : ATTENTION SORTIE SIGNEE - PDF NON GENERE. CLIQUEZ SUR "GENERER LE PDF".`,
+      type: "signaturePdf",
+    });
+  }
+
+  return alerts.map((item) => ({
+    id: person.id,
+    nom: person.nom,
+    prenom: person.prenom,
+    message: item.message,
+    type: item.type || "dateSortiePrevue",
+    docType: item.docType,
+  }));
+}
+
 function validateFinalSignatureBeforeSave(person, docType) {
   if (!person) {
     return { ok: false, message: "AUCUNE PERSONNE SELECTIONNEE" };
@@ -9875,13 +9936,14 @@ function renderOverview(persons) {
           message: alertMeta.message,
           type: alertMeta.type,
         };
-      });
+      })
+      .concat(persons.flatMap((person) => getSignaturePdfPendingAlerts(person)));
 
     alertsSection.hidden = alerts.length === 0;
     alertsList.innerHTML = alerts
       .map(
         (alert) => `<button type="button" class="overview-alert-item overview-alert-item--${alert.type || "dateSortiePrevue"} js-open-person-alert" data-person-id="${alert.id}">
-          <span class="overview-alert-item__icon overview-alert-item__icon--${alert.type || "dateSortiePrevue"}" aria-hidden="true">${alert.type === "dateSortieReelle" ? "✕" : "!"}</span>
+          <span class="overview-alert-item__icon overview-alert-item__icon--${alert.type || "dateSortiePrevue"}" aria-hidden="true">${alert.type === "signaturePdf" ? "✎" : alert.type === "dateSortieReelle" ? "✕" : "!"}</span>
           <span class="overview-alert-item__content">
             <strong>${escapeHtml(`${alert.nom} ${alert.prenom}`.trim())}</strong>
             <span>${escapeHtml(alert.message)}</span>
