@@ -9187,9 +9187,23 @@ function bindSignatureCanvases() {
       });
       if (document.body.dataset.page === "mobile-signature") {
         try {
+          const expectedPersonId = String(person?.id || "");
+          const expectedDocType = String(docType || "");
+          const expectedSigner = String(signer || "");
+          const expectedValue = String(nextValue || "");
           const latest = await fetchLatestDataSnapshot();
-          state.data = latest;
-          migrateDataModel();
+          const latestPerson = Array.isArray(latest?.personnes)
+            ? latest.personnes.find((entry) => String(entry?.id || "") === expectedPersonId) || null
+            : null;
+          const latestSignatureValue = String(
+            getSignatureValue(latestPerson, expectedDocType, expectedSigner) || ""
+          );
+          const latestHasExpectedSignature = !expectedValue || latestSignatureValue === expectedValue;
+          // Avoid UI regression when backend read is temporarily stale right after save.
+          if (latestHasExpectedSignature) {
+            state.data = latest;
+            migrateDataModel();
+          }
         } catch (error) {
           console.error(error);
         } finally {
