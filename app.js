@@ -925,6 +925,11 @@ async function refreshSupabaseSession(refreshToken) {
 }
 
 async function getSupabaseUserAccessToken() {
+  const searchParams = new URLSearchParams(String(window.location.search || ""));
+  const hasMobileSignatureToken = Boolean(String(searchParams.get("token") || "").trim());
+  const isMobileSignaturePage =
+    String(document?.body?.dataset?.page || "") === "mobile-signature" ||
+    /signature-mobile\.html$/i.test(String(window.location.pathname || ""));
   const session = getStoredSupabaseSession();
   if (session && isSessionTokenFresh(session)) {
     const token = String(session.access_token || "").trim();
@@ -946,6 +951,9 @@ async function getSupabaseUserAccessToken() {
   if (existing) {
     ensureLoginEventLogged(existing).catch(() => null);
     return existing;
+  }
+  if (isMobileSignaturePage || hasMobileSignatureToken) {
+    throw new Error("BACKEND_AUTH_REQUIRED");
   }
   return promptSupabaseLoginAndStoreSession();
 }
