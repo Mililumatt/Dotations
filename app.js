@@ -11490,19 +11490,48 @@ function isPastDate(value) {
 }
 
 function getOverdueExitAlertMeta(person) {
-  if (person?.dateSortiePrevue && !person?.dateSortieReelle && isPastDate(person.dateSortiePrevue)) {
+  const today = getTodayIsoDate();
+  const plannedExit = String(person?.dateSortiePrevue || "");
+  const realExit = String(person?.dateSortieReelle || "");
+  const plannedDate = plannedExit ? new Date(`${plannedExit}T00:00:00`) : null;
+  const todayDate = new Date(`${today}T00:00:00`);
+  const daysUntilPlannedExit =
+    plannedDate && Number.isFinite(plannedDate.getTime())
+      ? Math.round((plannedDate.getTime() - todayDate.getTime()) / (24 * 60 * 60 * 1000))
+      : null;
+
+  if (
+    plannedExit &&
+    !realExit &&
+    Number.isFinite(daysUntilPlannedExit) &&
+    daysUntilPlannedExit >= 1 &&
+    daysUntilPlannedExit <= 2
+  ) {
     return {
       type: "dateSortiePrevue",
-      message: `ALERTE : DATE DE SORTIE PREVUE DEPASSEE (${formatDate(person.dateSortiePrevue)})`,
+      message: `ALERTE : SORTIE PREVUE DANS ${daysUntilPlannedExit} JOUR${daysUntilPlannedExit > 1 ? "S" : ""} (${formatDate(plannedExit)})`,
+    };
+  }
+
+  if (plannedExit && !realExit && plannedExit <= today) {
+    return {
+      type: "dateSortiePrevue",
+      message:
+        plannedExit === today
+          ? `ALERTE : SORTIE PREVUE AUJOURD'HUI (${formatDate(plannedExit)})`
+          : `ALERTE : DATE DE SORTIE PREVUE DEPASSEE (${formatDate(plannedExit)})`,
     };
   }
   const hasNonRenduEffects = (person?.effetsConfies || []).some(
     (effect) => normalizeText(getEffectStatus(person, effect)) === "NON RENDU"
   );
-  if (person?.dateSortieReelle && isPastDate(person.dateSortieReelle) && hasNonRenduEffects) {
+  if (realExit && realExit <= today && hasNonRenduEffects) {
     return {
       type: "dateSortieReelle",
-      message: `ALERTE : DATE DE SORTIE REELLE DEPASSEE (${formatDate(person.dateSortieReelle)})`,
+      message:
+        realExit === today
+          ? `ALERTE : SORTIE REELLE AUJOURD'HUI AVEC EFFETS NON RENDUS (${formatDate(realExit)})`
+          : `ALERTE : DATE DE SORTIE REELLE DEPASSEE (${formatDate(realExit)})`,
     };
   }
   return { type: "", message: "" };
