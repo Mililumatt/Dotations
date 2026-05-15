@@ -11562,7 +11562,7 @@ function getEffectStatus(person, effect) {
   const manualStatus = normalizeText(effect.statutManuel);
   if (manualStatus === "CASSE") return "DETRUIT";
   if (["PERDU", "HS", "VOL"].includes(manualStatus)) return manualStatus;
-  if (!manualStatus && isExitDue(person)) return "NON RENDU";
+  if ((!manualStatus || manualStatus === "ACTIF") && isExitDue(person)) return "NON RENDU";
   return manualStatus || "ACTIF";
 }
 
