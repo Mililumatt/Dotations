@@ -38,13 +38,15 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
       (p.sites || []).join(" ").toLowerCase().includes(q);
   });
 
-  const personById = new Map((persons || []).map((p) => [String(p.id), p]));
-  const totalEffets = effets.length;
-  const nonRendus = effets.filter((e) => {
-    const person = personById.get(String(e.personId));
-    if (isExitFullySigned(person)) return false;
-    return getEffectStatus(person, e) === "NON RENDU";
-  }).length;
+  const totalEffets = (persons || []).reduce((sum, p) => {
+    const personEffets = Array.isArray(p?.effetsConfies) ? p.effetsConfies : [];
+    return sum + personEffets.length;
+  }, 0);
+  const nonRendus = (persons || []).reduce((sum, p) => {
+    const personEffets = Array.isArray(p?.effetsConfies) ? p.effetsConfies : [];
+    const currentNonRendus = personEffets.filter((e) => getEffectStatus(p, e) === "NON RENDU").length;
+    return sum + currentNonRendus;
+  }, 0);
   const enPoste = persons.filter((p) => getDossierStatus(p) !== "SORTI").length;
   const alerts = persons.flatMap((p) => {
     const sortiePrevue = String(p?.dateSortiePrevue || "");
@@ -139,7 +141,7 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
         {[
           { label: "EN POSTE", value: enPoste },
           { label: "EFFETS CONFIES", value: totalEffets },
-          { label: "NON RENDUS", value: nonRendus },
+          { label: "EFFETS NON RENDUS A CE JOUR", value: nonRendus },
         ].map(k => (
           <div key={k.label} style={{ ...card, padding: "8px 10px", marginBottom: 0, display: "flex", flexDirection: "column" }}>
             <p style={label}>{k.label}</p>
