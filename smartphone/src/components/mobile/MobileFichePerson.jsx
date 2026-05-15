@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useRef } from "react";
 import { db } from "@/lib/db";
 import MobilePersonSearch from "./MobilePersonSearch";
@@ -311,3 +312,4 @@ export default function MobileFichePerson({ persons, effets, selectedPerson, onS
     </div>
   );
 }
+

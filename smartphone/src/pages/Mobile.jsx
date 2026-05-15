@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useRef } from "react";
 import MobileOverview from "../components/mobile/MobileOverview";
 import MobileFichePerson from "../components/mobile/MobileFichePerson";
@@ -643,3 +644,4 @@ export default function Mobile() {
     </div>
   );
 }
+

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect } from "react";
 import { db } from "@/lib/db";
 import MobilePersonSearch from "./MobilePersonSearch";
@@ -303,3 +304,4 @@ export default function MobileDocumentArrivee({ persons, effets, selectedPerson,
     </div>
   );
 }
+

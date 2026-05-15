@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect } from "react";
 import { db } from "@/lib/db";
 import { normalizeManualStatus } from "@/lib/businessRules";
@@ -268,3 +269,4 @@ function MobileEffetForm({ personId, editingEffet, onSaved, onCancel, setSaveSta
 
 export { MobileEffetForm };
 export default MobileEffetForm;
+

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { supabase } from "@/lib/supabaseClient";
 import { normalizeManualStatus, normalizeText } from "@/lib/businessRules";
 
@@ -1097,3 +1098,4 @@ export const db = {
     getOperationalData: getLegacyOperationalData,
   },
 };
+

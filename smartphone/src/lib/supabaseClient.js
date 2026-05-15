@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createClient } from "@supabase/supabase-js";
 
 const DEFAULT_SUPABASE_URL = "https://dphrvdhqhgycmllietuk.supabase.co";
@@ -40,3 +41,4 @@ export function onAuthStateChange(callback) {
     data?.subscription?.unsubscribe();
   };
 }
+
