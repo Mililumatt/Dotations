@@ -11152,7 +11152,14 @@ function bindExitBillingToggles() {
       return;
     }
     const isBilledToggle = target.classList.contains("js-exit-billed");
+    const row = target.closest("tr");
+    const oppositeSelector = isBilledToggle ? ".js-exit-closed" : ".js-exit-billed";
+    const oppositeToggle = row instanceof HTMLElement ? row.querySelector(oppositeSelector) : null;
     if (!target.checked) {
+      // If user selected the opposite checkbox, ignore this uncheck event to avoid clearing the new state.
+      if (oppositeToggle instanceof HTMLInputElement && oppositeToggle.checked) {
+        return;
+      }
       effect.etatFacturation = "";
       markDirty();
       renderExitDocument(person.id);
