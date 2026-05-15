@@ -8213,6 +8213,9 @@ function getEffectMovementLabel(person, effect, movementMap = null) {
   if (effectStatus === "DETRUIT") {
     return "DETRUIT";
   }
+  if (effectStatus === "VOL") {
+    return "VOLE";
+  }
   if (effectStatus === "HS") {
     return "HS";
   }
@@ -10956,10 +10959,14 @@ function renderExitDocument(personId) {
             const statusLabel = currentStatus === "RESTITUE" ? "RENDU" : rawStatus;
             const replacementCost = getEffectReplacementCost(person, effect);
             const billingStatus = getEffectBillingStatus(effect, replacementCost > 0);
+            const billingControls = !isPdfMode && replacementCost > 0
+              ? `<label class="return-today-toggle"><input type="checkbox" class="js-exit-billed" data-effect-id="${escapeHtml(effect.id || "")}" ${billingStatus === "FACTURE" ? "checked" : ""} /><span>FACTURE</span></label>
+                 <label class="return-today-toggle"><input type="checkbox" class="js-exit-closed" data-effect-id="${escapeHtml(effect.id || "")}" ${billingStatus === "CLOTURE" ? "checked" : ""} /><span>CLOTURE</span></label>`
+              : "";
             const billingCell =
               billingStatus === "-"
                 ? "-"
-                : `<span class="${getStatusClass(billingStatus)}">${billingStatus}</span>`;
+                : `<span class="${getStatusClass(billingStatus)}">${billingStatus}</span>${billingControls ? `<div class="exit-billing-toggles">${billingControls}</div>` : ""}`;
             const retourDateIso = normalizeDateString(effect.dateRetour || "");
             const canToggleReturnToday =
               !["PERDU", "HS", "VOL"].includes(currentStatus) &&
@@ -11002,6 +11009,7 @@ function renderExitDocument(personId) {
   totalValueNode.textContent = formatAmountWithEuro(totalValue);
   renderDocumentCostsTable(costsHead, costsBody);
   bindExitReturnTodayToggles();
+  bindExitBillingToggles();
   bindDocumentEffectActions();
   updateSortableHeaders("exitEffects");
   syncDocumentMobileSignatureLink("exit", person.id, "personnel");
@@ -11088,6 +11096,47 @@ function bindExitReturnTodayToggles() {
     showActionStatus("update", target.checked ? "EFFET MARQUE RENDU CE JOUR" : "RETOUR DU JOUR ANNULE");
   });
   body.dataset.returnBound = "true";
+}
+
+function bindExitBillingToggles() {
+  const body = document.getElementById("exit-effects-body");
+  if (!body) {
+    return;
+  }
+  if (body.dataset.billingBound === "true") {
+    return;
+  }
+  body.addEventListener("change", (event) => {
+    const target = event.target;
+    if (
+      !(target instanceof HTMLInputElement) ||
+      (!target.classList.contains("js-exit-billed") && !target.classList.contains("js-exit-closed"))
+    ) {
+      return;
+    }
+    const person = getCurrentPerson();
+    if (!person) {
+      return;
+    }
+    const effectId = String(target.dataset.effectId || "");
+    const effect = (person.effetsConfies || []).find((entry) => String(entry.id || "") === effectId);
+    if (!effect) {
+      return;
+    }
+    const isBilledToggle = target.classList.contains("js-exit-billed");
+    if (!target.checked) {
+      effect.etatFacturation = "";
+      markDirty();
+      renderExitDocument(person.id);
+      showActionStatus("update", "ETAT FACTURATION REMIS A A FACTURER");
+      return;
+    }
+    effect.etatFacturation = isBilledToggle ? "FACTURE" : "CLOTURE";
+    markDirty();
+    renderExitDocument(person.id);
+    showActionStatus("update", isBilledToggle ? "ETAT FACTURATION: FACTURE" : "ETAT FACTURATION: CLOTURE");
+  });
+  body.dataset.billingBound = "true";
 }
 
 function getAvailableReferenceSites(person) {
