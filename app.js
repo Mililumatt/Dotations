@@ -10956,6 +10956,10 @@ function renderExitDocument(personId) {
             const statusLabel = currentStatus === "RESTITUE" ? "RENDU" : rawStatus;
             const replacementCost = getEffectReplacementCost(person, effect);
             const billingStatus = getEffectBillingStatus(effect, replacementCost > 0);
+            const billingCell =
+              billingStatus === "-"
+                ? "-"
+                : `<span class="${getStatusClass(billingStatus)}">${billingStatus}</span>`;
             const retourDateIso = normalizeDateString(effect.dateRetour || "");
             const canToggleReturnToday =
               !["PERDU", "HS", "VOL"].includes(currentStatus) &&
@@ -10980,7 +10984,7 @@ function renderExitDocument(personId) {
                 : "-"
             }</td>
             <td>${formatAmountWithEuro(replacementCost)}</td>
-            <td><span class="${getStatusClass(billingStatus)}">${billingStatus}</span></td>
+            <td>${billingCell}</td>
             <td class="document-effects-action-col">${actionCell}</td>
           </tr>`;
           }
