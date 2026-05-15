@@ -6334,6 +6334,9 @@ function getEffectUnitValue(effect) {
 }
 
 function getEffectReplacementCause(person, effect) {
+  if (typeof deriveEffectState === "function") {
+    return deriveEffectState(person, effect).cause;
+  }
   const persistedCause = normalizeEffectCause(effect?.cause || effect?.causeRemplacement);
   if (persistedCause) {
     return persistedCause;
@@ -6358,6 +6361,9 @@ function getEffectReplacementCost(person, effect) {
 }
 
 function isEffectChargeable(person, effect) {
+  if (typeof deriveEffectState === "function") {
+    return deriveEffectState(person, effect).chargeable;
+  }
   return getEffectReplacementCost(person, effect) > 0;
 }
 
@@ -8277,31 +8283,18 @@ function getEffectMovementLabel(person, effect, movementMap = null) {
     }
   }
 
-  if (String(effect?.dateRetour || "").trim()) {
-    return "RENDU";
+  if (typeof deriveEffectState === "function") {
+    return deriveEffectState(person, effect).movement;
   }
-
+  if (String(effect?.dateRetour || "").trim()) return "RENDU";
   const effectStatus = normalizeText(getEffectStatus(person, effect));
   const effectCause = normalizeText(getEffectReplacementCause(person, effect));
-
-  if (effectStatus === "DETRUIT") {
-    return "DETRUIT";
-  }
-  if (effectStatus === "VOL") {
-    return "VOLE";
-  }
-  if (effectStatus === "HS") {
-    return "HS";
-  }
-  if (effectCause === "VOL") {
-    return "VOLE";
-  }
-  if (effectStatus === "PERDU" || effectCause === "PERTE") {
-    return "PERDU";
-  }
-  if (effectStatus === "NON RENDU") {
-    return "NON RENDU";
-  }
+  if (effectStatus === "DETRUIT") return "DETRUIT";
+  if (effectStatus === "VOL") return "VOLE";
+  if (effectStatus === "HS") return "HS";
+  if (effectCause === "VOL") return "VOLE";
+  if (effectStatus === "PERDU" || effectCause === "PERTE") return "PERDU";
+  if (effectStatus === "NON RENDU") return "NON RENDU";
   return "";
 }
 
@@ -11664,10 +11657,48 @@ function isExitDue(person) {
   return false;
 }
 
-function getEffectStatus(person, effect) {
-  if (effect.dateRetour) return "RESTITUE";
+function deriveEffectState(person, effect) {
+  const hasReturnDate = Boolean(String(effect?.dateRetour || "").trim());
+  const manualStatus = normalizeText(effect?.statutManuel);
+  const persistedCause = normalizeEffectCause(effect?.cause || effect?.causeRemplacement);
+  const fallbackCause = !hasReturnDate && isExitDue(person) ? "NON RENDU" : "";
 
-  const manualStatus = normalizeText(effect.statutManuel);
+  let status = "ACTIF";
+  if (hasReturnDate) status = "RESTITUE";
+  else if (manualStatus === "CASSE") status = "DETRUIT";
+  else if (["PERDU", "HS", "VOL"].includes(manualStatus)) status = manualStatus;
+  else if ((!manualStatus || manualStatus === "ACTIF") && isExitDue(person)) status = "NON RENDU";
+  else if (manualStatus) status = manualStatus;
+
+  const cause = persistedCause || fallbackCause;
+  const movement =
+    status === "RESTITUE"
+      ? "RENDU"
+      : status === "DETRUIT"
+        ? "DETRUIT"
+        : status === "VOL" || cause === "VOL"
+          ? "VOLE"
+          : status === "HS"
+            ? "HS"
+            : status === "PERDU" || cause === "PERTE"
+              ? "PERDU"
+              : status === "NON RENDU"
+                ? "NON RENDU"
+                : "";
+  const replacementCost = cause ? getReplacementCostValue(effect?.typeEffet, cause, effect?.designation || "") : 0;
+  const chargeable = replacementCost > 0;
+  const storedBilling = normalizeText(effect?.etatFacturation || "");
+  const billingStatus =
+    storedBilling === "FACTURE" ? "FACTURE" : storedBilling === "CLOTURE" ? "CLOTURE" : chargeable ? "A FACTURER" : "-";
+  return { status, cause, movement, chargeable, billingStatus };
+}
+
+function getEffectStatus(person, effect) {
+  if (typeof deriveEffectState === "function") {
+    return deriveEffectState(person, effect).status;
+  }
+  if (effect?.dateRetour) return "RESTITUE";
+  const manualStatus = normalizeText(effect?.statutManuel);
   if (manualStatus === "CASSE") return "DETRUIT";
   if (["PERDU", "HS", "VOL"].includes(manualStatus)) return manualStatus;
   if ((!manualStatus || manualStatus === "ACTIF") && isExitDue(person)) return "NON RENDU";
@@ -11675,13 +11706,16 @@ function getEffectStatus(person, effect) {
 }
 
 function getEffectBillingStatus(effect, isChargeable) {
+  if (typeof deriveEffectState === "function") {
+    const derived = deriveEffectState(null, effect).billingStatus;
+    if (derived === "A FACTURER") {
+      return isChargeable ? "A FACTURER" : "-";
+    }
+    return derived;
+  }
   const stored = normalizeText(effect?.etatFacturation || "");
-  if (stored === "FACTURE") {
-    return "FACTURE";
-  }
-  if (stored === "CLOTURE") {
-    return "CLOTURE";
-  }
+  if (stored === "FACTURE") return "FACTURE";
+  if (stored === "CLOTURE") return "CLOTURE";
   return isChargeable ? "A FACTURER" : "-";
 }
 
