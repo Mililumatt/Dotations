@@ -3615,10 +3615,6 @@ async function pollMobileSignatureRequest() {
     getActiveMobileSignatureRequest(personId, docType, "personnel"),
     getActiveMobileSignatureRequest(personId, docType, "representant"),
   ].filter(Boolean);
-  if (!trackedRequests.length) {
-    stopMobileSignaturePolling();
-    return;
-  }
 
   try {
     const json = await fetchLatestDataSnapshot();
@@ -3686,10 +3682,15 @@ async function pollMobileSignatureRequest() {
 
 function syncMobileSignaturePolling() {
   stopMobileSignaturePolling();
-  const request = getActiveDocumentMobileSignatureRequest();
-  if (!request) {
+  const page = document.body.dataset.page || "";
+  if (page !== "arrival-document" && page !== "exit-document") {
     return;
   }
+  const personId = getCurrentPersonId();
+  if (!personId) {
+    return;
+  }
+  pollMobileSignatureRequest();
   state.mobileSignaturePollTimerId = window.setInterval(() => {
     pollMobileSignatureRequest();
   }, 2500);
