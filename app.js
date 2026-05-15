@@ -965,7 +965,6 @@ function hasSessionBridgeParamsInUrl() {
 
 async function getSupabaseUserAccessToken() {
   const hasMobileSignatureToken = hasMobileSignatureTokenInUrl();
-  const hasSessionBridgeParams = hasSessionBridgeParamsInUrl();
   const isMobileSignaturePage = isMobileSignaturePageContext();
   const session = getStoredSupabaseSession();
   if (session && isSessionTokenFresh(session)) {
@@ -989,7 +988,7 @@ async function getSupabaseUserAccessToken() {
     ensureLoginEventLogged(existing).catch(() => null);
     return existing;
   }
-  if ((isMobileSignaturePage || hasMobileSignatureToken) && !hasSessionBridgeParams) {
+  if (isMobileSignaturePage || hasMobileSignatureToken) {
     throw new Error("BACKEND_AUTH_REQUIRED");
   }
   return promptSupabaseLoginAndStoreSession();
@@ -1677,6 +1676,12 @@ async function openAdminCreateUserFlow() {
 }
 
 async function refreshCurrentUserRoleLabel() {
+  if (document.body?.dataset?.page === "mobile-signature") {
+    state.currentUserRoleLabel = "";
+    renderRoleBadge();
+    return;
+  }
+
   try {
     const userId = getStoredSupabaseUserId();
     const accessToken = getStoredSupabaseAccessToken();
@@ -7410,7 +7415,7 @@ function renderPage() {
 
   if (page === "mobile-signature") {
     renderMobileSignaturePage();
-    refreshDocumentSignatureCanvases(getCurrentMobileSignatureDocType());
+    refreshDocumentSignatureCanvases(getCurrentMobileSignatureDocType(), getMobileSignatureTargetPerson());
   }
 
   if (page === "person-sheet") {
@@ -9073,9 +9078,10 @@ function getCanvasSignaturePayload(canvas, stateRef) {
   }
 }
 
-function refreshDocumentSignatureCanvases(docType) {
+function refreshDocumentSignatureCanvases(docType, forcedPerson = null) {
   document.querySelectorAll(`.js-signature-canvas[data-doc-type="${docType}"]`).forEach((canvas) => {
-    const person = getCurrentPerson();
+    const isMobileSignaturePage = document.body.dataset.page === "mobile-signature";
+    const person = forcedPerson || getSignatureContextPerson(isMobileSignaturePage);
     const signer = String(canvas.getAttribute("data-signer") || "");
     const dataUrl = getSignatureValue(person, docType, signer);
     const canvasState = signatureCanvases.get(canvas);
@@ -9235,7 +9241,8 @@ function bindSignatureCanvases() {
     };
 
     const saveSignature = async () => {
-      const person = getCurrentPerson();
+      const isMobileSignaturePage = document.body.dataset.page === "mobile-signature";
+      const person = getSignatureContextPerson(isMobileSignaturePage);
       const docType = String(canvas.getAttribute("data-doc-type") || "");
       const signer = String(canvas.getAttribute("data-signer") || "");
       if (!person || !docType || !signer) {
@@ -9306,10 +9313,9 @@ function bindSignatureCanvases() {
         }, 700);
       }
       showActionStatus(nextValue ? "update" : "delete", saveText);
-      const isMobileSignaturePage = document.body.dataset.page === "mobile-signature";
       // Keep mobile signature page open to show explicit confirmation and refreshed UI.
       const mustAlertAndClose = false;
-      if (isMobileSignaturePage && requestMatchesCanvas && nextValue) {
+      if (requestMatchesCanvas && nextValue) {
         markMobileSignatureRequestSigned(currentMobileRequest);
       }
       await saveDataToFile(
@@ -9331,10 +9337,10 @@ function bindSignatureCanvases() {
             }
       );
       if (document.body.dataset.page === "mobile-signature") {
+        const expectedPersonId = String(person?.id || "");
+        const expectedDocType = String(docType || "");
+        const expectedSigner = String(signer || "");
         try {
-          const expectedPersonId = String(person?.id || "");
-          const expectedDocType = String(docType || "");
-          const expectedSigner = String(signer || "");
           const expectedValue = String(nextValue || "");
           const latest = await fetchLatestDataSnapshot();
           const latestPerson = Array.isArray(latest?.personnes)
@@ -9353,13 +9359,16 @@ function bindSignatureCanvases() {
           console.error(error);
         } finally {
           renderMobileSignaturePage();
+          refreshDocumentSignatureCanvases(expectedDocType || docType, person);
           showDataStatus("SIGNATURE ENREGISTREE");
         }
       }
     };
 
     canvas.addEventListener("pointerdown", (event) => {
-      if (document.body.dataset.pdfMode === "true" || !getCurrentPerson()) {
+      const isMobileSignaturePage = document.body.dataset.page === "mobile-signature";
+      const targetPerson = getSignatureContextPerson(isMobileSignaturePage);
+      if (document.body.dataset.pdfMode === "true" || !targetPerson) {
         return;
       }
       const context = getContext();
@@ -9416,7 +9425,8 @@ function bindSignatureCanvases() {
 
     if (saveButton instanceof HTMLButtonElement) {
       saveButton.onclick = async () => {
-        const person = getCurrentPerson();
+        const isMobileSignaturePage = document.body.dataset.page === "mobile-signature";
+        const person = getSignatureContextPerson(isMobileSignaturePage);
         if (!person) {
           return;
         }
@@ -9451,7 +9461,8 @@ function bindSignatureCanvases() {
 
     if (clearButton instanceof HTMLButtonElement) {
       clearButton.onclick = async () => {
-        const person = getCurrentPerson();
+        const isMobileSignaturePage = document.body.dataset.page === "mobile-signature";
+        const person = getSignatureContextPerson(isMobileSignaturePage);
         const docType = String(canvas.getAttribute("data-doc-type") || "");
         const signer = String(canvas.getAttribute("data-signer") || "");
         if (!person || !docType || !signer) {
@@ -9460,6 +9471,7 @@ function bindSignatureCanvases() {
         stateRef.pendingDataUrl = "";
         clearSignatureCanvas(canvas);
         setSignatureValue(person, docType, signer, "", "", "", "");
+        refreshDocumentSignatureCanvases(docType, person);
         if (document.body.dataset.page === "mobile-signature") {
           const request = getCurrentMobileSignatureRequest();
           if (
@@ -9491,6 +9503,22 @@ function getCurrentMobileSignatureRequest() {
   return findMobileSignatureRequestByToken(token);
 }
 
+function getMobileSignatureTargetPerson() {
+  const request = getCurrentMobileSignatureRequest();
+  const personIdFromUrl = String(new URLSearchParams(window.location.search).get("personId") || "").trim();
+  const requestPersonId = String(request?.personId || "").trim();
+  const targetPersonId = requestPersonId || personIdFromUrl;
+
+  if (!targetPersonId || !Array.isArray(state.data?.personnes)) {
+    return getCurrentPerson();
+  }
+
+  return (
+    state.data.personnes.find((entry) => String(entry?.id || "") === targetPersonId) ||
+    getCurrentPerson()
+  );
+}
+
 function isMobileSignatureRequestValid(request) {
   if (!request) {
     return false;
@@ -9512,15 +9540,7 @@ function markMobileSignatureRequestSigned(request) {
 
 function renderMobileSignaturePage() {
   const request = getCurrentMobileSignatureRequest();
-  const personFromContext = getCurrentPerson();
-  const personIdFromUrl = String(new URLSearchParams(window.location.search).get("personId") || "").trim();
-  const personIdFromRequest = String(request?.personId || "").trim();
-  const effectivePersonId = personIdFromRequest || personIdFromUrl;
-  const personFromData =
-    effectivePersonId && Array.isArray(state.data?.personnes)
-      ? state.data.personnes.find((entry) => String(entry?.id || "") === effectivePersonId) || null
-      : null;
-  const person = personFromData || personFromContext;
+  const person = getMobileSignatureTargetPerson();
   const docType = getCurrentMobileSignatureDocType();
   const signerFromUrl = getCurrentMobileSignatureSigner();
   const signerFromRequest = normalizeMobileSignatureSigner(request?.signer || "");
@@ -9583,17 +9603,16 @@ function renderMobileSignaturePage() {
   const representative = person ? getRepresentativeInfo(person, normalizeText(docType) === "EXIT" ? "exit" : "arrival") : null;
   const representativeReady =
     signer !== "representant" || Boolean(normalizeText(representative?.nom) && normalizeText(representative?.fonction));
-  const valid = Boolean(
-    person &&
-      request &&
+  const isAlreadySigned = Boolean(request && normalizeText(request.status) === "SIGNEE");
+  const isRequestUsable = Boolean(
+    request &&
       isMobileSignatureRequestValid(request) &&
       normalizeText(request.docType) === normalizeText(docType) &&
       signerFromRequest === signer &&
-      representativeReady
+      person
   );
-  const isAlreadySigned = Boolean(request && normalizeText(request.status) === "SIGNEE");
   if (panelNode) {
-    panelNode.hidden = !valid;
+    panelNode.hidden = !request;
   }
   if (saveButton instanceof HTMLButtonElement) {
     if (!saveButton.dataset.defaultLabel) {
@@ -9605,15 +9624,15 @@ function renderMobileSignaturePage() {
       saveButton.classList.add("button--validated");
       saveButton.textContent = "VALIDE";
     } else {
-      saveButton.disabled = !valid;
-      saveButton.classList.toggle("is-disabled", !valid);
+      saveButton.disabled = !isRequestUsable;
+      saveButton.classList.toggle("is-disabled", !isRequestUsable);
       saveButton.classList.remove("button--validated");
       saveButton.textContent = saveButton.dataset.defaultLabel;
     }
   }
   if (clearButton instanceof HTMLButtonElement) {
-    clearButton.disabled = !valid;
-    clearButton.classList.toggle("is-disabled", !valid);
+    clearButton.disabled = !isRequestUsable;
+    clearButton.classList.toggle("is-disabled", !isRequestUsable);
   }
 
   if (statusNode) {
@@ -9638,7 +9657,7 @@ function renderMobileSignaturePage() {
     renderDocumentCostsTable(mobileCostsHead, mobileCostsBody);
   }
 
-  fillMobileSignatureShareLink(valid ? request : null);
+  fillMobileSignatureShareLink(request && isRequestUsable ? request : null);
 }
 
 function renderPersonPicker() {
@@ -12070,6 +12089,13 @@ function getStockMovementSignedQuantity(entry) {
   if (action === "ENTREE" || action === "AJUSTEMENT_PLUS") return qty;
   if (action === "SORTIE" || action === "AJUSTEMENT_MOINS") return -qty;
   return 0;
+}
+
+function getSignatureContextPerson(isMobileSignatureContext = false) {
+  if (!isMobileSignatureContext) {
+    return getCurrentPerson();
+  }
+  return getMobileSignatureTargetPerson();
 }
 
 function addAutoStockMovement(person, effect, action, motif, commentaire = "") {
