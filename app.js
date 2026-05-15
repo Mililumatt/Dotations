@@ -146,6 +146,36 @@ function clearPendingPdfTaskFor(personId, docType) {
   }
 }
 
+function clearPendingPdfTaskIfArchived() {
+  const pendingTask = getPendingPdfTaskFromStorage();
+  if (!pendingTask || !state.data) {
+    return false;
+  }
+  const personId = String(pendingTask.personId || "");
+  const docType = String(pendingTask.docType || "");
+  if (!personId || !docType) {
+    setPendingPdfTaskToStorage(null);
+    return true;
+  }
+  const person = (state.data.personnes || []).find((candidate) => String(candidate.id || "") === personId);
+  if (!person) {
+    return false;
+  }
+  const hasArchive = Boolean(findReusableArchivedDocument(person, docType));
+  if (!hasArchive) {
+    return false;
+  }
+  clearPendingPdfTaskFor(personId, docType);
+  const snoozeKey = `${personId}:${docType}`;
+  delete reminderSnoozeMap[snoozeKey];
+  try {
+    localStorage.setItem(PENDING_PDF_REMINDER_SNOOZE_KEY, JSON.stringify(reminderSnoozeMap));
+  } catch (error) {
+    // ignore storage failures
+  }
+  return true;
+}
+
 function setKpiCountAnimated(node, nextValue) {
   if (!node) {
     return;
@@ -4644,6 +4674,7 @@ function notifyFullySignedDocumentsOnReload(previousSignatureValidationMap = new
   if (!state.data) {
     return;
   }
+  clearPendingPdfTaskIfArchived();
   const currentSignatureValidationMap = buildSignatureValidationMap(state.data);
   const newEvents = [];
   currentSignatureValidationMap.forEach((validatedAt, key) => {
