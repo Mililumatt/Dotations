@@ -33,11 +33,22 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
   });
 
   const personById = new Map((persons || []).map((p) => [String(p.id), p]));
-  const totalEffets = (effets || []).length;
-  const nonRendus = (effets || []).filter((e) => {
-    const person = personById.get(String(e.personId));
-    return getEffectStatus(person, e) === "NON RENDU";
-  }).length;
+  const totalEffetsFromPersons = (persons || []).reduce((sum, p) => {
+    const arr = Array.isArray(p?.effetsConfies) ? p.effetsConfies : [];
+    return sum + arr.length;
+  }, 0);
+  const fallbackEffets = Array.isArray(effets) ? effets : [];
+  const usePersonsEffects = totalEffetsFromPersons > 0;
+  const totalEffets = usePersonsEffects ? totalEffetsFromPersons : fallbackEffets.length;
+  const nonRendus = usePersonsEffects
+    ? (persons || []).reduce((sum, p) => {
+        const arr = Array.isArray(p?.effetsConfies) ? p.effetsConfies : [];
+        return sum + arr.filter((e) => getEffectStatus(p, e) === "NON RENDU").length;
+      }, 0)
+    : fallbackEffets.filter((e) => {
+        const person = personById.get(String(e.personId));
+        return getEffectStatus(person, e) === "NON RENDU";
+      }).length;
   const enPoste = persons.filter((p) => getDossierStatus(p) !== "SORTI").length;
   const alerts = persons.flatMap((p) => {
     const sortiePrevue = String(p?.dateSortiePrevue || "");
@@ -146,7 +157,7 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
         {[
           { label: "EN POSTE", value: enPoste },
           { label: "EFFETS CONFIES", value: totalEffets },
-          { label: "EFFETS NON RENDUS A CE JOUR", value: nonRendus },
+          { label: "NON RENDUS A CE JOUR", value: nonRendus },
         ].map(k => (
           <div key={k.label} style={{ ...card, padding: "8px 10px", marginBottom: 0, display: "flex", flexDirection: "column" }}>
             <p style={label}>{k.label}</p>
