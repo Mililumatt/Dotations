@@ -12,12 +12,6 @@ function statusColor(s) {
   return { bg: "rgba(93,120,134,0.12)", color: "#213b48", border: "rgba(93,120,134,0.3)" };
 }
 
-function isExitFullySigned(person) {
-  const personnelSignedAt = String(person?.signatures?.exit?.personnel?.validatedAt || "").trim();
-  const representantSignedAt = String(person?.signatures?.exit?.representant?.validatedAt || "").trim();
-  return Boolean(personnelSignedAt && representantSignedAt);
-}
-
 function formatDateFr(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -38,15 +32,12 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
       (p.sites || []).join(" ").toLowerCase().includes(q);
   });
 
-  const totalEffets = (persons || []).reduce((sum, p) => {
-    const personEffets = Array.isArray(p?.effetsConfies) ? p.effetsConfies : [];
-    return sum + personEffets.length;
-  }, 0);
-  const nonRendus = (persons || []).reduce((sum, p) => {
-    const personEffets = Array.isArray(p?.effetsConfies) ? p.effetsConfies : [];
-    const currentNonRendus = personEffets.filter((e) => getEffectStatus(p, e) === "NON RENDU").length;
-    return sum + currentNonRendus;
-  }, 0);
+  const personById = new Map((persons || []).map((p) => [String(p.id), p]));
+  const totalEffets = (effets || []).length;
+  const nonRendus = (effets || []).filter((e) => {
+    const person = personById.get(String(e.personId));
+    return getEffectStatus(person, e) === "NON RENDU";
+  }).length;
   const enPoste = persons.filter((p) => getDossierStatus(p) !== "SORTI").length;
   const alerts = persons.flatMap((p) => {
     const sortiePrevue = String(p?.dateSortiePrevue || "");
@@ -57,9 +48,8 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
       sortiePrevueDate && Number.isFinite(sortiePrevueDate.getTime())
         ? Math.round((sortiePrevueDate.getTime() - todayDate.getTime()) / (24 * 60 * 60 * 1000))
         : null;
-    const sortieFinalisee = isExitFullySigned(p);
     const hasNonRendu = effets.some(
-      (e) => String(e.personId) === String(p.id) && !sortieFinalisee && getEffectStatus(p, e) === "NON RENDU"
+      (e) => String(e.personId) === String(p.id) && getEffectStatus(p, e) === "NON RENDU"
     );
 
     let alert = null;
