@@ -10945,6 +10945,12 @@ function renderExitDocument(personId) {
   const billingClosedCount = chargeableEffects.filter(
     (effect) => getEffectBillingStatus(effect, true) === "CLOTURE"
   ).length;
+  const totalPendingValue = chargeableEffects
+    .filter((effect) => getEffectBillingStatus(effect, true) === "A FACTURER")
+    .reduce((sum, effect) => sum + getEffectReplacementCost(person, effect), 0);
+  const totalClosedValue = chargeableEffects
+    .filter((effect) => getEffectBillingStatus(effect, true) === "CLOTURE")
+    .reduce((sum, effect) => sum + getEffectReplacementCost(person, effect), 0);
   const totalBilledValue = chargeableEffects
     .filter((effect) => getEffectBillingStatus(effect, true) === "FACTURE")
     .reduce((sum, effect) => sum + getEffectReplacementCost(person, effect), 0);
@@ -11038,9 +11044,9 @@ function renderExitDocument(personId) {
   totalReturnedNode.textContent = String(totalReturned);
   totalChargeableNode.textContent = String(chargeableEffects.length);
   totalValueNode.textContent = formatAmountWithEuro(totalValue);
-  totalBillingPendingNode.textContent = String(billingPendingCount);
-  totalBillingBilledNode.textContent = String(billingBilledCount);
-  totalBillingClosedNode.textContent = String(billingClosedCount);
+  totalBillingPendingNode.textContent = formatAmountWithEuro(totalPendingValue);
+  totalBillingBilledNode.textContent = formatAmountWithEuro(totalBilledValue);
+  totalBillingClosedNode.textContent = formatAmountWithEuro(totalClosedValue);
   totalBilledValueNode.textContent = formatAmountWithEuro(totalBilledValue);
   totalRemainingValueNode.textContent = formatAmountWithEuro(totalRemainingValue);
   renderDocumentCostsTable(costsHead, costsBody);
