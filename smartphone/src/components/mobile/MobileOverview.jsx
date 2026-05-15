@@ -102,35 +102,50 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
   const isAlertListScrollable = alerts.length > 3;
 
   const alertStyle = (type) => {
+    if (type === "signaturePdf") {
+      return {
+        bg: "linear-gradient(90deg, rgba(111, 138, 232, 0.16) 0%, rgba(76, 106, 203, 0.08) 100%)",
+        color: "#3450a6",
+        border: "rgba(95, 122, 214, 0.34)",
+        borderLeft: "rgba(74, 102, 196, 0.96)",
+      };
+    }
     if (type === "dateSortieReelle") {
       return {
-        bg: "linear-gradient(90deg, rgba(239, 147, 147, 0.18) 0%, rgba(226, 111, 111, 0.08) 100%)",
-        color: "#8f2d2d",
-        border: "rgba(208, 86, 86, 0.3)",
-        borderLeft: "rgba(198, 45, 45, 0.95)",
+        bg: "linear-gradient(90deg, rgba(242, 136, 136, 0.2) 0%, rgba(218, 87, 87, 0.08) 100%)",
+        color: "#8b2a2a",
+        border: "rgba(203, 74, 74, 0.34)",
+        borderLeft: "rgba(190, 38, 38, 0.95)",
       };
     }
     return {
-      bg: "linear-gradient(90deg, rgba(248, 223, 160, 0.22) 0%, rgba(246, 205, 120, 0.08) 100%)",
-      color: "#8b5a1d",
-      border: "rgba(223, 173, 67, 0.3)",
-      borderLeft: "rgba(224, 157, 24, 0.9)",
+      bg: "linear-gradient(90deg, rgba(248, 218, 146, 0.22) 0%, rgba(236, 180, 68, 0.08) 100%)",
+      color: "#8a5518",
+      border: "rgba(214, 156, 46, 0.34)",
+      borderLeft: "rgba(219, 145, 11, 0.92)",
     };
   };
 
-  const alertIcon = (type) => (type === "dateSortieReelle" ? "✕" : "!");
+  const alertIcon = (type) => (type === "signaturePdf" ? "✎" : type === "dateSortieReelle" ? "✕" : "!");
   const alertIconStyle = (type) => {
+    if (type === "signaturePdf") {
+      return {
+        background: "linear-gradient(180deg, #7b93eb 0%, #4e66c5 100%)",
+        color: "#ffffff",
+        boxShadow: "0 4px 10px rgba(78, 102, 197, 0.24)",
+      };
+    }
     if (type === "dateSortieReelle") {
       return {
-        background: "linear-gradient(180deg, #ef6a6a 0%, #ce3535 100%)",
+        background: "linear-gradient(180deg, #ec7272 0%, #bf3030 100%)",
         color: "#ffffff",
-        boxShadow: "0 4px 10px rgba(206, 53, 53, 0.28)",
+        boxShadow: "0 4px 10px rgba(191, 48, 48, 0.28)",
       };
     }
     return {
-      background: "linear-gradient(180deg, #f3cf64 0%, #e39a33 100%)",
+      background: "linear-gradient(180deg, #f1cc62 0%, #dc9029 100%)",
       color: "#7a3218",
-      boxShadow: "0 4px 10px rgba(227, 154, 51, 0.24)",
+      boxShadow: "0 4px 10px rgba(220, 144, 41, 0.24)",
     };
   };
 
