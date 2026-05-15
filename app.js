@@ -7931,6 +7931,21 @@ function getSignaturePdfPendingAlerts(person) {
   }));
 }
 
+function getPersonAlerts(person) {
+  const alerts = [];
+  const exitAlertMeta = getOverdueExitAlertMeta(person);
+  if (exitAlertMeta?.message) {
+    alerts.push({
+      id: person?.id,
+      nom: person?.nom,
+      prenom: person?.prenom,
+      message: exitAlertMeta.message,
+      type: exitAlertMeta.type || "dateSortiePrevue",
+    });
+  }
+  return alerts.concat(getSignaturePdfPendingAlerts(person));
+}
+
 function validateFinalSignatureBeforeSave(person, docType) {
   if (!person) {
     return { ok: false, message: "AUCUNE PERSONNE SELECTIONNEE" };
@@ -10099,19 +10114,7 @@ function renderOverview(persons) {
   }
 
   if (alertsSection && alertsList) {
-    const alerts = persons
-      .filter((person) => hasOverdueExit(person))
-      .map((person) => {
-        const alertMeta = getOverdueExitAlertMeta(person);
-        return {
-          id: person.id,
-          nom: person.nom,
-          prenom: person.prenom,
-          message: alertMeta.message,
-          type: alertMeta.type,
-        };
-      })
-      .concat(persons.flatMap((person) => getSignaturePdfPendingAlerts(person)));
+    const alerts = persons.flatMap((person) => getPersonAlerts(person));
 
     alertsSection.hidden = alerts.length === 0;
     alertsList.innerHTML = alerts
