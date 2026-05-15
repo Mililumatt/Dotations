@@ -10986,8 +10986,9 @@ function renderExitDocument(personId) {
                 ? "-"
                 : `<span class="${getStatusClass(billingStatus)}">${billingStatus}</span>${billingControls ? `<div class="exit-billing-toggles">${billingControls}</div>` : ""}`;
             const retourDateIso = normalizeDateString(effect.dateRetour || "");
+            const isLockedStatusForReturn = ["PERDU", "HS", "VOL", "DETRUIT", "NON RENDU"].includes(currentStatus);
             const canToggleReturnToday =
-              !["PERDU", "HS", "VOL"].includes(currentStatus) &&
+              !isLockedStatusForReturn &&
               (!retourDateIso || retourDateIso === todayIso);
             const actionCell = !isPdfMode
               ? `<span class="document-effect-actions">
@@ -11102,6 +11103,12 @@ function bindExitReturnTodayToggles() {
     const effectId = String(target.dataset.effectId || "");
     const effect = (person.effetsConfies || []).find((entry) => String(entry.id || "") === effectId);
     if (!effect) {
+      return;
+    }
+    const effectStatus = normalizeText(getEffectStatus(person, effect));
+    if (["PERDU", "HS", "VOL", "DETRUIT", "NON RENDU"].includes(effectStatus)) {
+      target.checked = false;
+      showDataStatus("RETOUR DU JOUR IMPOSSIBLE POUR CE STATUT");
       return;
     }
     const wasReturned = Boolean(String(effect.dateRetour || "").trim());
