@@ -3281,7 +3281,7 @@ function migrateDataModel(options = {}) {
       personId: String(entry.personId || ""),
       nom: normalizeText(entry.nom),
       prenom: normalizeText(entry.prenom),
-      typeDocument: normalizeText(entry.typeDocument),
+      typeDocument: normalizeArchiveTypeLabel(entry.typeDocument),
       dateDocument: String(entry.dateDocument || ""),
       sites: normalizeText(entry.sites),
       typePersonnel: normalizeText(entry.typePersonnel),
@@ -7731,6 +7731,17 @@ function getDocumentTypeLabel(docType) {
   return normalizeText(docType) === "EXIT" ? "SORTIE" : "ARRIVEE";
 }
 
+function normalizeArchiveTypeLabel(value) {
+  const normalized = normalizeText(value);
+  if (normalized === "ENTREE" || normalized === "ARRIVAL") {
+    return "ARRIVEE";
+  }
+  if (normalized === "EXIT") {
+    return "SORTIE";
+  }
+  return normalized;
+}
+
 function isDocumentFullySigned(person, docType) {
   const hasPersonnelSignature =
     Boolean(getSignatureValue(person, docType, "personnel")) &&
@@ -8469,7 +8480,7 @@ function renderDocumentsArchivePage() {
     : null;
   const archiveSearchField = filterForm?.elements?.archiveSearch;
   if (archiveSearchField instanceof HTMLInputElement && lockedPerson && !String(archiveSearchField.value || "").trim()) {
-    const label = getPersonPickerLabel(lockedPerson);
+    const label = `${lockedPerson.nom || ""} ${lockedPerson.prenom || ""}`.trim();
     archiveSearchField.value = label;
     archiveSearchField.defaultValue = label;
   }
@@ -8543,6 +8554,40 @@ function renderDocumentsArchivePage() {
       sites: getPersonSiteLabel(person) || entry?.sites || "-",
     };
   };
+  const findLatestArchiveForPersonAndType = (person, typeLabel) => {
+    const personId = String(person?.id || "").trim();
+    if (!personId || !typeLabel) {
+      return null;
+    }
+    const key = `${personId}|${typeLabel}`;
+    const direct = latestArchivePerPersonAndType.get(key);
+    if (direct) {
+      return direct;
+    }
+    // Legacy fallback: some old archives may miss personId but keep nom/prenom.
+    const personNom = normalizeText(person?.nom || "");
+    const personPrenom = normalizeText(person?.prenom || "");
+    const candidates = allArchives.filter((entry) => {
+      if (normalizeArchiveTypeLabel(entry?.typeDocument) !== typeLabel) {
+        return false;
+      }
+      const entryPersonId = String(entry?.personId || "").trim();
+      if (entryPersonId && entryPersonId === personId) {
+        return true;
+      }
+      return (
+        !entryPersonId &&
+        normalizeText(entry?.nom || "") === personNom &&
+        normalizeText(entry?.prenom || "") === personPrenom
+      );
+    });
+    if (!candidates.length) {
+      return null;
+    }
+    return candidates
+      .slice()
+      .sort((left, right) => (Date.parse(String(right?.dateArchivage || "")) || 0) - (Date.parse(String(left?.dateArchivage || "")) || 0))[0];
+  };
   const archiveWorkflowRows = [];
   const latestSignedArchives = [];
   personsToProcess.forEach((person) => {
@@ -8552,8 +8597,7 @@ function renderDocumentsArchivePage() {
         return;
       }
 
-      const key = `${personId}|${label}`;
-      const latestEntry = latestArchivePerPersonAndType.get(key);
+      const latestEntry = findLatestArchiveForPersonAndType(person, label);
       const effects = Array.isArray(person?.effetsConfies) ? person.effetsConfies : [];
       const totalFacturable = signatureType === "exit"
         ? effects.reduce((sum, effect) => sum + getEffectReplacementCost(person, effect), 0)
