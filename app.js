@@ -11714,13 +11714,6 @@ function getEffectStatus(person, effect) {
 }
 
 function getEffectBillingStatus(effect, isChargeable) {
-  if (typeof deriveEffectState === "function") {
-    const derived = deriveEffectState(null, effect).billingStatus;
-    if (derived === "A FACTURER") {
-      return isChargeable ? "A FACTURER" : "-";
-    }
-    return derived;
-  }
   const stored = normalizeText(effect?.etatFacturation || "");
   if (stored === "FACTURE") return "FACTURE";
   if (stored === "CLOTURE") return "CLOTURE";
