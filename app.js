@@ -3441,6 +3441,7 @@ function migrateDataModel(options = {}) {
       effect.dateRemplacement = String(effect.dateRemplacement || "");
       effect.coutRemplacement = normalizeAmount(effect.coutRemplacement);
       effect.commentaire = normalizeText(effect.commentaire);
+      effect.etatFacturation = normalizeText(effect.etatFacturation || "");
 
       if (!typeUsesReferenceCatalog(effect.typeEffet)) {
         effect.referenceEffetId = "";
