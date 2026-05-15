@@ -2323,6 +2323,24 @@ body[data-page="reference-bases"] .reference-cost-form--inline .form-actions {
   color: #4f447f;
 }
 
+.status-pill--a-facturer {
+  background: rgba(224, 147, 82, 0.2);
+  border-color: rgba(224, 147, 82, 0.42);
+  color: #8e4d1e;
+}
+
+.status-pill--facture {
+  background: rgba(87, 143, 106, 0.2);
+  border-color: rgba(87, 143, 106, 0.4);
+  color: #2c513a;
+}
+
+.status-pill--cloture {
+  background: rgba(132, 140, 149, 0.22);
+  border-color: rgba(132, 140, 149, 0.45);
+  color: #4a545d;
+}
+
 .status-pill--sheet {
   position: relative;
   display: inline-grid;

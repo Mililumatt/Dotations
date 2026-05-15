@@ -10884,7 +10884,7 @@ function renderExitDocument(personId) {
     dateEntreeNode.textContent = "-";
     dateSortiePrevueNode.textContent = "-";
     dateSortieReelleNode.textContent = "-";
-    body.innerHTML = buildEmptyTableRow(body, "AUCUN EFFET A AFFICHER", 10);
+    body.innerHTML = buildEmptyTableRow(body, "AUCUN EFFET A AFFICHER", 11);
     totalEffectsNode.textContent = "0";
     totalReturnedNode.textContent = "0";
     totalChargeableNode.textContent = "0";
@@ -10954,6 +10954,8 @@ function renderExitDocument(personId) {
             const rawStatus = getEffectStatus(person, effect);
             const currentStatus = normalizeText(rawStatus);
             const statusLabel = currentStatus === "RESTITUE" ? "RENDU" : rawStatus;
+            const replacementCost = getEffectReplacementCost(person, effect);
+            const billingStatus = getEffectBillingStatus(effect, replacementCost > 0);
             const retourDateIso = normalizeDateString(effect.dateRetour || "");
             const canToggleReturnToday =
               !["PERDU", "HS", "VOL"].includes(currentStatus) &&
@@ -10977,17 +10979,18 @@ function renderExitDocument(personId) {
                 ? `<label class="return-today-toggle"><input type="checkbox" class="js-exit-return-today" data-effect-id="${escapeHtml(effect.id || "")}" ${retourDateIso === todayIso ? "checked" : ""} /><span>RENDU</span></label>`
                 : "-"
             }</td>
-            <td>${formatAmountWithEuro(getEffectReplacementCost(person, effect))}</td>
+            <td>${formatAmountWithEuro(replacementCost)}</td>
+            <td><span class="${getStatusClass(billingStatus)}">${billingStatus}</span></td>
             <td class="document-effects-action-col">${actionCell}</td>
           </tr>`;
           }
         )
         .join("")}
         <tr class="table-total-row">
-          <td colspan="${isPdfMode ? "7" : "9"}">TOTAL FACTURABLE DES EFFETS</td>
+          <td colspan="${isPdfMode ? "8" : "10"}">TOTAL FACTURABLE DES EFFETS</td>
           <td>${formatAmountWithEuro(totalValue)}</td>
         </tr>`
-    : buildEmptyTableRow(body, "AUCUN EFFET A AFFICHER", 10);
+    : buildEmptyTableRow(body, "AUCUN EFFET A AFFICHER", 11);
 
   totalEffectsNode.textContent = String(effects.length);
   totalReturnedNode.textContent = String(totalReturned);
@@ -11424,6 +11427,17 @@ function getEffectStatus(person, effect) {
   if (["PERDU", "HS", "VOL"].includes(manualStatus)) return manualStatus;
   if (isExitDue(person)) return "NON RENDU";
   return manualStatus || "ACTIF";
+}
+
+function getEffectBillingStatus(effect, isChargeable) {
+  const stored = normalizeText(effect?.etatFacturation || "");
+  if (stored === "FACTURE") {
+    return "FACTURE";
+  }
+  if (stored === "CLOTURE") {
+    return "CLOTURE";
+  }
+  return isChargeable ? "A FACTURER" : "-";
 }
 
 function getEffectDisplayDesignation(effect) {
