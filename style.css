@@ -596,6 +596,11 @@ body[data-pdf-mode="true"][data-pdf-layout-lock="v1"][data-page="exit-document"]
   display: none;
 }
 
+body[data-pdf-mode="true"][data-pdf-layout-lock="v1"][data-page="exit-document"] .data-table th:nth-child(10),
+body[data-pdf-mode="true"][data-pdf-layout-lock="v1"][data-page="exit-document"] .data-table td:nth-child(10) {
+  display: none;
+}
+
 body[data-pdf-mode="true"][data-pdf-layout-lock="v1"][data-page="exit-document"] .data-table th:nth-child(9),
 body[data-pdf-mode="true"][data-pdf-layout-lock="v1"][data-page="exit-document"] .data-table td:nth-child(9) {
   width: 15%;

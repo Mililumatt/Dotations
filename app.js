@@ -10998,7 +10998,7 @@ function renderExitDocument(personId) {
         )
         .join("")}
         <tr class="table-total-row">
-          <td colspan="${isPdfMode ? "8" : "10"}">TOTAL FACTURABLE DES EFFETS</td>
+          <td colspan="${isPdfMode ? "7" : "10"}">TOTAL FACTURABLE DES EFFETS</td>
           <td>${formatAmountWithEuro(totalValue)}</td>
         </tr>`
     : buildEmptyTableRow(body, "AUCUN EFFET A AFFICHER", 11);
