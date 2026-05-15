@@ -18,6 +18,14 @@ function isExitFullySigned(person) {
   return Boolean(personnelSignedAt && representantSignedAt);
 }
 
+function formatDateFr(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  return raw;
+}
+
 export default function MobileOverview({ persons, effets, onSelectPerson }) {
   const [search, setSearch] = useState("");
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -39,20 +47,55 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
   }).length;
   const enPoste = persons.filter((p) => getDossierStatus(p) !== "SORTI").length;
   const alerts = persons.flatMap((p) => {
-    const personAlerts = [];
-    const sortiePrevue = String(p.dateSortiePrevue || "");
-    const sortieReelle = String(p.dateSortieReelle || "");
+    const sortiePrevue = String(p?.dateSortiePrevue || "");
+    const sortieReelle = String(p?.dateSortieReelle || "");
+    const sortiePrevueDate = sortiePrevue ? new Date(`${sortiePrevue}T00:00:00`) : null;
+    const todayDate = new Date(`${todayIso}T00:00:00`);
+    const daysUntilSortiePrevue =
+      sortiePrevueDate && Number.isFinite(sortiePrevueDate.getTime())
+        ? Math.round((sortiePrevueDate.getTime() - todayDate.getTime()) / (24 * 60 * 60 * 1000))
+        : null;
     const sortieFinalisee = isExitFullySigned(p);
-    const nonRendusCount = effets.filter(
+    const hasNonRendu = effets.some(
       (e) => String(e.personId) === String(p.id) && !sortieFinalisee && getEffectStatus(p, e) === "NON RENDU"
-    ).length;
-    if (sortiePrevue && !sortieReelle && sortiePrevue < todayIso) {
-      personAlerts.push({ key: `${p.id}-late`, personId: p.id, type: "dateSortiePrevue", text: `${p.nom} ${p.prenom} : SORTIE PREVUE DEPASSEE` });
+    );
+
+    let alert = null;
+    if (
+      sortiePrevue &&
+      !sortieReelle &&
+      Number.isFinite(daysUntilSortiePrevue) &&
+      daysUntilSortiePrevue >= 1 &&
+      daysUntilSortiePrevue <= 2
+    ) {
+      alert = {
+        key: `${p.id}-soon`,
+        personId: p.id,
+        type: "dateSortiePrevue",
+        text: `${p.nom} ${p.prenom} : ALERTE - SORTIE PREVUE DANS ${daysUntilSortiePrevue} JOUR${daysUntilSortiePrevue > 1 ? "S" : ""} (${formatDateFr(sortiePrevue)})`,
+      };
+    } else if (sortiePrevue && !sortieReelle && sortiePrevue <= todayIso) {
+      alert = {
+        key: `${p.id}-planned`,
+        personId: p.id,
+        type: "dateSortiePrevue",
+        text:
+          sortiePrevue === todayIso
+            ? `${p.nom} ${p.prenom} : ALERTE - SORTIE PREVUE AUJOURD'HUI (${formatDateFr(sortiePrevue)})`
+            : `${p.nom} ${p.prenom} : ALERTE - DATE DE SORTIE PREVUE DEPASSEE (${formatDateFr(sortiePrevue)})`,
+      };
+    } else if (sortieReelle && sortieReelle <= todayIso && hasNonRendu) {
+      alert = {
+        key: `${p.id}-real`,
+        personId: p.id,
+        type: "dateSortieReelle",
+        text:
+          sortieReelle === todayIso
+            ? `${p.nom} ${p.prenom} : ALERTE - SORTIE REELLE AUJOURD'HUI AVEC EFFETS NON RENDUS (${formatDateFr(sortieReelle)})`
+            : `${p.nom} ${p.prenom} : ALERTE - DATE DE SORTIE REELLE DEPASSEE (${formatDateFr(sortieReelle)})`,
+      };
     }
-    if (nonRendusCount > 0) {
-      personAlerts.push({ key: `${p.id}-nr`, personId: p.id, type: "dateSortiePrevue", text: `${p.nom} ${p.prenom} : ${nonRendusCount} EFFET(S) NON RENDU(S)` });
-    }
-    return personAlerts;
+    return alert ? [alert] : [];
   });
   const isAlertListScrollable = alerts.length > 3;
 
