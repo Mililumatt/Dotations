@@ -10835,6 +10835,9 @@ function renderExitDocument(personId) {
   const totalReturnedNode = document.getElementById("exit-total-returned");
   const totalChargeableNode = document.getElementById("exit-total-chargeable");
   const totalValueNode = document.getElementById("exit-total-value");
+  const totalBillingPendingNode = document.getElementById("exit-total-billing-pending");
+  const totalBillingBilledNode = document.getElementById("exit-total-billing-billed");
+  const totalBillingClosedNode = document.getElementById("exit-total-billing-closed");
   const signatureNameNode = document.getElementById("exit-signature-person-name");
   const signaturePersonDateNode = document.getElementById("exit-signature-person-date");
   const signatureRepresentantDateNode = document.getElementById("exit-signature-representant-date");
@@ -10862,6 +10865,9 @@ function renderExitDocument(personId) {
     !totalReturnedNode ||
     !totalChargeableNode ||
     !totalValueNode ||
+    !totalBillingPendingNode ||
+    !totalBillingBilledNode ||
+    !totalBillingClosedNode ||
     !signatureNameNode ||
     !signaturePersonDateNode ||
     !signatureRepresentantDateNode ||
@@ -10892,6 +10898,9 @@ function renderExitDocument(personId) {
     totalReturnedNode.textContent = "0";
     totalChargeableNode.textContent = "0";
     totalValueNode.textContent = "0,00 €";
+    totalBillingPendingNode.textContent = "0";
+    totalBillingBilledNode.textContent = "0";
+    totalBillingClosedNode.textContent = "0";
     signatureNameNode.textContent = "-";
     signaturePersonDateNode.textContent = "-";
     signatureRepresentantDateNode.textContent = "-";
@@ -10921,6 +10930,15 @@ function renderExitDocument(personId) {
   const totalReturned = effects.filter((effect) => getEffectStatus(person, effect) === "RESTITUE").length;
   const chargeableEffects = effects.filter((effect) => isEffectChargeable(person, effect));
   const totalValue = chargeableEffects.reduce((sum, effect) => sum + getEffectReplacementCost(person, effect), 0);
+  const billingPendingCount = chargeableEffects.filter(
+    (effect) => getEffectBillingStatus(effect, true) === "A FACTURER"
+  ).length;
+  const billingBilledCount = chargeableEffects.filter(
+    (effect) => getEffectBillingStatus(effect, true) === "FACTURE"
+  ).length;
+  const billingClosedCount = chargeableEffects.filter(
+    (effect) => getEffectBillingStatus(effect, true) === "CLOTURE"
+  ).length;
   const todayIso = getTodayIsoDate();
 
   dateNode.textContent = formatDateTimeForDocument(new Date().toISOString());
@@ -11007,6 +11025,9 @@ function renderExitDocument(personId) {
   totalReturnedNode.textContent = String(totalReturned);
   totalChargeableNode.textContent = String(chargeableEffects.length);
   totalValueNode.textContent = formatAmountWithEuro(totalValue);
+  totalBillingPendingNode.textContent = String(billingPendingCount);
+  totalBillingBilledNode.textContent = String(billingBilledCount);
+  totalBillingClosedNode.textContent = String(billingClosedCount);
   renderDocumentCostsTable(costsHead, costsBody);
   bindExitReturnTodayToggles();
   bindExitBillingToggles();
