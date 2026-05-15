@@ -8575,8 +8575,9 @@ function renderDocumentsArchivePage() {
       if (entryPersonId && entryPersonId === personId) {
         return true;
       }
+      // Legacy / inconsistent data fallback:
+      // if personId is missing OR incorrect, keep same nom+prenom match as source of truth.
       return (
-        !entryPersonId &&
         normalizeText(entry?.nom || "") === personNom &&
         normalizeText(entry?.prenom || "") === personPrenom
       );
