@@ -54,6 +54,7 @@ const state = {
   isReferencePageResetting: false,
   currentUserRoleLabel: "",
   adminCreateUserInFlight: false,
+  saveInFlight: false,
 };
 
 const WORKING_DATA_KEY = "dashboard-working-data";
@@ -96,6 +97,8 @@ const PDF_FORMAT_LOCK = "v1";
 let pdfModalCleanupBound = false;
 let reminderSnoozeMap = {};
 const signatureCanvases = new WeakMap();
+const SAVE_AUDIT_LOG_KEY = "dotations-save-audit-log-v1";
+const MAX_SAVE_AUDIT_ENTRIES = 250;
 
 try {
   reminderSnoozeMap = JSON.parse(localStorage.getItem(PENDING_PDF_REMINDER_SNOOZE_KEY) || "{}") || {};
@@ -13411,6 +13414,143 @@ function scheduleCloseAttempts() {
   });
 }
 
+function normalizeArchiveTypeLabel(typeDocument) {
+  const normalized = normalizeText(typeDocument);
+  if (normalized === "ARRIVEE" || normalized === "ARRIVAL" || normalized === "ENTREE") {
+    return "ARRIVEE";
+  }
+  if (normalized === "SORTIE" || normalized === "EXIT") {
+    return "SORTIE";
+  }
+  return normalized ? String(typeDocument || "").trim() : "";
+}
+
+function buildPeopleNameIndex(data) {
+  const index = new Map();
+  const people = Array.isArray(data?.personnes) ? data.personnes : [];
+  people.forEach((person) => {
+    const key = `${normalizeText(person?.nom)}|${normalizeText(person?.prenom)}`;
+    if (key === "|") {
+      return;
+    }
+    if (!index.has(key)) {
+      index.set(key, String(person?.id || ""));
+    }
+  });
+  return index;
+}
+
+function protectAndNormalizeArchivesInPlace(data) {
+  if (!data || !Array.isArray(data.documentsArchives)) {
+    return;
+  }
+  const peopleById = new Map(
+    (Array.isArray(data.personnes) ? data.personnes : [])
+      .map((person) => [String(person?.id || ""), person])
+      .filter(([id]) => Boolean(id))
+  );
+  const peopleByName = buildPeopleNameIndex(data);
+  data.documentsArchives.forEach((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return;
+    }
+    entry.typeDocument = normalizeArchiveTypeLabel(entry.typeDocument || "");
+    const currentPersonId = String(entry.personId || "");
+    const currentPerson = currentPersonId ? peopleById.get(currentPersonId) : null;
+    if (!currentPerson) {
+      const fallbackKey = `${normalizeText(entry.nom)}|${normalizeText(entry.prenom)}`;
+      const fallbackId = peopleByName.get(fallbackKey) || "";
+      if (fallbackId) {
+        entry.personId = fallbackId;
+      }
+      return;
+    }
+    if (!String(entry.nom || "").trim()) {
+      entry.nom = currentPerson.nom || "";
+    }
+    if (!String(entry.prenom || "").trim()) {
+      entry.prenom = currentPerson.prenom || "";
+    }
+  });
+}
+
+function buildSignatureProtectionSnapshot(data) {
+  const snapshot = new Map();
+  const personnes = Array.isArray(data?.personnes) ? data.personnes : [];
+  personnes.forEach((person) => {
+    const personId = String(person?.id || "");
+    if (!personId) {
+      return;
+    }
+    ["arrival", "exit"].forEach((docType) => {
+      ["personnel", "representant"].forEach((signer) => {
+        const value = String(getSignatureValue(person, docType, signer) || "");
+        const validatedAt = String(getSignatureValidationDate(person, docType, signer) || "");
+        if (!value || !validatedAt) {
+          return;
+        }
+        const key = `${personId}|${docType}|${signer}`;
+        snapshot.set(key, {
+          value,
+          validatedAt,
+          storageRef: String(getSignatureStorageRef(person, docType, signer) || ""),
+          storagePublicUrl: String(getSignatureStoragePublicUrl(person, docType, signer) || ""),
+        });
+      });
+    });
+  });
+  return snapshot;
+}
+
+function enforceProtectedSignaturesInPlace(data, signatureSnapshot) {
+  if (!data || !(signatureSnapshot instanceof Map) || signatureSnapshot.size === 0) {
+    return;
+  }
+  const personnes = Array.isArray(data.personnes) ? data.personnes : [];
+  const byId = new Map(
+    personnes
+      .map((person) => [String(person?.id || ""), person])
+      .filter(([id]) => Boolean(id))
+  );
+  signatureSnapshot.forEach((savedSignature, key) => {
+    const [personId, docType, signer] = key.split("|");
+    const person = byId.get(String(personId || ""));
+    if (!person) {
+      return;
+    }
+    const existingValue = String(getSignatureValue(person, docType, signer) || "");
+    const existingValidatedAt = String(getSignatureValidationDate(person, docType, signer) || "");
+    if (existingValue && existingValidatedAt) {
+      return;
+    }
+    setSignatureValue(
+      person,
+      docType,
+      signer,
+      savedSignature.value,
+      savedSignature.validatedAt,
+      savedSignature.storageRef,
+      savedSignature.storagePublicUrl
+    );
+  });
+}
+
+function appendSaveAuditEntry(entry) {
+  try {
+    const raw = localStorage.getItem(SAVE_AUDIT_LOG_KEY) || "[]";
+    const parsed = JSON.parse(raw);
+    const entries = Array.isArray(parsed) ? parsed : [];
+    entries.push({
+      at: getCurrentSignatureTimestamp(),
+      ...entry,
+    });
+    const compact = entries.slice(-MAX_SAVE_AUDIT_ENTRIES);
+    localStorage.setItem(SAVE_AUDIT_LOG_KEY, JSON.stringify(compact));
+  } catch (error) {
+    // Silent: audit must never block save.
+  }
+}
+
 async function saveDataToFile(options = {}) {
   if (!state.data) {
     showDataStatus("AUCUNE DONNEE A SAUVEGARDER");
@@ -13433,6 +13573,11 @@ async function saveDataToFile(options = {}) {
     reloadOnConflict = true,
   } = resolvedOptions;
 
+  if (state.saveInFlight) {
+    showDataStatus("SAUVEGARDE EN COURS...");
+    return;
+  }
+
   const downloadDataJson = () => {
     try {
       const blob = new Blob([JSON.stringify(state.data, null, 2)], {
@@ -13453,6 +13598,10 @@ async function saveDataToFile(options = {}) {
   };
 
   try {
+    state.saveInFlight = true;
+    const signatureSnapshot = buildSignatureProtectionSnapshot(state.data);
+    protectAndNormalizeArchivesInPlace(state.data);
+    enforceProtectedSignaturesInPlace(state.data, signatureSnapshot);
     const mode = getDataBackendMode();
       let saveStatusText = successText;
       let saveAlertText = alertText || "data.json A ETE MIS A JOUR";
@@ -13494,6 +13643,13 @@ async function saveDataToFile(options = {}) {
     };
     const saveConfirmation = `SAUVEGARDEE LE ${formatCurrentUiTimestamp()} - SOURCE: ${saveSource}`;
     showDataStatus(saveConfirmation);
+    appendSaveAuditEntry({
+      outcome: "ok",
+      source: saveSource,
+      mode,
+      personnes: Array.isArray(state.data?.personnes) ? state.data.personnes.length : 0,
+      archives: Array.isArray(state.data?.documentsArchives) ? state.data.documentsArchives.length : 0,
+    });
     if (!silent) {
       window.alert(saveAlertText);
       pulseSaveButtons();
@@ -13544,9 +13700,16 @@ async function saveDataToFile(options = {}) {
       return;
     }
     showDataStatus("SAUVEGARDE IMPOSSIBLE");
+    appendSaveAuditEntry({
+      outcome: "error",
+      message: String(error?.message || "UNKNOWN_ERROR").slice(0, 200),
+      mode: getDataBackendMode(),
+    });
     if (!silent) {
       window.alert("SAUVEGARDE IMPOSSIBLE");
     }
+  } finally {
+    state.saveInFlight = false;
   }
 
 }
