@@ -7693,7 +7693,7 @@ function sanitizeFilePart(value) {
 }
 
 function getDocumentArchiveStoragePath(entry) {
-  const folder = normalizeText(entry?.typeDocument) === "SORTIE" ? "archives/pdf/sortie" : "archives/pdf/arrivee";
+  const folder = getArchiveDocTypeKey(entry?.typeDocument) === "SORTIE" ? "archives/pdf/sortie" : "archives/pdf/arrivee";
   const name = `${sanitizeFilePart(entry?.dateDocument || getTodayIsoDate())}_${sanitizeFilePart(entry?.nom)}_${sanitizeFilePart(entry?.prenom)}.pdf`;
   return `${folder}/${name}`;
 }
@@ -7701,7 +7701,7 @@ function getDocumentArchiveStoragePath(entry) {
 function getDocumentArchiveSignatureStatus(entry) {
   const personId = String(entry?.personId || "").trim();
   const rawStatus = normalizeText(entry?.statutSignature) || "EN ATTENTE";
-  const normalizedType = normalizeText(entry?.typeDocument);
+  const normalizedType = getArchiveDocTypeKey(entry?.typeDocument);
   const normalizedStatus = rawStatus === "SIGNEE" ? "SIGNE" : rawStatus;
   const person = (state.data?.personnes || []).find((currentPerson) =>
     String(currentPerson?.id || "").trim() === personId
@@ -7732,8 +7732,7 @@ function getDocumentArchiveWorkflowStatus(entry, person) {
   if (status === "ATTENTE DE GENERATION" || status === "EN ATTENTE DE SIGNATURE") {
     return status;
   }
-  const rawType = normalizeText(entry?.typeDocument);
-  const docType = rawType === "SORTIE" ? "exit" : "arrival";
+  const docType = getArchiveDocTypeKey(entry?.typeDocument) === "SORTIE" ? "exit" : "arrival";
   return isDocumentFullySigned(person, docType) ? "ATTENTE DE GENERATION" : "EN ATTENTE DE SIGNATURE";
 }
 
@@ -7781,7 +7780,7 @@ function getLatestArchivePerPersonAndType(archives) {
   const map = new Map();
   (archives || []).forEach((entry) => {
     const personId = String(entry?.personId || "").trim();
-    const normalizedType = normalizeText(entry?.typeDocument);
+    const normalizedType = getArchiveDocTypeKey(entry?.typeDocument);
     if (!personId || !normalizedType) {
       return;
     }
@@ -7797,18 +7796,25 @@ function getLatestArchivePerPersonAndType(archives) {
 }
 
 function getDocumentTypeLabel(docType) {
-  return normalizeText(docType) === "EXIT" ? "SORTIE" : "ARRIVEE";
+  return getArchiveDocTypeKey(docType) === "SORTIE" ? "SORTIE" : "ARRIVEE";
 }
 
 function normalizeArchiveTypeLabel(value) {
+  return getArchiveDocTypeKey(value) || normalizeText(value);
+}
+
+function getArchiveDocTypeKey(value) {
   const normalized = normalizeText(value);
-  if (normalized === "ENTREE" || normalized === "ARRIVAL") {
+  if (!normalized) {
+    return "";
+  }
+  if (["ARRIVEE", "ARRIVAL", "ENTREE"].includes(normalized)) {
     return "ARRIVEE";
   }
-  if (normalized === "EXIT") {
+  if (["SORTIE", "EXIT"].includes(normalized)) {
     return "SORTIE";
   }
-  return normalized;
+  return "";
 }
 
 function isDocumentFullySigned(person, docType) {
@@ -8605,8 +8611,7 @@ function renderDocumentsArchivePage() {
     if (!person) {
       return baseStatus || "EN ATTENTE DE SIGNATURE";
     }
-    const rawType = normalizeText(entry?.typeDocument);
-    const docType = rawType === "SORTIE" ? "exit" : "arrival";
+    const docType = getArchiveDocTypeKey(entry?.typeDocument) === "SORTIE" ? "exit" : "arrival";
     return getCachedSignatureState(person, docType) ? "ATTENTE DE GENERATION" : "EN ATTENTE DE SIGNATURE";
   };
 
@@ -8710,16 +8715,16 @@ function renderDocumentsArchivePage() {
   };
   const archives = archiveWorkflowRows.filter((entry) => {
     totalArchives += 1;
-    if (normalizeText(entry.typeDocument) === "ARRIVEE") {
+    if (getArchiveDocTypeKey(entry.typeDocument) === "ARRIVEE") {
       totalArrivalArchives += 1;
     }
-    if (normalizeText(entry.typeDocument) === "SORTIE") {
+    if (getArchiveDocTypeKey(entry.typeDocument) === "SORTIE") {
       totalExitArchives += 1;
     }
     if (!archiveMatchesLockedPerson(entry)) {
       return false;
     }
-    if (typeDocument && normalizeText(entry.typeDocument) !== typeDocument) {
+    if (typeDocument && getArchiveDocTypeKey(entry.typeDocument) !== getArchiveDocTypeKey(typeDocument)) {
       return false;
     }
     if (!archiveEntryMatchesSite(entry, site)) {
