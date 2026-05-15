@@ -5612,7 +5612,7 @@ function bindEffectForm() {
         : `EFFET AJOUTE : ${effectLabel}`
     );
 
-    await saveAfterEffectChangeWithAvenantAlert();
+    await saveAfterEffectChangeWithAvenantAlert(person.id);
   };
 
   form.onsubmit = async (event) => {
@@ -5697,10 +5697,35 @@ async function deleteEffect(personId, effectId) {
   renderPage();
   renderPersonSheet(personId);
   showActionStatus("delete", `EFFET ARCHIVE : ${effectId}`);
-  await saveAfterEffectChangeWithAvenantAlert();
+  await saveAfterEffectChangeWithAvenantAlert(person.id);
 }
 
-async function saveAfterEffectChangeWithAvenantAlert() {
+function hasStoredSignaturePayload(entry) {
+  return Boolean(
+    String(entry?.image || "").trim() ||
+    String(entry?.validatedAt || "").trim() ||
+    String(entry?.storageRef || "").trim() ||
+    String(entry?.storagePublicUrl || "").trim()
+  );
+}
+
+function cloneSignatureEntry(entry) {
+  return {
+    image: String(entry?.image || ""),
+    validatedAt: String(entry?.validatedAt || ""),
+    storageRef: String(entry?.storageRef || ""),
+    storagePublicUrl: String(entry?.storagePublicUrl || ""),
+  };
+}
+
+async function saveAfterEffectChangeWithAvenantAlert(personId = "") {
+  const targetPersonId = String(personId || "");
+  const beforePerson = targetPersonId
+    ? (state.data?.personnes || []).find((entry) => String(entry?.id || "") === targetPersonId) || null
+    : null;
+  const beforeArrivalPersonnel = cloneSignatureEntry(beforePerson?.signatures?.arrival?.personnel);
+  const beforeArrivalRepresentant = cloneSignatureEntry(beforePerson?.signatures?.arrival?.representant);
+
   await saveDataToFile({
     silent: true,
     reloadAfter: true,
@@ -5709,6 +5734,41 @@ async function saveAfterEffectChangeWithAvenantAlert() {
     showDataStatus("SAUVEGARDE IMPOSSIBLE - ALERTE ANNULEE");
     return;
   }
+
+  // Safety net: effect updates must never erase already stored ARRIVEE signatures.
+  if (targetPersonId && (hasStoredSignaturePayload(beforeArrivalPersonnel) || hasStoredSignaturePayload(beforeArrivalRepresentant))) {
+    const currentPerson =
+      (state.data?.personnes || []).find((entry) => String(entry?.id || "") === targetPersonId) || null;
+    if (currentPerson) {
+      const currentArrivalPersonnel = currentPerson?.signatures?.arrival?.personnel;
+      const currentArrivalRepresentant = currentPerson?.signatures?.arrival?.representant;
+      const mustRestorePersonnel =
+        hasStoredSignaturePayload(beforeArrivalPersonnel) && !hasStoredSignaturePayload(currentArrivalPersonnel);
+      const mustRestoreRepresentant =
+        hasStoredSignaturePayload(beforeArrivalRepresentant) && !hasStoredSignaturePayload(currentArrivalRepresentant);
+      if (mustRestorePersonnel || mustRestoreRepresentant) {
+        if (!currentPerson.signatures || typeof currentPerson.signatures !== "object") {
+          currentPerson.signatures = {};
+        }
+        if (!currentPerson.signatures.arrival || typeof currentPerson.signatures.arrival !== "object") {
+          currentPerson.signatures.arrival = {};
+        }
+        if (mustRestorePersonnel) {
+          currentPerson.signatures.arrival.personnel = { ...beforeArrivalPersonnel };
+        }
+        if (mustRestoreRepresentant) {
+          currentPerson.signatures.arrival.representant = { ...beforeArrivalRepresentant };
+        }
+        markDirty();
+        await saveDataToFile({
+          silent: true,
+          reloadAfter: false,
+          successText: "SIGNATURES ARRIVEE RESTAUREES",
+        });
+      }
+    }
+  }
+
   window.alert(
     "DES MODIFICATIONS D'EFFETS ONT ETE EFFECTUEES. VOUS DEVEZ DONC PROCEDER A UNE NOUVELLE SIGNATURE DE L'AVENANT."
   );
