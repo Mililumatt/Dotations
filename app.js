@@ -13577,6 +13577,58 @@ function enforceProtectedSignaturesInPlace(data, signatureSnapshot) {
   });
 }
 
+function buildArchiveProtectionSnapshot(data) {
+  const snapshot = new Map();
+  const archives = Array.isArray(data?.documentsArchives) ? data.documentsArchives : [];
+  archives.forEach((entry) => {
+    const typeKey = getArchiveDocTypeKey(entry?.typeDocument);
+    const personId = String(entry?.personId || "").trim();
+    const pdfPath = String(entry?.pdfPath || "").trim();
+    const isSigned = normalizeText(entry?.statutSignature) === "SIGNE";
+    if (!typeKey || !personId || !pdfPath || !isSigned) {
+      return;
+    }
+    const key = `${personId}|${typeKey}`;
+    const current = snapshot.get(key);
+    const currentMs = Date.parse(String(current?.dateArchivage || "")) || 0;
+    const nextMs = Date.parse(String(entry?.dateArchivage || "")) || 0;
+    if (!current || nextMs >= currentMs) {
+      snapshot.set(key, { ...entry, typeDocument: typeKey });
+    }
+  });
+  return snapshot;
+}
+
+function enforceProtectedArchivesInPlace(data, archiveSnapshot) {
+  if (!data || !(archiveSnapshot instanceof Map) || archiveSnapshot.size === 0) {
+    return;
+  }
+  if (!Array.isArray(data.documentsArchives)) {
+    data.documentsArchives = [];
+  }
+  archiveSnapshot.forEach((savedEntry, key) => {
+    const [personId, typeKey] = String(key || "").split("|");
+    if (!personId || !typeKey) {
+      return;
+    }
+    const hasProtectedArchive = data.documentsArchives.some((entry) => {
+      if (String(entry?.personId || "").trim() !== personId) {
+        return false;
+      }
+      if (getArchiveDocTypeKey(entry?.typeDocument) !== typeKey) {
+        return false;
+      }
+      if (normalizeText(entry?.statutSignature) !== "SIGNE") {
+        return false;
+      }
+      return Boolean(String(entry?.pdfPath || "").trim());
+    });
+    if (!hasProtectedArchive) {
+      data.documentsArchives.push({ ...savedEntry, typeDocument: typeKey });
+    }
+  });
+}
+
 function appendSaveAuditEntry(entry) {
   try {
     const raw = localStorage.getItem(SAVE_AUDIT_LOG_KEY) || "[]";
@@ -13642,8 +13694,10 @@ async function saveDataToFile(options = {}) {
   try {
     state.saveInFlight = true;
     const signatureSnapshot = buildSignatureProtectionSnapshot(state.data);
+    const archiveSnapshot = buildArchiveProtectionSnapshot(state.data);
     protectAndNormalizeArchivesInPlace(state.data);
     enforceProtectedSignaturesInPlace(state.data, signatureSnapshot);
+    enforceProtectedArchivesInPlace(state.data, archiveSnapshot);
     const mode = getDataBackendMode();
       let saveStatusText = successText;
       let saveAlertText = alertText || "data.json A ETE MIS A JOUR";
