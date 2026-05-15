@@ -2974,7 +2974,7 @@ function renderMobileSignatureLink(docType, signer, absoluteUrl) {
   if (!linkNode) {
     return;
   }
-  if (isPdfMode()) {
+  if (isPdfRenderMode()) {
     linkNode.hidden = true;
     linkNode.innerHTML = "";
     return;
