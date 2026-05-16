@@ -4,6 +4,12 @@ import { getDossierStatus, getEffectStatus } from "@/lib/businessRules";
 const card = { background: "rgba(244,241,234,0.98)", border: "1px solid rgba(173,190,199,0.98)", borderRadius: 11, padding: "10px 12px", marginBottom: 8, boxShadow: "0 4px 12px rgba(31,49,59,0.10)" };
 const label = { fontSize: 9, color: "#4a6170", letterSpacing: "0.08em", margin: "0 0 2px" };
 const value = { fontSize: 22, fontWeight: 700, color: "#0f1e26", margin: 0, lineHeight: 1 };
+const normalizeTextLocal = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
 
 function statusColor(s) {
   if (s === "EN POSTE") return { bg: "rgba(89,148,117,0.16)", color: "#2f5e43", border: "rgba(89,148,117,0.38)" };
@@ -20,7 +26,7 @@ function formatDateFr(value) {
   return raw;
 }
 
-export default function MobileOverview({ persons, effets, onSelectPerson }) {
+export default function MobileOverview({ persons, effets, documentsArchives, uiAlertsReadonly, onSelectPerson }) {
   const [search, setSearch] = useState("");
   const todayIso = new Date().toISOString().slice(0, 10);
 
@@ -100,7 +106,58 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
     }
     return alert ? [alert] : [];
   });
-  const isAlertListScrollable = alerts.length > 3;
+  const signatureAlerts = persons.flatMap((p) => {
+    const personEffetsCount = (effets || []).filter((e) => String(e.personId) === String(p.id)).length;
+    const arrivalPersonnel = String(p?.signatures?.arrival?.personnel?.validatedAt || "").trim();
+    const arrivalRepresentant = String(p?.signatures?.arrival?.representant?.validatedAt || "").trim();
+    const exitPersonnel = String(p?.signatures?.exit?.personnel?.validatedAt || "").trim();
+    const exitRepresentant = String(p?.signatures?.exit?.representant?.validatedAt || "").trim();
+    const arrivalSigned = Boolean(arrivalPersonnel && arrivalRepresentant);
+    const exitSigned = Boolean(exitPersonnel && exitRepresentant);
+
+    const hasSignedArchiveFor = (typeLabel, signedAt) => {
+      const archives = (documentsArchives || []).filter((entry) => {
+        if (String(entry?.personId || "") !== String(p.id || "")) return false;
+        if (normalizeTextLocal(entry?.typeDocument) !== normalizeTextLocal(typeLabel)) return false;
+        if (normalizeTextLocal(entry?.statutSignature) !== "SIGNE") return false;
+        return Boolean(String(entry?.pdfPath || "").trim());
+      });
+      if (!archives.length) return false;
+      if (!signedAt) return true;
+      const signedMs = Date.parse(String(signedAt || "")) || 0;
+      return archives.some((entry) => (Date.parse(String(entry?.dateArchivage || "")) || 0) >= signedMs);
+    };
+
+    const list = [];
+    if (personEffetsCount > 0 && !arrivalSigned) {
+      list.push({
+        key: `${p.id}-sig-arrival`,
+        personId: p.id,
+        type: "signaturePdf",
+        text: `${p.nom} ${p.prenom} : ALERTE - ARRIVEE NON SIGNEE (2 SIGNATURES REQUISES)`,
+      });
+    } else if (arrivalSigned && !hasSignedArchiveFor("ARRIVEE", arrivalRepresentant || arrivalPersonnel)) {
+      list.push({
+        key: `${p.id}-pdf-arrival`,
+        personId: p.id,
+        type: "signaturePdf",
+        text: `${p.nom} ${p.prenom} : ALERTE - ARRIVEE SIGNEE, PDF ABSENT OU NON MIS A JOUR`,
+      });
+    }
+    if (exitSigned && !hasSignedArchiveFor("SORTIE", exitRepresentant || exitPersonnel)) {
+      list.push({
+        key: `${p.id}-pdf-exit`,
+        personId: p.id,
+        type: "signaturePdf",
+        text: `${p.nom} ${p.prenom} : ALERTE - SORTIE SIGNEE, PDF ABSENT OU NON MIS A JOUR`,
+      });
+    }
+    return list;
+  });
+  const computedAlerts = [...alerts, ...signatureAlerts];
+  const readonlyAlerts = Array.isArray(uiAlertsReadonly) ? uiAlertsReadonly : [];
+  const allAlerts = readonlyAlerts.length > 0 ? readonlyAlerts : computedAlerts;
+  const isAlertListScrollable = allAlerts.length > 3;
 
   const alertStyle = (type) => {
     if (type === "signaturePdf") {
@@ -127,7 +184,7 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
     };
   };
 
-  const alertIcon = (type) => (type === "signaturePdf" ? "✎" : type === "dateSortieReelle" ? "✕" : "!");
+  const alertIcon = (type) => (type === "dateSortieReelle" ? "✕" : "!");
   const alertIconStyle = (type) => {
     if (type === "signaturePdf") {
       return {
@@ -167,29 +224,31 @@ export default function MobileOverview({ persons, effets, onSelectPerson }) {
       </div>
 
       {/* Alerts (compact) */}
-      {alerts.length > 0 && (
+      {allAlerts.length > 0 && (
         <div style={{ ...card, padding: "8px 10px", marginBottom: 8 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
             <span style={{ fontSize: 9, color: "#4a6170", letterSpacing: "0.08em", fontWeight: 700 }}>ALERTES</span>
-            <span style={{ fontSize: 9, color: "#8e4d1e", fontWeight: 700 }}>{alerts.length}</span>
+            <span style={{ fontSize: 9, color: "#8e4d1e", fontWeight: 700 }}>{allAlerts.length}</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: isAlertListScrollable ? 142 : "none", overflowY: isAlertListScrollable ? "auto" : "visible", paddingRight: isAlertListScrollable ? 2 : 0 }}>
-            {alerts.map((a) => {
+            {allAlerts.map((a) => {
               const s = alertStyle(a.type);
               const iconS = alertIconStyle(a.type);
-              const person = persons.find((p) => p.id === a.personId);
+              const person = persons.find((p) => String(p.id) === String(a.personId));
+              const personPrefix = person ? `${person.nom || ""} ${person.prenom || ""}`.trim() : "";
+              const displayText = personPrefix ? `${personPrefix} : ${a.text}` : a.text;
               return (
                 <button
                   key={a.key}
                   onClick={() => person && onSelectPerson(person)}
                   style={{ width: "100%", textAlign: "left", padding: "5px 8px", borderRadius: 8, border: `1px solid ${s.border}`, borderLeft: `3px solid ${s.borderLeft}`, background: s.bg, color: s.color, fontSize: 10, cursor: "pointer" }}
-                  title={a.text}
+                  title={displayText}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                     <span style={{ width: 18, height: 18, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, lineHeight: 1, flex: "0 0 auto", ...iconS }}>
                       {alertIcon(a.type)}
                     </span>
-                    <span style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.text}</span>
+                    <span style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayText}</span>
                   </span>
                 </button>
               );
