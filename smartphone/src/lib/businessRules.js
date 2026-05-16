@@ -109,6 +109,13 @@ export function getEffectMovement(person, effect) {
   return "";
 }
 
+export function getEffectBillingStatus(effect, isChargeable) {
+  const stored = normalizeText(effect?.etatFacturation || "");
+  if (stored === "FACTURE") return "FACTURE";
+  if (stored === "CLOTURE") return "CLOTURE";
+  return isChargeable ? "A FACTURER" : "-";
+}
+
 export function getReplacementCostValue(pricingRules = [], typeEffet, cause, designation = "") {
   const wantedType = normalizePricingKey(typeEffet);
   const wantedCause = normalizePricingKey(cause, { cause: true });

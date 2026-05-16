@@ -9,6 +9,7 @@ import {
   getReplacementCostValue,
   normalizeManualStatus,
   normalizeEffectCause,
+  getEffectBillingStatus,
 } from "@/lib/businessRules";
 
 const card = { background: "rgba(244,241,234,0.98)", border: "1px solid rgba(173,190,199,0.98)", borderRadius: 11, padding: "12px", marginBottom: 8, boxShadow: "0 4px 12px rgba(31,49,59,0.10)" };
@@ -313,6 +314,7 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
               const displayStatus = rawStatus === "RESTITUE" ? "RENDU" : rawStatus;
               const sc = STATUT_COLORS[displayStatus] || STATUT_COLORS["ACTIF"];
               const lineCost = getEffetReferenceCost(e);
+              const billingStatus = getEffectBillingStatus(e, lineCost > 0);
               return (
                 <div key={e.id} style={{ ...card, padding: "10px 12px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
@@ -322,6 +324,9 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
                     </div>
                     <span style={{ fontSize: 11, color: "#9b5a2a", fontWeight: 600 }}>{formatCost(lineCost)}</span>
                   </div>
+                  {billingStatus !== "-" ? (
+                    <div style={{ fontSize: 9, color: "#8a5518", marginBottom: 3 }}>{billingStatus}</div>
+                  ) : null}
                   <div style={{ fontSize: 11, color: "#213b48", marginBottom: 4 }}>{e.designation || "—"}</div>
                   {/* Statut select */}
                   <select
