@@ -110,3 +110,15 @@ Date de mise a jour: 10/05/2026
   - avant action (plan),
   - pendant action (point d'etape),
   - apres action (resultat et verification).
+
+## 10) Format de restitution apres chaque correction (obligatoire)
+
+- Apres chaque correction, toujours fournir:
+  - resultat attendu,
+  - comportement,
+  - impact visuel,
+  - points a verifier (si necessaire).
+- Ce format est obligatoire meme pour les petits lots.
+- Toujours ajouter aussi:
+  - la phrase de commit,
+  - le statut des verifications anti-regression.
