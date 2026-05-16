@@ -137,8 +137,16 @@ export function isCurrentAssignedEffect(person, effect) {
 }
 
 function isDocumentFullySigned(person, docType) {
-  const personnelSignature = String(person?.signatures?.[docType]?.personnel?.value || "").trim();
-  const representantSignature = String(person?.signatures?.[docType]?.representant?.value || "").trim();
+  const personnelSignature = String(
+    person?.signatures?.[docType]?.personnel?.value ||
+      person?.signatures?.[docType]?.personnel?.image ||
+      ""
+  ).trim();
+  const representantSignature = String(
+    person?.signatures?.[docType]?.representant?.value ||
+      person?.signatures?.[docType]?.representant?.image ||
+      ""
+  ).trim();
   const personnelDate = String(person?.signatures?.[docType]?.personnel?.validatedAt || "").trim();
   const representantDate = String(person?.signatures?.[docType]?.representant?.validatedAt || "").trim();
   return Boolean(personnelSignature && representantSignature && personnelDate && representantDate);
