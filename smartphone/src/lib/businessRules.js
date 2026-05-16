@@ -24,6 +24,10 @@ function normalizeCause(rawCause) {
   return "";
 }
 
+export function normalizeEffectCause(rawCause) {
+  return normalizeCause(rawCause);
+}
+
 function normalizePricingKey(value, { cause = false } = {}) {
   let normalized = normalizeText(value)
     .replace(/[_-]+/g, " ")
@@ -90,6 +94,18 @@ export function getEffectBillingCause(person, effect) {
   const persistedCause = normalizeCause(effect?.cause || effect?.causeRemplacement);
   if (persistedCause) return persistedCause;
   if (!String(effect?.dateRetour || "").trim() && isExitDue(person)) return "NON RENDU";
+  return "";
+}
+
+export function getEffectMovement(person, effect) {
+  const status = normalizeText(getEffectStatus(person, effect));
+  const cause = normalizeText(getEffectBillingCause(person, effect));
+  if (status === "RESTITUE") return "RENDU";
+  if (status === "DETRUIT") return "DETRUIT";
+  if (status === "VOL" || cause === "VOL") return "VOLE";
+  if (status === "HS") return "HS";
+  if (status === "PERDU" || cause === "PERTE") return "PERDU";
+  if (status === "NON RENDU") return "NON RENDU";
   return "";
 }
 

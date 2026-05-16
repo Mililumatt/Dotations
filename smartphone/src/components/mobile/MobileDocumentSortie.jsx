@@ -3,7 +3,13 @@ import React, { useState, useEffect, useRef } from "react";
 import { db } from "@/lib/db";
 import MobilePersonSearch from "./MobilePersonSearch";
 import MobileSignatureCanvas from "./MobileSignatureCanvas";
-import { getEffectBillingCause as getPersistedBillingCause, getEffectStatus, getReplacementCostValue, normalizeManualStatus } from "@/lib/businessRules";
+import {
+  getEffectBillingCause as getPersistedBillingCause,
+  getEffectStatus,
+  getReplacementCostValue,
+  normalizeManualStatus,
+  normalizeEffectCause,
+} from "@/lib/businessRules";
 
 const card = { background: "rgba(244,241,234,0.98)", border: "1px solid rgba(173,190,199,0.98)", borderRadius: 11, padding: "12px", marginBottom: 8, boxShadow: "0 4px 12px rgba(31,49,59,0.10)" };
 const docField = { display: "flex", flexDirection: "column", gap: 3, marginBottom: 8 };
@@ -14,11 +20,7 @@ function normalizeLabel(value) {
 }
 
 function normalizeCause(value) {
-  const normalized = normalizeLabel(value);
-  if (normalized === "CASSE") return "DETRUIT";
-  if (normalized === "PERDU") return "PERTE";
-  if (["DETRUIT", "PERTE", "VOL", "HS", "NON RENDU"].includes(normalized)) return normalized;
-  return "";
+  return normalizeEffectCause(value);
 }
 
 function formatCost(value) {
