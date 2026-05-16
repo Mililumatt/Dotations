@@ -57,6 +57,18 @@ function normalizeEffectStatusForUiLikePc(person, effect) {
   return manual || "ACTIF";
 }
 
+function isCurrentAssignedEffectUiLikePc(person, effect) {
+  const status = normalizeTextLocal(normalizeEffectStatusForUiLikePc(person, effect));
+  return !["RESTITUE", "PERDU", "HS", "DETRUIT", "VOL"].includes(status);
+}
+
+function formatDateFrLocal(value) {
+  const raw = String(value || "").trim();
+  const parts = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!parts) return raw;
+  return `${parts[3]}/${parts[2]}/${parts[1]}`;
+}
+
 function isDocumentFullySignedUiLikePc(person, docType) {
   const personnelDate = String(person?.signatures?.[docType]?.personnel?.validatedAt || "").trim();
   const representantDate = String(person?.signatures?.[docType]?.representant?.validatedAt || "").trim();
@@ -99,18 +111,20 @@ function buildUiLikePcAlerts(payload) {
         : null;
 
     if (plannedExit && !realExit && Number.isFinite(daysUntilPlannedExit) && daysUntilPlannedExit >= 1 && daysUntilPlannedExit <= 2) {
-      alerts.push({ personId: person.id, type: "dateSortiePrevue", text: `ALERTE : SORTIE PREVUE DANS ${daysUntilPlannedExit} JOUR${daysUntilPlannedExit > 1 ? "S" : ""} (${plannedExit})` });
+      alerts.push({ personId: person.id, type: "dateSortiePrevue", text: `ALERTE : SORTIE PREVUE DANS ${daysUntilPlannedExit} JOUR${daysUntilPlannedExit > 1 ? "S" : ""} (${formatDateFrLocal(plannedExit)})` });
     } else if (plannedExit && !realExit && plannedExit <= today) {
-      alerts.push({ personId: person.id, type: "dateSortiePrevue", text: plannedExit === today ? `ALERTE : SORTIE PREVUE AUJOURD'HUI (${plannedExit})` : `ALERTE : DATE DE SORTIE PREVUE DEPASSEE (${plannedExit})` });
+      alerts.push({ personId: person.id, type: "dateSortiePrevue", text: plannedExit === today ? `ALERTE : SORTIE PREVUE AUJOURD'HUI (${formatDateFrLocal(plannedExit)})` : `ALERTE : DATE DE SORTIE PREVUE DEPASSEE (${formatDateFrLocal(plannedExit)})` });
     } else {
       const effects = Array.isArray(person?.effetsConfies) ? person.effetsConfies : [];
       const hasNonRendu = effects.some((effect) => normalizeEffectStatusForUiLikePc(person, effect) === "NON RENDU");
       if (realExit && realExit <= today && hasNonRendu) {
-        alerts.push({ personId: person.id, type: "dateSortieReelle", text: realExit === today ? `ALERTE : SORTIE REELLE AUJOURD'HUI AVEC EFFETS NON RENDUS (${realExit})` : `ALERTE : DATE DE SORTIE REELLE DEPASSEE (${realExit})` });
+        alerts.push({ personId: person.id, type: "dateSortieReelle", text: realExit === today ? `ALERTE : SORTIE REELLE AUJOURD'HUI AVEC EFFETS NON RENDUS (${formatDateFrLocal(realExit)})` : `ALERTE : DATE DE SORTIE REELLE DEPASSEE (${formatDateFrLocal(realExit)})` });
       }
     }
 
-    const effectsCount = Array.isArray(person?.effetsConfies) ? person.effetsConfies.length : 0;
+    const effectsCount = (Array.isArray(person?.effetsConfies) ? person.effetsConfies : []).filter((effect) =>
+      isCurrentAssignedEffectUiLikePc(person, effect)
+    ).length;
     const arrivalSigned = isDocumentFullySignedUiLikePc(person, "arrival");
     const exitSigned = isDocumentFullySignedUiLikePc(person, "exit");
     const arrivalLatestSig = getLatestSignatureMs(person, "arrival");

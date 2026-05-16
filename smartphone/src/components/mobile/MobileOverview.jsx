@@ -184,7 +184,7 @@ export default function MobileOverview({ persons, effets, documentsArchives, uiA
     };
   };
 
-  const alertIcon = (type) => (type === "dateSortieReelle" ? "✕" : "!");
+  const alertIcon = (type) => (type === "signaturePdf" ? "✎" : type === "dateSortieReelle" ? "✕" : "!");
   const alertIconStyle = (type) => {
     if (type === "signaturePdf") {
       return {
