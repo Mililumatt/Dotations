@@ -920,14 +920,11 @@ function promptSupabaseCredentialsForm() {
       <div style="font-weight:700;font-size:16px;margin-bottom:10px;color:#132833;">Connexion requise</div>
       <form id="supabase-login-form" autocomplete="on">
         <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Email Supabase</label>
-        <select id="supabase-login-email-select"
-          style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:8px;background:#fff;">
+        <select id="supabase-login-email-select" name="username" required
+          style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:10px;background:#fff;">
           <option value="">Selectionner un compte...</option>
           ${suggestedEmails.map((email) => `<option value="${escapeHtml(email)}">${escapeHtml(email)}</option>`).join("")}
-          <option value="__manual__">Autre email...</option>
         </select>
-        <input id="supabase-login-email" name="username" type="email" autocomplete="username email" required
-          style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:10px;" />
         <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Mot de passe</label>
         <input id="supabase-login-password" name="password" type="password" autocomplete="current-password" required
           style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:12px;" />
@@ -949,7 +946,6 @@ function promptSupabaseCredentialsForm() {
 
     const form = box.querySelector("#supabase-login-form");
     const emailSelect = box.querySelector("#supabase-login-email-select");
-    const emailInput = box.querySelector("#supabase-login-email");
     const passwordInput = box.querySelector("#supabase-login-password");
     const statusNode = box.querySelector("#supabase-login-status");
     const forgotIdButton = box.querySelector("#supabase-login-forgot-id");
@@ -974,7 +970,7 @@ function promptSupabaseCredentialsForm() {
     });
 
     forgotButton.addEventListener("click", async () => {
-      const email = String(emailInput.value || "").trim();
+      const email = String(emailSelect.value || "").trim();
       if (!email) {
         statusNode.textContent = "Saisissez d'abord votre email.";
         statusNode.style.color = "#8e2c2c";
@@ -1002,7 +998,7 @@ function promptSupabaseCredentialsForm() {
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const email = String(emailInput.value || "").trim();
+      const email = String(emailSelect.value || "").trim();
       const password = String(passwordInput.value || "");
       if (email) {
         mergeLoginEmailSuggestions([email]);
@@ -1016,7 +1012,10 @@ function promptSupabaseCredentialsForm() {
     });
 
     window.setTimeout(() => {
-      emailInput.focus();
+      if (emailSelect && emailSelect.options.length > 1) {
+        emailSelect.selectedIndex = emailSelect.selectedIndex > 0 ? emailSelect.selectedIndex : 1;
+      }
+      emailSelect?.focus();
     }, 0);
   });
 }
