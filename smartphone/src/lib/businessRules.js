@@ -122,6 +122,11 @@ export function getEffectChargeableAmount(person, effect, pricingRules = []) {
   return getReplacementCostValue(pricingRules, effect?.typeEffet, cause, effect?.designation || "");
 }
 
+export function getTotalChargeableAmount(person, effects = [], pricingRules = []) {
+  const list = Array.isArray(effects) ? effects : [];
+  return list.reduce((sum, effect) => sum + getEffectChargeableAmount(person, effect, pricingRules), 0);
+}
+
 export function getReplacementCostValue(pricingRules = [], typeEffet, cause, designation = "") {
   const wantedType = normalizePricingKey(typeEffet);
   const wantedCause = normalizePricingKey(cause, { cause: true });

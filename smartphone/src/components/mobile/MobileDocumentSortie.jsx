@@ -10,6 +10,7 @@ import {
   normalizeEffectCause,
   getEffectBillingStatus,
   getEffectChargeableAmount,
+  getTotalChargeableAmount,
 } from "@/lib/businessRules";
 
 const card = { background: "rgba(244,241,234,0.98)", border: "1px solid rgba(173,190,199,0.98)", borderRadius: 11, padding: "12px", marginBottom: 8, boxShadow: "0 4px 12px rgba(31,49,59,0.10)" };
@@ -153,10 +154,7 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
   const getEffetReferenceCost = (effet) => {
     return getEffectChargeableAmount(selectedPerson, effet, pricingRules);
   };
-  const facturableAmounts = localEffets
-    .map((e) => getEffetReferenceCost(e))
-    .filter((amount) => amount > 0);
-  const totalFacturable = facturableAmounts.reduce((sum, amount) => sum + amount, 0);
+  const totalFacturable = getTotalChargeableAmount(selectedPerson, localEffets, pricingRules);
   const normalizeCostCause = (cause) => {
     return normalizeEffectCause(cause);
   };
