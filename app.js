@@ -1019,11 +1019,6 @@ async function getSupabaseUserAccessToken() {
       clearStoredSupabaseSession();
     }
   }
-  const existing = getStoredSupabaseAccessToken();
-  if (existing) {
-    ensureLoginEventLogged(existing).catch(() => null);
-    return existing;
-  }
   if (isMobileSignaturePage || hasMobileSignatureToken) {
     throw new Error("BACKEND_AUTH_REQUIRED");
   }
@@ -1366,10 +1361,19 @@ async function openAdminUsersModal() {
   };
   const fetchAppStateVersions = async () => {
     try {
+      const accessToken = await getSupabaseUserAccessToken();
+      if (!accessToken) {
+        throw new Error("BACKEND_AUTH_REQUIRED");
+      }
       const endpoint = `${getSupabaseRestEndpoint().replace(/\/app_state$/i, "/app_state_versions")}?select=app_state_id,source_revision,created_at,reason&order=created_at.desc&limit=30`;
       const response = await fetch(endpoint, {
         method: "GET",
-        headers: getSupabaseHeaders(),
+        headers: getSupabaseHeaders(
+          {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          { includeAuthorization: false },
+        ),
         cache: "no-store",
       });
       if (!response.ok) {
