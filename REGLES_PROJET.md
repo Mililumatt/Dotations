@@ -97,3 +97,16 @@ Date de mise a jour: 10/05/2026
 - Format recommande: `type(scope): resume court`.
 - La phrase de commit doit etre en francais.
 - Types: `fix`, `feat`, `docs`, `chore`.
+
+## 9) Double explication obligatoire (normal + enfant)
+
+- A chaque explication technique, fournir 2 versions:
+  - `Explication normale`
+  - `Version enfant`
+- Les 2 versions doivent etre donnees ligne par ligne, dans le meme ordre.
+- La `Version enfant` doit utiliser des mots tres simples.
+- Si un mot difficile apparait, le definir en phrase courte juste apres.
+- Cette regle s'applique:
+  - avant action (plan),
+  - pendant action (point d'etape),
+  - apres action (resultat et verification).
