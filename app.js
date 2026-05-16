@@ -55,6 +55,8 @@ const state = {
   currentUserRoleLabel: "",
   adminCreateUserInFlight: false,
   saveInFlight: false,
+  lastPdfOpenKey: "",
+  lastPdfOpenAtMs: 0,
 };
 
 const WORKING_DATA_KEY = "dashboard-working-data";
@@ -4466,6 +4468,16 @@ async function openPdfDocument(docType, personId) {
   }
 
   const person = state.data?.personnes?.find((entry) => entry.id === personId) || null;
+  const pdfOpenKey = `${normalizeText(docType)}|${String(personId || "")}`;
+  const nowMs = Date.now();
+  const isRapidDuplicateOpen =
+    state.lastPdfOpenKey === pdfOpenKey && nowMs - Number(state.lastPdfOpenAtMs || 0) < 2000;
+  if (isRapidDuplicateOpen) {
+    showDataStatus("OUVERTURE PDF DEJA EN COURS");
+    return;
+  }
+  state.lastPdfOpenKey = pdfOpenKey;
+  state.lastPdfOpenAtMs = nowMs;
   const shouldArchive = isDocumentFullySigned(person, docType);
   const archiveMode = getDocumentArchiveMode(person, docType);
   const reusableArchive = shouldArchive ? findReusableArchivedDocument(person, docType) : null;
@@ -4495,8 +4507,7 @@ async function openPdfDocument(docType, personId) {
 
     if (getDataBackendMode() !== "LOCAL_API") {
       const hostedPath = getHostedPdfDocumentPath(docType, personId, archiveMode);
-      const hostedUrl = `${hostedPath}&ts=${Date.now()}`;
-      popup.location.href = hostedUrl;
+      popup.location.href = hostedPath;
       if (person && shouldArchive) {
         await registerArchivedDocument(person, docType, hostedPath, "", archiveMode);
         clearPendingPdfTaskFor(person.id, docType);
