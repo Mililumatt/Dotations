@@ -136,7 +136,7 @@ export default function Mobile() {
       const uiAlertsReadonly =
         oRes.status === "fulfilled"
           ? buildUiOverviewAlerts(
-              Array.isArray(oRes.value?.payload?.personnes) ? oRes.value.payload.personnes : [],
+              p,
               documentsArchives
             )
           : [];
