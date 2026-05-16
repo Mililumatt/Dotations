@@ -1255,6 +1255,7 @@ async function openAdminUsersModal() {
 
   let users = [];
   let loginEvents = [];
+  let appStateVersions = [];
   let archivedUserIds = new Set(getAdminArchivedUserIds());
   const getArchivedPeople = () => (state.data?.personnes || []).filter((person) => isSoftDeletedEntity(person));
   const getArchivedEffects = () =>
@@ -1266,6 +1267,17 @@ async function openAdminUsersModal() {
     const archivedPeople = getArchivedPeople();
     const archivedEffects = getArchivedEffects();
     const archivedUsers = users.filter((user) => archivedUserIds.has(String(user.id || "")));
+    const appStateOptions = appStateVersions
+      .map((entry, index) => {
+        const appStateId = String(entry?.app_state_id || "main");
+        const sourceRevision = Number(entry?.source_revision || 0);
+        const createdAt = formatAdminUserDate(entry?.created_at || "");
+        const reason = String(entry?.reason || "snapshot_before_update");
+        const value = `${appStateId}|${sourceRevision}`;
+        const label = `${createdAt} | rev ${sourceRevision} | ${reason}`;
+        return `<option value="${escapeHtml(value)}"${index === 0 ? " selected" : ""}>${escapeHtml(label)}</option>`;
+      })
+      .join("");
     restoreWrap.innerHTML = `
       <div style="padding:8px;background:#f3f7f9;border-bottom:1px solid #e2ebef;font-size:11px;color:#3d5865;font-weight:700;">ARCHIVES ADMIN (REINJECTION)</div>
       <div style="padding:8px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border-bottom:1px solid #e2ebef;">
@@ -1282,6 +1294,13 @@ async function openAdminUsersModal() {
       </div>
       <div style="padding:8px;display:flex;justify-content:flex-end;">
         <button type="button" data-restore-action="all" style="height:32px;padding:0 12px;border:0;background:#2f5f76;color:#fff;border-radius:8px;cursor:pointer;font-weight:700;">Restaurer tout</button>
+      </div>
+      <div style="padding:8px;background:#f3f7f9;border-top:1px solid #e2ebef;border-bottom:1px solid #e2ebef;font-size:11px;color:#3d5865;font-weight:700;">COFFRE-FORT DONNEES (APP_STATE)</div>
+      <div style="padding:8px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;">
+        <select id="admin-app-state-version-select" style="height:32px;padding:0 8px;border:1px solid #9bb2be;border-radius:7px;">
+          ${appStateOptions || '<option value="">AUCUNE VERSION DISPONIBLE</option>'}
+        </select>
+        <button type="button" data-restore-action="app-state" style="height:32px;padding:0 12px;border:0;background:#2f5f76;color:#fff;border-radius:8px;cursor:pointer;font-weight:700;" ${appStateVersions.length ? "" : "disabled"}>Restaurer version</button>
       </div>
     `;
   };
@@ -1342,6 +1361,26 @@ async function openAdminUsersModal() {
       }
       users = [];
       renderUsers();
+      renderRestorePanel();
+    }
+  };
+  const fetchAppStateVersions = async () => {
+    try {
+      const endpoint = `${getSupabaseRestEndpoint().replace(/\/app_state$/i, "/app_state_versions")}?select=app_state_id,source_revision,created_at,reason&order=created_at.desc&limit=30`;
+      const response = await fetch(endpoint, {
+        method: "GET",
+        headers: getSupabaseHeaders(),
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`VERSIONS_LOAD_FAILED:${response.status}`);
+      }
+      const rows = await response.json().catch(() => []);
+      appStateVersions = Array.isArray(rows) ? rows : [];
+    } catch (error) {
+      appStateVersions = [];
+      setStatus("Historique versions indisponible.", "error");
+    } finally {
       renderRestorePanel();
     }
   };
@@ -1572,6 +1611,45 @@ async function openAdminUsersModal() {
         setStatus("Utilisateurs reinjectes dans la liste admin.", "ok");
         return;
       }
+      if (action === "app-state") {
+        const selectNode = restoreWrap.querySelector("#admin-app-state-version-select");
+        const rawValue = String(selectNode?.value || "").trim();
+        if (!rawValue || !rawValue.includes("|")) {
+          setStatus("Aucune version selectionnee.", "error");
+          return;
+        }
+        const [appStateId, sourceRevisionRaw] = rawValue.split("|");
+        const sourceRevision = Number.parseInt(String(sourceRevisionRaw || ""), 10);
+        if (!appStateId || !Number.isFinite(sourceRevision)) {
+          setStatus("Version invalide.", "error");
+          return;
+        }
+        if (!window.confirm(`Restaurer app_state ${appStateId} revision ${sourceRevision} ?`)) {
+          return;
+        }
+        setStatus("Restauration version en cours...");
+        const rpcEndpoint = getSupabaseRestEndpoint().replace(/\/app_state$/i, "/rpc/restore_app_state_revision");
+        const rpcResponse = await fetch(rpcEndpoint, {
+          method: "POST",
+          headers: getSupabaseHeaders({
+            "Content-Type": "application/json",
+          }),
+          body: JSON.stringify({
+            _app_state_id: appStateId,
+            _source_revision: sourceRevision,
+            _reason: "restore_ui_admin",
+          }),
+          cache: "no-store",
+        });
+        if (!rpcResponse.ok) {
+          const details = await rpcResponse.text().catch(() => "");
+          throw new Error(`RESTORE_VERSION_FAILED:${rpcResponse.status}:${details}`);
+        }
+        await reloadData("RECHARGEMENT APRES RESTAURATION...");
+        await fetchAppStateVersions();
+        setStatus(`Restauration appliquee (revision source ${sourceRevision}).`, "ok");
+        return;
+      }
       const people = state.data?.personnes || [];
       let changed = false;
       if (action === "people" || action === "all") {
@@ -1703,6 +1781,7 @@ async function openAdminUsersModal() {
   });
 
   await fetchUsers();
+  await fetchAppStateVersions();
   await fetchLoginEvents();
 }
 
