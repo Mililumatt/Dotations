@@ -971,6 +971,27 @@ async function refreshSupabaseSession(refreshToken) {
   return data;
 }
 
+async function validateSupabaseAccessToken(accessToken) {
+  const token = String(accessToken || "").trim();
+  if (!token) return false;
+  const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
+  const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
+  if (!baseUrl || !key) return false;
+  try {
+    const response = await fetch(`${baseUrl}/auth/v1/user`, {
+      method: "GET",
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
 function isMobileSignaturePageContext() {
   return (
     String(document?.body?.dataset?.page || "") === "mobile-signature" ||
@@ -1006,8 +1027,12 @@ async function getSupabaseUserAccessToken() {
   const session = getStoredSupabaseSession();
   if (session && isSessionTokenFresh(session)) {
     const token = String(session.access_token || "").trim();
-    ensureLoginEventLogged(token).catch(() => null);
-    return token;
+    const isValidToken = await validateSupabaseAccessToken(token);
+    if (isValidToken) {
+      ensureLoginEventLogged(token).catch(() => null);
+      return token;
+    }
+    clearStoredSupabaseSession();
   }
   const refreshToken = String(session?.refresh_token || "").trim();
   if (refreshToken) {
