@@ -2909,10 +2909,8 @@ function getQrFriendlySignatureUrl(absoluteUrl) {
   if (!raw) return "";
   try {
     const parsed = new URL(raw);
-    // Keep the signature token, drop heavy session-bridge params for QR reliability.
-    ["session_bridge", "sb_refresh_token", "sb_access_token", "sb_expires_at"].forEach((key) =>
-      parsed.searchParams.delete(key)
-    );
+    // Keep mobile auth bridge required for signature save; only drop optional heavy params.
+    ["sb_access_token", "sb_expires_at"].forEach((key) => parsed.searchParams.delete(key));
     return parsed.toString();
   } catch (error) {
     return raw;
