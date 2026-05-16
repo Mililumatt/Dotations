@@ -133,10 +133,19 @@ export default function Mobile() {
       const documentsArchives = oRes.status === "fulfilled"
         ? (Array.isArray(oRes.value?.payload?.documentsArchives) ? oRes.value.payload.documentsArchives : [])
         : [];
+      const payloadPeople =
+        oRes.status === "fulfilled" && Array.isArray(oRes.value?.payload?.personnes)
+          ? oRes.value.payload.personnes
+          : [];
+      const activePersonIds = new Set((p || []).map((person) => String(person?.id || "")));
+      const alertsPeople =
+        payloadPeople.length > 0
+          ? payloadPeople.filter((person) => activePersonIds.has(String(person?.id || "")))
+          : p;
       const uiAlertsReadonly =
         oRes.status === "fulfilled"
           ? buildUiOverviewAlerts(
-              p,
+              alertsPeople,
               documentsArchives
             )
           : [];
