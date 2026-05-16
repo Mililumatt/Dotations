@@ -1259,7 +1259,19 @@ function renderRoleBadge() {
 async function handleSwitchUserClick() {
   try {
     clearStoredSupabaseSession();
-    await promptSupabaseLoginAndStoreSession();
+    while (true) {
+      try {
+        await promptSupabaseLoginAndStoreSession();
+        break;
+      } catch (error) {
+        const message = String(error?.message || "");
+        if (message === "BACKEND_AUTH_INVALID") {
+          window.alert("IDENTIFIANT OU MOT DE PASSE INCORRECT.");
+          continue;
+        }
+        throw error;
+      }
+    }
     showDataStatus("CONNEXION UTILISATEUR MISE A JOUR");
     await reloadData("RECHARGEMENT APRES CHANGEMENT UTILISATEUR...");
   } catch (error) {
