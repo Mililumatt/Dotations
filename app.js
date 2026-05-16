@@ -96,6 +96,7 @@ const ADMIN_INVITE_COOLDOWN_KEY = "dotations-admin-invite-last-sent-at";
 const ADMIN_INVITE_COOLDOWN_MS = 70 * 1000;
 const ADMIN_INTERACTIVE_AUTH_MARKER_KEY = "dotations-admin-interactive-auth-ok";
 const LOGIN_EMAIL_SUGGESTIONS_KEY = "dotations-login-email-suggestions-v1";
+const LAST_LOGIN_EMAIL_KEY = "dotations-last-login-email-v1";
 const PDF_LAYOUT_VERSION = "2026-03-14-exit-layout-fix-3";
 const PDF_FORMAT_LOCK = "v1";
 let pdfModalCleanupBound = false;
@@ -900,7 +901,8 @@ async function ensureLoginEventLogged(accessToken) {
 function promptSupabaseCredentialsForm() {
   return new Promise((resolve, reject) => {
     const suggestedEmails = getCachedLoginEmailSuggestions();
-    const primaryEmail = suggestedEmails[0] || "";
+    const rememberedEmail = String(localStorage.getItem(LAST_LOGIN_EMAIL_KEY) || "").trim().toLowerCase();
+    const primaryEmail = rememberedEmail || suggestedEmails[0] || "";
     const backdrop = document.createElement("div");
     backdrop.style.position = "fixed";
     backdrop.style.inset = "0";
@@ -952,6 +954,25 @@ function promptSupabaseCredentialsForm() {
     const forgotButton = box.querySelector("#supabase-login-forgot");
     const cancelButton = box.querySelector("#supabase-login-cancel");
 
+    const renderEmailOptions = (emails = [], preferredEmail = "") => {
+      if (!emailSelect) return;
+      const normalized = Array.from(
+        new Set((emails || []).map((entry) => String(entry || "").trim().toLowerCase()).filter(Boolean)),
+      );
+      emailSelect.innerHTML = `
+        <option value="">Selectionner un compte...</option>
+        ${normalized.map((email) => `<option value="${escapeHtml(email)}">${escapeHtml(email)}</option>`).join("")}
+      `;
+      const preferred = String(preferredEmail || "").trim().toLowerCase();
+      if (preferred && normalized.includes(preferred)) {
+        emailSelect.value = preferred;
+      } else if (normalized[0]) {
+        emailSelect.value = normalized[0];
+      } else {
+        emailSelect.value = "";
+      }
+    };
+
     const cleanup = () => {
       backdrop.remove();
     };
@@ -1002,6 +1023,7 @@ function promptSupabaseCredentialsForm() {
       const password = String(passwordInput.value || "");
       if (email) {
         mergeLoginEmailSuggestions([email]);
+        localStorage.setItem(LAST_LOGIN_EMAIL_KEY, email.toLowerCase());
       }
       cleanup();
       if (!email || !password) {
@@ -1012,11 +1034,21 @@ function promptSupabaseCredentialsForm() {
     });
 
     window.setTimeout(() => {
-      if (emailSelect && emailSelect.options.length > 1) {
-        emailSelect.selectedIndex = emailSelect.selectedIndex > 0 ? emailSelect.selectedIndex : 1;
-      }
+      renderEmailOptions(suggestedEmails, primaryEmail);
       emailSelect?.focus();
     }, 0);
+
+    const session = getStoredSupabaseSession();
+    const sessionToken = String(session?.access_token || "").trim();
+    if (sessionToken) {
+      fetchLoginEmailSuggestionsFromBackend(sessionToken)
+        .then((emails) => {
+          if (!emails.length) return;
+          const merged = mergeLoginEmailSuggestions(emails);
+          renderEmailOptions(merged, primaryEmail);
+        })
+        .catch(() => null);
+    }
   });
 }
 
