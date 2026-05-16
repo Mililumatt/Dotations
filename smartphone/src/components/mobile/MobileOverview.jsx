@@ -26,7 +26,7 @@ function formatDateFr(value) {
   return raw;
 }
 
-export default function MobileOverview({ persons, effets, documentsArchives, uiAlertsReadonly, onSelectPerson }) {
+export default function MobileOverview({ persons, effets, documentsArchives, uiAlertsReadonly, uiAlertsSourceReady, onSelectPerson }) {
   const [search, setSearch] = useState("");
   const todayIso = new Date().toISOString().slice(0, 10);
 
@@ -157,6 +157,7 @@ export default function MobileOverview({ persons, effets, documentsArchives, uiA
   const computedAlerts = [...alerts, ...signatureAlerts];
   const readonlyAlerts = Array.isArray(uiAlertsReadonly) ? uiAlertsReadonly : [];
   const allAlerts = readonlyAlerts.length > 0 ? readonlyAlerts : computedAlerts;
+  const isFallbackAlertMode = !uiAlertsSourceReady;
   const isAlertListScrollable = allAlerts.length > 3;
 
   const alertStyle = (type) => {
@@ -230,6 +231,11 @@ export default function MobileOverview({ persons, effets, documentsArchives, uiA
             <span style={{ fontSize: 9, color: "#4a6170", letterSpacing: "0.08em", fontWeight: 700 }}>ALERTES</span>
             <span style={{ fontSize: 9, color: "#8e4d1e", fontWeight: 700 }}>{allAlerts.length}</span>
           </div>
+          {isFallbackAlertMode ? (
+            <div style={{ marginBottom: 6, fontSize: 9, color: "#8a5518" }}>
+              MODE SECOURS: SOURCE ALERTES UI INDISPONIBLE
+            </div>
+          ) : null}
           <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: isAlertListScrollable ? 142 : "none", overflowY: isAlertListScrollable ? "auto" : "visible", paddingRight: isAlertListScrollable ? 2 : 0 }}>
             {allAlerts.map((a) => {
               const s = alertStyle(a.type);

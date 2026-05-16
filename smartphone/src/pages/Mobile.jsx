@@ -78,6 +78,7 @@ export default function Mobile() {
   const [bases, setBases] = useState(DEFAULT_BASES);
   const [documentsArchives, setDocumentsArchives] = useState([]);
   const [uiAlertsReadonly, setUiAlertsReadonly] = useState([]);
+  const [uiAlertsSourceReady, setUiAlertsSourceReady] = useState(false);
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("saved");
@@ -139,6 +140,8 @@ export default function Mobile() {
               documentsArchives
             )
           : [];
+      const uiAlertsSourceReady =
+        oRes.status === "fulfilled" && Array.isArray(oRes.value?.payload?.personnes);
       const firstError =
         (pRes.status === "rejected" && pRes.reason) ||
         (eRes.status === "rejected" && eRes.reason) ||
@@ -164,6 +167,7 @@ export default function Mobile() {
       setBases(b);
       setDocumentsArchives(documentsArchives);
       setUiAlertsReadonly(uiAlertsReadonly);
+      setUiAlertsSourceReady(uiAlertsSourceReady);
 
       const urlState = readUrlState();
       if (urlState.personId) {
@@ -177,6 +181,7 @@ export default function Mobile() {
       setBases(DEFAULT_BASES);
       setDocumentsArchives([]);
       setUiAlertsReadonly([]);
+      setUiAlertsSourceReady(false);
       setLoadError("LECTURE MOBILE BLOQUEE: connexion ou droits insuffisants.");
     } finally {
       setLoading(false);
@@ -234,6 +239,7 @@ export default function Mobile() {
       setBases(DEFAULT_BASES);
       setDocumentsArchives([]);
       setUiAlertsReadonly([]);
+      setUiAlertsSourceReady(false);
       setSelectedPerson(null);
       setLoading(false);
       setLoadError("");
@@ -599,6 +605,7 @@ export default function Mobile() {
                 effets={effets}
                 documentsArchives={documentsArchives}
                 uiAlertsReadonly={uiAlertsReadonly}
+                uiAlertsSourceReady={uiAlertsSourceReady}
                 onSelectPerson={(p) => handleNavigateTo("fiche", p)}
               />
             )}
