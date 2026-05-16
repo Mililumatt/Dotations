@@ -518,8 +518,9 @@ function getStoredSupabaseAccessToken() {
   try {
     const storageKey = getSupabaseAuthStorageKey();
     if (!storageKey) return "";
-    const raw = sessionStorage.getItem(storageKey);
-    return extractAccessTokenFromStoredSession(raw);
+    const sessionRaw = sessionStorage.getItem(storageKey);
+    const localRaw = localStorage.getItem(storageKey);
+    return extractAccessTokenFromStoredSession(sessionRaw) || extractAccessTokenFromStoredSession(localRaw);
   } catch (error) {
     return "";
   }
@@ -1360,13 +1361,9 @@ async function openAdminUsersModal() {
     }
   };
   const fetchAppStateVersions = async () => {
-    try {
-      const accessToken = await getSupabaseUserAccessToken();
-      if (!accessToken) {
-        throw new Error("BACKEND_AUTH_REQUIRED");
-      }
+    const loadVersions = async (accessToken) => {
       const endpoint = `${getSupabaseRestEndpoint().replace(/\/app_state$/i, "/app_state_versions")}?select=app_state_id,source_revision,created_at,reason&order=created_at.desc&limit=30`;
-      const response = await fetch(endpoint, {
+      return fetch(endpoint, {
         method: "GET",
         headers: getSupabaseHeaders(
           {
@@ -1376,14 +1373,34 @@ async function openAdminUsersModal() {
         ),
         cache: "no-store",
       });
+    };
+    try {
+      let accessToken = await getSupabaseUserAccessToken();
+      if (!accessToken) {
+        throw new Error("BACKEND_AUTH_REQUIRED");
+      }
+      let response = await loadVersions(accessToken);
+      if (response.status === 401 || response.status === 403) {
+        clearStoredSupabaseSession();
+        accessToken = await getSupabaseUserAccessToken();
+        if (!accessToken) {
+          throw new Error("BACKEND_AUTH_REQUIRED");
+        }
+        response = await loadVersions(accessToken);
+      }
       if (!response.ok) {
-        throw new Error(`VERSIONS_LOAD_FAILED:${response.status}`);
+        const details = await response.text().catch(() => "");
+        throw new Error(`VERSIONS_LOAD_FAILED:${response.status}:${details}`);
       }
       const rows = await response.json().catch(() => []);
       appStateVersions = Array.isArray(rows) ? rows : [];
+      if (!appStateVersions.length) {
+        setStatus("Historique versions vide (0 ligne retournee).", "error");
+      }
     } catch (error) {
       appStateVersions = [];
-      setStatus("Historique versions indisponible.", "error");
+      const message = String(error?.message || "erreur");
+      setStatus(`Historique versions indisponible: ${message}`, "error");
     } finally {
       renderRestorePanel();
     }
@@ -1631,13 +1648,21 @@ async function openAdminUsersModal() {
         if (!window.confirm(`Restaurer app_state ${appStateId} revision ${sourceRevision} ?`)) {
           return;
         }
+        const accessToken = await getSupabaseUserAccessToken();
+        if (!accessToken) {
+          throw new Error("BACKEND_AUTH_REQUIRED");
+        }
         setStatus("Restauration version en cours...");
         const rpcEndpoint = getSupabaseRestEndpoint().replace(/\/app_state$/i, "/rpc/restore_app_state_revision");
         const rpcResponse = await fetch(rpcEndpoint, {
           method: "POST",
-          headers: getSupabaseHeaders({
-            "Content-Type": "application/json",
-          }),
+          headers: getSupabaseHeaders(
+            {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
+            { includeAuthorization: false },
+          ),
           body: JSON.stringify({
             _app_state_id: appStateId,
             _source_revision: sourceRevision,
