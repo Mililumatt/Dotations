@@ -1253,6 +1253,49 @@ function renderRoleBadge() {
     ? "Admin: cliquer pour gerer les utilisateurs"
     : "Droit utilisateur";
   badge.onclick = canManageUsers ? openAdminUsersModal : null;
+  renderSwitchUserButton();
+}
+
+async function handleSwitchUserClick() {
+  try {
+    clearStoredSupabaseSession();
+    await promptSupabaseLoginAndStoreSession();
+    showDataStatus("CONNEXION UTILISATEUR MISE A JOUR");
+    await reloadData("RECHARGEMENT APRES CHANGEMENT UTILISATEUR...");
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (message !== "BACKEND_AUTH_REQUIRED") {
+      window.alert("CHANGEMENT UTILISATEUR IMPOSSIBLE.");
+    }
+  }
+}
+
+function renderSwitchUserButton() {
+  if (isMobileSignaturePageContext()) return;
+  let button = document.getElementById("dotations-switch-user-button");
+  if (!button) {
+    button = document.createElement("button");
+    button.id = "dotations-switch-user-button";
+    button.type = "button";
+    button.textContent = "CHANGER D'UTILISATEUR";
+    button.style.height = "30px";
+    button.style.padding = "0 10px";
+    button.style.borderRadius = "10px";
+    button.style.border = "1px solid rgba(63,97,112,0.35)";
+    button.style.background = "#ffffff";
+    button.style.color = "#213b48";
+    button.style.fontSize = "10px";
+    button.style.fontWeight = "700";
+    button.style.letterSpacing = "0.03em";
+    button.style.cursor = "pointer";
+    const headerActions = document.querySelector(".page-header__actions");
+    if (headerActions) {
+      headerActions.insertBefore(button, headerActions.firstChild || null);
+    } else {
+      document.body.appendChild(button);
+    }
+  }
+  button.onclick = handleSwitchUserClick;
 }
 
 function normalizeRequestedUserRole(role) {
