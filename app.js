@@ -95,6 +95,7 @@ const PASSWORD_RESET_COOLDOWN_MS = 70 * 1000;
 const ADMIN_INVITE_COOLDOWN_KEY = "dotations-admin-invite-last-sent-at";
 const ADMIN_INVITE_COOLDOWN_MS = 70 * 1000;
 const ADMIN_INTERACTIVE_AUTH_MARKER_KEY = "dotations-admin-interactive-auth-ok";
+const LOGIN_EMAIL_SUGGESTIONS_KEY = "dotations-login-email-suggestions-v1";
 const PDF_LAYOUT_VERSION = "2026-03-14-exit-layout-fix-3";
 const PDF_FORMAT_LOCK = "v1";
 let pdfModalCleanupBound = false;
@@ -177,6 +178,69 @@ function clearPendingPdfTaskIfArchived() {
     // ignore storage failures
   }
   return true;
+}
+
+function getCachedLoginEmailSuggestions() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LOGIN_EMAIL_SUGGESTIONS_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return Array.from(
+      new Set(
+        raw
+          .map((email) => String(email || "").trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    ).slice(0, 50);
+  } catch (error) {
+    return [];
+  }
+}
+
+function setCachedLoginEmailSuggestions(emails = []) {
+  try {
+    const normalized = Array.from(
+      new Set(
+        (emails || [])
+          .map((email) => String(email || "").trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    ).slice(0, 50);
+    localStorage.setItem(LOGIN_EMAIL_SUGGESTIONS_KEY, JSON.stringify(normalized));
+  } catch (error) {
+    // ignore storage failures
+  }
+}
+
+function mergeLoginEmailSuggestions(emails = []) {
+  const merged = Array.from(new Set([...getCachedLoginEmailSuggestions(), ...(emails || [])]));
+  setCachedLoginEmailSuggestions(merged);
+  return merged;
+}
+
+async function fetchLoginEmailSuggestionsFromBackend(accessToken) {
+  const token = String(accessToken || "").trim();
+  const baseUrl = normalizeHttpUrl(SUPABASE_EDGE_API_URL);
+  const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
+  if (!token || !baseUrl || !key) return [];
+  try {
+    const response = await fetch(`${baseUrl}/admin/users`, {
+      method: "GET",
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    });
+    if (!response.ok) return [];
+    const payload = await response.json().catch(() => ({}));
+    const users = normalizeAdminUsersList(payload);
+    return users
+      .map((entry) => String(entry?.email || "").trim().toLowerCase())
+      .filter(Boolean);
+  } catch (error) {
+    return [];
+  }
 }
 
 function setKpiCountAnimated(node, nextValue) {
@@ -835,6 +899,8 @@ async function ensureLoginEventLogged(accessToken) {
 
 function promptSupabaseCredentialsForm() {
   return new Promise((resolve, reject) => {
+    const suggestedEmails = getCachedLoginEmailSuggestions();
+    const primaryEmail = suggestedEmails[0] || "";
     const backdrop = document.createElement("div");
     backdrop.style.position = "fixed";
     backdrop.style.inset = "0";
@@ -854,8 +920,11 @@ function promptSupabaseCredentialsForm() {
       <div style="font-weight:700;font-size:16px;margin-bottom:10px;color:#132833;">Connexion requise</div>
       <form id="supabase-login-form" autocomplete="on">
         <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Email Supabase</label>
-        <input id="supabase-login-email" name="username" type="email" autocomplete="username email" required
+        <input id="supabase-login-email" name="username" type="email" list="supabase-login-email-list" autocomplete="username email" required
           style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:10px;" />
+        <datalist id="supabase-login-email-list">
+          ${suggestedEmails.map((email) => `<option value="${escapeHtml(email)}"></option>`).join("")}
+        </datalist>
         <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Mot de passe</label>
         <input id="supabase-login-password" name="password" type="password" autocomplete="current-password" required
           style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:12px;" />
@@ -877,6 +946,7 @@ function promptSupabaseCredentialsForm() {
 
     const form = box.querySelector("#supabase-login-form");
     const emailInput = box.querySelector("#supabase-login-email");
+    const emailListNode = box.querySelector("#supabase-login-email-list");
     const passwordInput = box.querySelector("#supabase-login-password");
     const statusNode = box.querySelector("#supabase-login-status");
     const forgotIdButton = box.querySelector("#supabase-login-forgot-id");
@@ -931,6 +1001,9 @@ function promptSupabaseCredentialsForm() {
       event.preventDefault();
       const email = String(emailInput.value || "").trim();
       const password = String(passwordInput.value || "");
+      if (email) {
+        mergeLoginEmailSuggestions([email]);
+      }
       cleanup();
       if (!email || !password) {
         reject(new Error("BACKEND_AUTH_REQUIRED"));
@@ -1417,6 +1490,7 @@ async function openAdminUsersModal() {
       const response = await callEdgeApi("admin/users", { method: "GET" });
       const payload = await response.json().catch(() => ({}));
       users = normalizeAdminUsersList(payload);
+      mergeLoginEmailSuggestions(users.map((entry) => entry?.email || ""));
       renderUsers();
       const visibleCount = users.filter((user) => !archivedUserIds.has(String(user.id || ""))).length;
       setStatus(`${visibleCount} utilisateur(s) charge(s).`, "ok");
@@ -14434,3 +14508,28 @@ function renderDirtyState() {
 }
 
 loadData();
+    const renderEmailSuggestions = (emails = []) => {
+      if (!emailListNode) return;
+      emailListNode.innerHTML = emails
+        .map((email) => `<option value="${escapeHtml(String(email || "").trim().toLowerCase())}"></option>`)
+        .join("");
+    };
+
+    if (emailInput && !String(emailInput.value || "").trim() && primaryEmail) {
+      emailInput.value = primaryEmail;
+    }
+
+    const session = getStoredSupabaseSession();
+    const sessionToken = String(session?.access_token || "").trim();
+    if (sessionToken) {
+      fetchLoginEmailSuggestionsFromBackend(sessionToken)
+        .then((emails) => {
+          if (!emails.length) return;
+          const merged = mergeLoginEmailSuggestions(emails);
+          renderEmailSuggestions(merged);
+          if (emailInput && !String(emailInput.value || "").trim() && merged[0]) {
+            emailInput.value = merged[0];
+          }
+        })
+        .catch(() => null);
+    }
