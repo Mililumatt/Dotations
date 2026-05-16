@@ -2909,8 +2909,8 @@ function getQrFriendlySignatureUrl(absoluteUrl) {
   if (!raw) return "";
   try {
     const parsed = new URL(raw);
-    // Keep mobile auth bridge required for signature save; only drop optional heavy params.
-    ["sb_access_token", "sb_expires_at"].forEach((key) => parsed.searchParams.delete(key));
+    // Keep mobile auth bridge required for signature save.
+    // Do not strip `sbat/sbrt/sbea`: they are needed on phone to authorize save.
     return parsed.toString();
   } catch (error) {
     return raw;
@@ -2973,9 +2973,10 @@ async function fillMobileSignatureShareLink(request) {
   const absoluteUrl = await getAbsoluteMobileSignatureUrl(request, {
     includeSessionBridge: true,
     sessionBridgeOptions: {
-      includeAccessToken: false,
+      // Include both tokens to avoid refresh-only failures on mobile devices.
+      includeAccessToken: true,
       includeRefreshToken: true,
-      includeExpiresAt: false,
+      includeExpiresAt: true,
     },
   });
 
@@ -13863,13 +13864,22 @@ async function saveDataToFile(options = {}) {
       return;
     }
     showDataStatus("SAUVEGARDE IMPOSSIBLE");
+    const compactErrorMessage = String(error?.message || "").replace(/\s+/g, " ").trim().slice(0, 180);
+    const isMobileSignaturePage = String(document?.body?.dataset?.page || "") === "mobile-signature";
+    if (isMobileSignaturePage && compactErrorMessage) {
+      showDataStatus(`SAUVEGARDE IMPOSSIBLE (${compactErrorMessage})`);
+    }
     appendSaveAuditEntry({
       outcome: "error",
       message: String(error?.message || "UNKNOWN_ERROR").slice(0, 200),
       mode: getDataBackendMode(),
     });
     if (!silent) {
-      window.alert("SAUVEGARDE IMPOSSIBLE");
+      if (isMobileSignaturePage && compactErrorMessage) {
+        window.alert(`SAUVEGARDE IMPOSSIBLE\n${compactErrorMessage}`);
+      } else {
+        window.alert("SAUVEGARDE IMPOSSIBLE");
+      }
     }
   } finally {
     state.saveInFlight = false;
