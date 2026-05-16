@@ -1078,9 +1078,22 @@ async function enforceUiLoginOnEachOpen() {
     return;
   }
   try {
-    clearStoredSupabaseSession();
-    await promptSupabaseLoginAndStoreSession();
+    const alreadyAuthenticatedInThisTab =
+      sessionStorage.getItem(ADMIN_INTERACTIVE_AUTH_MARKER_KEY) === "1";
+    if (!alreadyAuthenticatedInThisTab) {
+      await promptSupabaseLoginAndStoreSession();
+      return;
+    }
+    const token = await getSupabaseUserAccessToken();
+    if (!token) {
+      throw new Error("BACKEND_AUTH_REQUIRED");
+    }
   } catch (error) {
+    try {
+      sessionStorage.removeItem(ADMIN_INTERACTIVE_AUTH_MARKER_KEY);
+    } catch (markerError) {
+      // ignore marker failures
+    }
     window.alert("CONNEXION OBLIGATOIRE POUR OUVRIR L'INTERFACE.");
     throw new Error("BACKEND_AUTH_REQUIRED");
   }
