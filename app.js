@@ -716,12 +716,12 @@ async function promptSupabaseLoginAndStoreSession() {
     cache: "no-store",
   });
   if (!response.ok) {
-    throw new Error("BACKEND_AUTH_REQUIRED");
+    throw new Error("BACKEND_AUTH_INVALID");
   }
   const data = await response.json().catch(() => null);
   const accessToken = String(data?.access_token || "").trim();
   if (!accessToken) {
-    throw new Error("BACKEND_AUTH_REQUIRED");
+    throw new Error("BACKEND_AUTH_INVALID");
   }
   storeSupabaseSession(data);
   try {
@@ -1188,7 +1188,21 @@ async function enforceUiLoginOnEachOpen() {
     const alreadyAuthenticatedInThisTab =
       sessionStorage.getItem(ADMIN_INTERACTIVE_AUTH_MARKER_KEY) === "1";
     if (!alreadyAuthenticatedInThisTab) {
-      await promptSupabaseLoginAndStoreSession();
+      // Wrong credentials should reopen login; cancel should stop opening.
+      // Keep looping until success or explicit cancel.
+      while (true) {
+        try {
+          await promptSupabaseLoginAndStoreSession();
+          break;
+        } catch (error) {
+          const message = String(error?.message || "");
+          if (message === "BACKEND_AUTH_INVALID") {
+            window.alert("IDENTIFIANT OU MOT DE PASSE INCORRECT.");
+            continue;
+          }
+          throw error;
+        }
+      }
       return;
     }
     const token = await getSupabaseUserAccessToken();
