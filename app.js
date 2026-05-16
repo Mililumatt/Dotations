@@ -920,11 +920,14 @@ function promptSupabaseCredentialsForm() {
       <div style="font-weight:700;font-size:16px;margin-bottom:10px;color:#132833;">Connexion requise</div>
       <form id="supabase-login-form" autocomplete="on">
         <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Email Supabase</label>
-        <input id="supabase-login-email" name="username" type="email" list="supabase-login-email-list" autocomplete="username email" required
+        <select id="supabase-login-email-select"
+          style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:8px;background:#fff;">
+          <option value="">Selectionner un compte...</option>
+          ${suggestedEmails.map((email) => `<option value="${escapeHtml(email)}">${escapeHtml(email)}</option>`).join("")}
+          <option value="__manual__">Autre email...</option>
+        </select>
+        <input id="supabase-login-email" name="username" type="email" autocomplete="username email" required
           style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:10px;" />
-        <datalist id="supabase-login-email-list">
-          ${suggestedEmails.map((email) => `<option value="${escapeHtml(email)}"></option>`).join("")}
-        </datalist>
         <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Mot de passe</label>
         <input id="supabase-login-password" name="password" type="password" autocomplete="current-password" required
           style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:12px;" />
@@ -945,8 +948,8 @@ function promptSupabaseCredentialsForm() {
     document.body.appendChild(backdrop);
 
     const form = box.querySelector("#supabase-login-form");
+    const emailSelect = box.querySelector("#supabase-login-email-select");
     const emailInput = box.querySelector("#supabase-login-email");
-    const emailListNode = box.querySelector("#supabase-login-email-list");
     const passwordInput = box.querySelector("#supabase-login-password");
     const statusNode = box.querySelector("#supabase-login-status");
     const forgotIdButton = box.querySelector("#supabase-login-forgot-id");
@@ -14508,15 +14511,46 @@ function renderDirtyState() {
 }
 
 loadData();
-    const renderEmailSuggestions = (emails = []) => {
-      if (!emailListNode) return;
-      emailListNode.innerHTML = emails
-        .map((email) => `<option value="${escapeHtml(String(email || "").trim().toLowerCase())}"></option>`)
-        .join("");
+    const renderEmailOptions = (emails = []) => {
+      if (!emailSelect) return;
+      const normalized = Array.from(
+        new Set((emails || []).map((entry) => String(entry || "").trim().toLowerCase()).filter(Boolean)),
+      );
+      emailSelect.innerHTML = `
+        <option value="">Selectionner un compte...</option>
+        ${normalized.map((email) => `<option value="${escapeHtml(email)}">${escapeHtml(email)}</option>`).join("")}
+        <option value="__manual__">Autre email...</option>
+      `;
     };
 
-    if (emailInput && !String(emailInput.value || "").trim() && primaryEmail) {
-      emailInput.value = primaryEmail;
+    const syncEmailInputFromSelect = () => {
+      if (!emailInput || !emailSelect) return;
+      const selected = String(emailSelect.value || "");
+      if (!selected) {
+        emailInput.value = "";
+        emailInput.readOnly = false;
+        return;
+      }
+      if (selected === "__manual__") {
+        emailInput.value = "";
+        emailInput.readOnly = false;
+        emailInput.focus();
+        return;
+      }
+      emailInput.value = selected;
+      emailInput.readOnly = true;
+    };
+
+    if (emailSelect) {
+      emailSelect.addEventListener("change", syncEmailInputFromSelect);
+      if (primaryEmail) {
+        emailSelect.value = primaryEmail;
+      } else if (emailSelect.options.length > 2) {
+        emailSelect.selectedIndex = 1;
+      } else {
+        emailSelect.value = "__manual__";
+      }
+      syncEmailInputFromSelect();
     }
 
     const session = getStoredSupabaseSession();
@@ -14526,9 +14560,16 @@ loadData();
         .then((emails) => {
           if (!emails.length) return;
           const merged = mergeLoginEmailSuggestions(emails);
-          renderEmailSuggestions(merged);
-          if (emailInput && !String(emailInput.value || "").trim() && merged[0]) {
-            emailInput.value = merged[0];
+          renderEmailOptions(merged);
+          if (emailSelect) {
+            if (primaryEmail && merged.includes(primaryEmail)) {
+              emailSelect.value = primaryEmail;
+            } else if (merged[0]) {
+              emailSelect.value = merged[0];
+            } else {
+              emailSelect.value = "__manual__";
+            }
+            syncEmailInputFromSelect();
           }
         })
         .catch(() => null);
