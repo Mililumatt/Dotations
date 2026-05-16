@@ -6,6 +6,7 @@ import MobileDocumentArrivee from "../components/mobile/MobileDocumentArrivee";
 import MobileDocumentSortie from "../components/mobile/MobileDocumentSortie";
 import { db } from "@/lib/db";
 import { getCurrentSession, onAuthStateChange, supabase } from "@/lib/supabaseClient";
+import { buildUiOverviewAlerts } from "@/lib/businessRules";
 
 const MOBILE_WINDOW_SESSION_KEY = "dotations_mobile_window_open";
 const MOBILE_BRAND_LOGO_URL = "https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/bandeau-nextboard-sidebar-detoure.png";
@@ -31,118 +32,6 @@ const DEFAULT_BASES = {
   coutsRemplacement: [],
   representantsSignataires: [],
 };
-
-function normalizeTextLocal(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toUpperCase();
-}
-
-function getTodayIsoDate() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function normalizeEffectStatusForUiLikePc(person, effect) {
-  if (String(effect?.dateRetour || "").trim()) return "RESTITUE";
-  const manual = normalizeTextLocal(effect?.statutManuel);
-  if (manual === "CASSE") return "DETRUIT";
-  if (["PERDU", "HS", "VOL"].includes(manual)) return manual;
-  const today = getTodayIsoDate();
-  const exitDue =
-    (String(person?.dateSortieReelle || "").trim() && String(person?.dateSortieReelle || "") <= today) ||
-    (String(person?.dateSortiePrevue || "").trim() && String(person?.dateSortiePrevue || "") < today);
-  if ((!manual || manual === "ACTIF") && exitDue) return "NON RENDU";
-  return manual || "ACTIF";
-}
-
-function isCurrentAssignedEffectUiLikePc(person, effect) {
-  const status = normalizeTextLocal(normalizeEffectStatusForUiLikePc(person, effect));
-  return !["RESTITUE", "PERDU", "HS", "DETRUIT", "VOL"].includes(status);
-}
-
-function formatDateFrLocal(value) {
-  const raw = String(value || "").trim();
-  const parts = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!parts) return raw;
-  return `${parts[3]}/${parts[2]}/${parts[1]}`;
-}
-
-function isDocumentFullySignedUiLikePc(person, docType) {
-  const personnelDate = String(person?.signatures?.[docType]?.personnel?.validatedAt || "").trim();
-  const representantDate = String(person?.signatures?.[docType]?.representant?.validatedAt || "").trim();
-  return Boolean(personnelDate && representantDate);
-}
-
-function getLatestSignatureMs(person, docType) {
-  const p = Date.parse(String(person?.signatures?.[docType]?.personnel?.validatedAt || "")) || 0;
-  const r = Date.parse(String(person?.signatures?.[docType]?.representant?.validatedAt || "")) || 0;
-  return Math.max(p, r);
-}
-
-function hasSignedArchiveForUiLikePc(person, typeLabel, documentsArchives = [], latestSignatureMs = 0) {
-  const archives = (documentsArchives || []).filter((entry) => {
-    if (String(entry?.personId || "") !== String(person?.id || "")) return false;
-    if (normalizeTextLocal(entry?.typeDocument) !== normalizeTextLocal(typeLabel)) return false;
-    if (!String(entry?.pdfPath || "").trim()) return false;
-    if (normalizeTextLocal(entry?.statutSignature) !== "SIGNE") return false;
-    return true;
-  });
-  if (!archives.length) return false;
-  if (!latestSignatureMs) return true;
-  return archives.some((entry) => (Date.parse(String(entry?.dateArchivage || "")) || 0) >= latestSignatureMs);
-}
-
-function buildUiLikePcAlerts(payload) {
-  const people = Array.isArray(payload?.personnes) ? payload.personnes : [];
-  const docs = Array.isArray(payload?.documentsArchives) ? payload.documentsArchives : [];
-  const today = getTodayIsoDate();
-  const alerts = [];
-
-  people.forEach((person) => {
-    const plannedExit = String(person?.dateSortiePrevue || "");
-    const realExit = String(person?.dateSortieReelle || "");
-    const plannedDate = plannedExit ? new Date(`${plannedExit}T00:00:00`) : null;
-    const todayDate = new Date(`${today}T00:00:00`);
-    const daysUntilPlannedExit =
-      plannedDate && Number.isFinite(plannedDate.getTime())
-        ? Math.round((plannedDate.getTime() - todayDate.getTime()) / (24 * 60 * 60 * 1000))
-        : null;
-
-    if (plannedExit && !realExit && Number.isFinite(daysUntilPlannedExit) && daysUntilPlannedExit >= 1 && daysUntilPlannedExit <= 2) {
-      alerts.push({ personId: person.id, type: "dateSortiePrevue", text: `ALERTE : SORTIE PREVUE DANS ${daysUntilPlannedExit} JOUR${daysUntilPlannedExit > 1 ? "S" : ""} (${formatDateFrLocal(plannedExit)})` });
-    } else if (plannedExit && !realExit && plannedExit <= today) {
-      alerts.push({ personId: person.id, type: "dateSortiePrevue", text: plannedExit === today ? `ALERTE : SORTIE PREVUE AUJOURD'HUI (${formatDateFrLocal(plannedExit)})` : `ALERTE : DATE DE SORTIE PREVUE DEPASSEE (${formatDateFrLocal(plannedExit)})` });
-    } else {
-      const effects = Array.isArray(person?.effetsConfies) ? person.effetsConfies : [];
-      const hasNonRendu = effects.some((effect) => normalizeEffectStatusForUiLikePc(person, effect) === "NON RENDU");
-      if (realExit && realExit <= today && hasNonRendu) {
-        alerts.push({ personId: person.id, type: "dateSortieReelle", text: realExit === today ? `ALERTE : SORTIE REELLE AUJOURD'HUI AVEC EFFETS NON RENDUS (${formatDateFrLocal(realExit)})` : `ALERTE : DATE DE SORTIE REELLE DEPASSEE (${formatDateFrLocal(realExit)})` });
-      }
-    }
-
-    const effectsCount = (Array.isArray(person?.effetsConfies) ? person.effetsConfies : []).filter((effect) =>
-      isCurrentAssignedEffectUiLikePc(person, effect)
-    ).length;
-    const arrivalSigned = isDocumentFullySignedUiLikePc(person, "arrival");
-    const exitSigned = isDocumentFullySignedUiLikePc(person, "exit");
-    const arrivalLatestSig = getLatestSignatureMs(person, "arrival");
-    const exitLatestSig = getLatestSignatureMs(person, "exit");
-    const hasArrivalPdf = hasSignedArchiveForUiLikePc(person, "ARRIVEE", docs, arrivalLatestSig);
-    const hasExitPdf = hasSignedArchiveForUiLikePc(person, "SORTIE", docs, exitLatestSig);
-    if (effectsCount > 0 && !arrivalSigned) {
-      alerts.push({ personId: person.id, type: "signaturePdf", text: "ALERTE : EFFET(S) ATTRIBUE(S) MAIS DOCUMENT D'ARRIVEE NON SIGNE (PERSONNEL + REPRESENTANT OBLIGATOIRES)." });
-    } else if (arrivalSigned && !hasArrivalPdf) {
-      alerts.push({ personId: person.id, type: "signaturePdf", text: `ALERTE : ARRIVEE SIGNEE (2 SIGNATURES), MAIS PDF ABSENT OU NON MIS A JOUR POUR CETTE VERSION. RE-SIGNEZ LES DEUX PARTIES PUIS CLIQUEZ SUR "GENERER LE PDF".` });
-    }
-    if (exitSigned && !hasExitPdf) {
-      alerts.push({ personId: person.id, type: "signaturePdf", text: `ALERTE : SORTIE SIGNEE (2 SIGNATURES), MAIS PDF ABSENT OU NON MIS A JOUR POUR CETTE VERSION. RE-SIGNEZ LES DEUX PARTIES PUIS CLIQUEZ SUR "GENERER LE PDF".` });
-    }
-  });
-
-  return alerts.map((entry, index) => ({ key: `ui-${entry.personId}-${entry.type}-${index}`, ...entry }));
-}
 
 function isValidTab(tab) {
   return TABS.some((t) => t.id === tab);
@@ -243,7 +132,13 @@ export default function Mobile() {
       const documentsArchives = oRes.status === "fulfilled"
         ? (Array.isArray(oRes.value?.payload?.documentsArchives) ? oRes.value.payload.documentsArchives : [])
         : [];
-      const uiAlertsReadonly = oRes.status === "fulfilled" ? buildUiLikePcAlerts(oRes.value?.payload || {}) : [];
+      const uiAlertsReadonly =
+        oRes.status === "fulfilled"
+          ? buildUiOverviewAlerts(
+              Array.isArray(oRes.value?.payload?.personnes) ? oRes.value.payload.personnes : [],
+              documentsArchives
+            )
+          : [];
       const firstError =
         (pRes.status === "rejected" && pRes.reason) ||
         (eRes.status === "rejected" && eRes.reason) ||

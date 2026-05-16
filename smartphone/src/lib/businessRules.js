@@ -123,3 +123,120 @@ export function getReplacementCostValue(pricingRules = [], typeEffet, cause, des
   }
   return Number.isFinite(amount) ? amount : 0;
 }
+
+export function formatDateFr(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return raw;
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+export function isCurrentAssignedEffect(person, effect) {
+  const status = normalizeText(getEffectStatus(person, effect));
+  return !["RESTITUE", "PERDU", "HS", "DETRUIT", "VOL"].includes(status);
+}
+
+function isDocumentFullySigned(person, docType) {
+  const personnelSignature = String(person?.signatures?.[docType]?.personnel?.value || "").trim();
+  const representantSignature = String(person?.signatures?.[docType]?.representant?.value || "").trim();
+  const personnelDate = String(person?.signatures?.[docType]?.personnel?.validatedAt || "").trim();
+  const representantDate = String(person?.signatures?.[docType]?.representant?.validatedAt || "").trim();
+  return Boolean(personnelSignature && representantSignature && personnelDate && representantDate);
+}
+
+function getLatestSignatureMs(person, docType) {
+  const p = Date.parse(String(person?.signatures?.[docType]?.personnel?.validatedAt || "")) || 0;
+  const r = Date.parse(String(person?.signatures?.[docType]?.representant?.validatedAt || "")) || 0;
+  return Math.max(p, r);
+}
+
+function hasSignedArchiveFor(person, typeLabel, documentsArchives = [], latestSignatureMs = 0) {
+  const archives = (documentsArchives || []).filter((entry) => {
+    if (String(entry?.personId || "") !== String(person?.id || "")) return false;
+    if (normalizeText(entry?.typeDocument) !== normalizeText(typeLabel)) return false;
+    if (!String(entry?.pdfPath || "").trim()) return false;
+    if (normalizeText(entry?.statutSignature) !== "SIGNE") return false;
+    return true;
+  });
+  if (!archives.length) return false;
+  if (!latestSignatureMs) return true;
+  return archives.some((entry) => (Date.parse(String(entry?.dateArchivage || "")) || 0) >= latestSignatureMs);
+}
+
+export function buildUiOverviewAlerts(persons = [], documentsArchives = [], todayIso = new Date().toISOString().slice(0, 10)) {
+  const people = Array.isArray(persons) ? persons : [];
+  const docs = Array.isArray(documentsArchives) ? documentsArchives : [];
+  const alerts = [];
+  const todayDate = new Date(`${todayIso}T00:00:00`);
+
+  people.forEach((person) => {
+    const plannedExit = String(person?.dateSortiePrevue || "");
+    const realExit = String(person?.dateSortieReelle || "");
+    const plannedDate = plannedExit ? new Date(`${plannedExit}T00:00:00`) : null;
+    const daysUntilPlannedExit =
+      plannedDate && Number.isFinite(plannedDate.getTime())
+        ? Math.round((plannedDate.getTime() - todayDate.getTime()) / (24 * 60 * 60 * 1000))
+        : null;
+
+    if (plannedExit && !realExit && Number.isFinite(daysUntilPlannedExit) && daysUntilPlannedExit >= 1 && daysUntilPlannedExit <= 2) {
+      alerts.push({
+        personId: person.id,
+        type: "dateSortiePrevue",
+        text: `ALERTE : SORTIE PREVUE DANS ${daysUntilPlannedExit} JOUR${daysUntilPlannedExit > 1 ? "S" : ""} (${formatDateFr(plannedExit)})`,
+      });
+    } else if (plannedExit && !realExit && plannedExit <= todayIso) {
+      alerts.push({
+        personId: person.id,
+        type: "dateSortiePrevue",
+        text:
+          plannedExit === todayIso
+            ? `ALERTE : SORTIE PREVUE AUJOURD'HUI (${formatDateFr(plannedExit)})`
+            : `ALERTE : DATE DE SORTIE PREVUE DEPASSEE (${formatDateFr(plannedExit)})`,
+      });
+    } else {
+      const effects = Array.isArray(person?.effetsConfies) ? person.effetsConfies : [];
+      const hasNonRendu = effects.some((effect) => getEffectStatus(person, effect) === "NON RENDU");
+      if (realExit && realExit <= todayIso && hasNonRendu) {
+        alerts.push({
+          personId: person.id,
+          type: "dateSortieReelle",
+          text:
+            realExit === todayIso
+              ? `ALERTE : SORTIE REELLE AUJOURD'HUI AVEC EFFETS NON RENDUS (${formatDateFr(realExit)})`
+              : `ALERTE : DATE DE SORTIE REELLE DEPASSEE (${formatDateFr(realExit)})`,
+        });
+      }
+    }
+
+    const currentEffectsCount = (Array.isArray(person?.effetsConfies) ? person.effetsConfies : []).filter((effect) =>
+      isCurrentAssignedEffect(person, effect)
+    ).length;
+    const arrivalSigned = isDocumentFullySigned(person, "arrival");
+    const exitSigned = isDocumentFullySigned(person, "exit");
+    const hasArrivalPdf = hasSignedArchiveFor(person, "ARRIVEE", docs, getLatestSignatureMs(person, "arrival"));
+    const hasExitPdf = hasSignedArchiveFor(person, "SORTIE", docs, getLatestSignatureMs(person, "exit"));
+
+    if (currentEffectsCount > 0 && !arrivalSigned) {
+      alerts.push({
+        personId: person.id,
+        type: "signaturePdf",
+        text: "ALERTE : EFFET(S) ATTRIBUE(S) MAIS DOCUMENT D'ARRIVEE NON SIGNE (PERSONNEL + REPRESENTANT OBLIGATOIRES).",
+      });
+    } else if (arrivalSigned && !hasArrivalPdf) {
+      alerts.push({
+        personId: person.id,
+        type: "signaturePdf",
+        text: 'ALERTE : ARRIVEE SIGNEE (2 SIGNATURES), MAIS PDF ABSENT OU NON MIS A JOUR POUR CETTE VERSION. RE-SIGNEZ LES DEUX PARTIES PUIS CLIQUEZ SUR "GENERER LE PDF".',
+      });
+    }
+    if (exitSigned && !hasExitPdf) {
+      alerts.push({
+        personId: person.id,
+        type: "signaturePdf",
+        text: 'ALERTE : SORTIE SIGNEE (2 SIGNATURES), MAIS PDF ABSENT OU NON MIS A JOUR POUR CETTE VERSION. RE-SIGNEZ LES DEUX PARTIES PUIS CLIQUEZ SUR "GENERER LE PDF".',
+      });
+    }
+  });
+
+  return alerts.map((entry, index) => ({ key: `ui-${entry.personId}-${entry.type}-${index}`, ...entry }));
+}
