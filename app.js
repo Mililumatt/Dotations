@@ -942,7 +942,7 @@ function isSessionTokenFresh(session) {
   const accessToken = String(session?.access_token || "").trim();
   if (!accessToken) return false;
   const expiresAt = Number(session?.expires_at || 0);
-  if (!Number.isFinite(expiresAt) || expiresAt <= 0) return true;
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0) return false;
   const nowSec = Math.floor(Date.now() / 1000);
   return expiresAt - nowSec > 45;
 }
