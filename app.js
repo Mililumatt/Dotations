@@ -1194,12 +1194,6 @@ async function openAdminUsersModal() {
     window.alert("ACCES REFUSE : COMPTE ADMIN REQUIS.");
     return;
   }
-  try {
-    await promptSupabaseLoginAndStoreSession();
-  } catch (error) {
-    window.alert("CONNEXION ADMIN REQUISE.");
-    return;
-  }
   if (document.getElementById("admin-users-modal")) {
     return;
   }
