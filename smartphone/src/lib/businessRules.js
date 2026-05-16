@@ -81,7 +81,7 @@ export function normalizeManualStatus(rawStatus) {
 export function getEffectStatus(person, effect) {
   if (String(effect?.dateRetour || "").trim()) return "RESTITUE";
   const manualStatus = normalizeManualStatus(effect?.statutManuel || effect?.statut);
-  if (["PERDU", "HS", "VOL"].includes(manualStatus)) return manualStatus;
+  if (["PERDU", "HS", "VOL", "DETRUIT"].includes(manualStatus)) return manualStatus;
   if (isExitDue(person)) return "NON RENDU";
   return manualStatus || "ACTIF";
 }
