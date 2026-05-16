@@ -2765,6 +2765,34 @@ function findMobileSignatureRequestByToken(token) {
   return (state.data?.demandesSignatureMobile || []).find((entry) => entry.token === token) || null;
 }
 
+function buildFallbackMobileSignatureRequestFromUrl(token) {
+  const normalizedToken = String(token || "").trim();
+  if (!normalizedToken) {
+    return null;
+  }
+  const params = new URLSearchParams(window.location.search);
+  const personId = String(params.get("personId") || "").trim();
+  const docType = normalizeText(params.get("docType") || "");
+  const signer = normalizeMobileSignatureSigner(params.get("signer") || "");
+  if (!personId || !docType) {
+    return null;
+  }
+  const createdAt = new Date();
+  const expiresAt = new Date(createdAt.getTime() + MOBILE_SIGNATURE_REQUEST_TTL_MS);
+  return {
+    id: "DSM-FALLBACK",
+    token: normalizedToken,
+    personId,
+    docType,
+    signer: signer.toUpperCase(),
+    createdAt: createdAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+    status: "EN ATTENTE",
+    validatedAt: "",
+    fallbackFromUrl: true,
+  };
+}
+
 function getActiveMobileSignatureRequest(personId, docType, signer = "personnel") {
   cleanupExpiredMobileSignatureRequests();
   const normalizedSigner = normalizeMobileSignatureSigner(signer);
@@ -2871,6 +2899,7 @@ function getQrProviderUrls(absoluteUrl) {
     `/api/qr?size=280&text=${encoded}`,
     `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}&margin=2&data=${encoded}`,
     `https://chart.googleapis.com/chart?cht=qr&chs=${qrSize}&chld=H|1&choe=UTF-8&chl=${encoded}`,
+    `https://quickchart.io/qr?size=280&text=${encoded}`,
   ];
   return providers;
 }
@@ -9673,7 +9702,7 @@ function getCurrentMobileSignatureRequest() {
     return null;
   }
   cleanupExpiredMobileSignatureRequests();
-  return findMobileSignatureRequestByToken(token);
+  return findMobileSignatureRequestByToken(token) || buildFallbackMobileSignatureRequestFromUrl(token);
 }
 
 function getMobileSignatureTargetPerson() {
