@@ -527,8 +527,9 @@ function getStoredSupabaseSession() {
   try {
     const storageKey = getSupabaseAuthStorageKey();
     if (!storageKey) return null;
-    const raw = sessionStorage.getItem(storageKey);
-    return extractSessionFromStoredSession(raw);
+    const sessionRaw = sessionStorage.getItem(storageKey);
+    const localRaw = localStorage.getItem(storageKey);
+    return extractSessionFromStoredSession(sessionRaw) || extractSessionFromStoredSession(localRaw);
   } catch (error) {
     return null;
   }
@@ -543,13 +544,12 @@ function storeSupabaseSession(session) {
   try {
     const storageKey = getSupabaseAuthStorageKey();
     if (!storageKey || !session || typeof session !== "object") return;
-    sessionStorage.setItem(
-      storageKey,
-      JSON.stringify({
-        currentSession: session,
-        expiresAt: session?.expires_at || 0,
-      })
-    );
+    const payload = JSON.stringify({
+      currentSession: session,
+      expiresAt: session?.expires_at || 0,
+    });
+    sessionStorage.setItem(storageKey, payload);
+    localStorage.setItem(storageKey, payload);
   } catch (error) {
     // ignore storage failures
   }
@@ -622,6 +622,7 @@ function clearStoredSupabaseSession() {
     const storageKey = getSupabaseAuthStorageKey();
     if (storageKey) {
       sessionStorage.removeItem(storageKey);
+      localStorage.removeItem(storageKey);
     }
   } catch (error) {
     // ignore storage failures
@@ -2894,12 +2895,12 @@ function getQrProviderUrls(absoluteUrl) {
     return [];
   }
   const encoded = encodeURIComponent(String(absoluteUrl || ""));
-  const qrSize = "280x280";
+  const qrSize = "420x420";
   const providers = [
-    `/api/qr?size=280&text=${encoded}`,
-    `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}&margin=2&data=${encoded}`,
-    `https://chart.googleapis.com/chart?cht=qr&chs=${qrSize}&chld=H|1&choe=UTF-8&chl=${encoded}`,
-    `https://quickchart.io/qr?size=280&text=${encoded}`,
+    `/api/qr?size=420&margin=2&text=${encoded}`,
+    `https://quickchart.io/qr?size=420&margin=2&ecLevel=L&dark=000000&light=ffffff&text=${encoded}`,
+    `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}&margin=2&ecc=L&color=000000&bgcolor=ffffff&data=${encoded}`,
+    `https://chart.googleapis.com/chart?cht=qr&chs=${qrSize}&chld=L|2&choe=UTF-8&chl=${encoded}`,
   ];
   return providers;
 }
@@ -2982,8 +2983,8 @@ async function fillMobileSignatureShareLink(request) {
   const qrCompactUrl = await getAbsoluteMobileSignatureUrl(request, {
     includeSessionBridge: true,
     sessionBridgeOptions: {
-      // Reliability first: keep full auth bridge for mobile save.
-      includeAccessToken: true,
+      // QR readability: keep refresh flow only for shorter payload.
+      includeAccessToken: false,
       includeRefreshToken: true,
       includeExpiresAt: true,
     },
