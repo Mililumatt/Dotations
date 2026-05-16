@@ -2982,8 +2982,8 @@ async function fillMobileSignatureShareLink(request) {
   const qrCompactUrl = await getAbsoluteMobileSignatureUrl(request, {
     includeSessionBridge: true,
     sessionBridgeOptions: {
-      // QR payload must stay short enough for reliable camera scan.
-      includeAccessToken: false,
+      // Reliability first: keep full auth bridge for mobile save.
+      includeAccessToken: true,
       includeRefreshToken: true,
       includeExpiresAt: true,
     },
@@ -3071,10 +3071,18 @@ function renderMobileSignatureLink(docType, signer, absoluteUrl) {
     return;
   }
   const hint = getMobileSignatureReachabilityHint(absoluteUrl);
+  let linkLabel = absoluteUrl;
+  try {
+    const parsed = new URL(absoluteUrl);
+    const shortToken = String(parsed.searchParams.get("token") || "").slice(0, 10);
+    linkLabel = `${parsed.origin}${parsed.pathname}${shortToken ? `?token=${shortToken}...` : ""}`;
+  } catch (error) {
+    linkLabel = absoluteUrl.length > 96 ? `${absoluteUrl.slice(0, 96)}...` : absoluteUrl;
+  }
   linkNode.hidden = false;
   linkNode.innerHTML = `
     <span>LIEN TELEPHONE :</span>
-    <a href="${escapeHtml(absoluteUrl)}" target="_blank" rel="noopener">${escapeHtml(absoluteUrl)}</a>${hint ? `<small>${escapeHtml(hint)}</small>` : ""}
+    <a href="${escapeHtml(absoluteUrl)}" target="_blank" rel="noopener">${escapeHtml(linkLabel)}</a>${hint ? `<small>${escapeHtml(hint)}</small>` : ""}
   `;
 }
 
