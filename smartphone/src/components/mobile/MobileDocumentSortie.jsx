@@ -6,10 +6,10 @@ import MobileSignatureCanvas from "./MobileSignatureCanvas";
 import {
   getEffectBillingCause as getPersistedBillingCause,
   getEffectStatus,
-  getReplacementCostValue,
   normalizeManualStatus,
   normalizeEffectCause,
   getEffectBillingStatus,
+  getEffectChargeableAmount,
 } from "@/lib/businessRules";
 
 const card = { background: "rgba(244,241,234,0.98)", border: "1px solid rgba(173,190,199,0.98)", borderRadius: 11, padding: "12px", marginBottom: 8, boxShadow: "0 4px 12px rgba(31,49,59,0.10)" };
@@ -151,9 +151,7 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
     return normalizeCause(getPersistedBillingCause(selectedPerson, effet));
   };
   const getEffetReferenceCost = (effet) => {
-    const cause = getEffetBillingCause(effet);
-    if (!cause) return 0;
-    return getReplacementCostValue(pricingRules, effet?.typeEffet, cause, effet?.designation || "");
+    return getEffectChargeableAmount(selectedPerson, effet, pricingRules);
   };
   const facturableAmounts = localEffets
     .map((e) => getEffetReferenceCost(e))

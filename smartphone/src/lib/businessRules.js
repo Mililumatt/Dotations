@@ -116,6 +116,12 @@ export function getEffectBillingStatus(effect, isChargeable) {
   return isChargeable ? "A FACTURER" : "-";
 }
 
+export function getEffectChargeableAmount(person, effect, pricingRules = []) {
+  const cause = normalizeText(getEffectBillingCause(person, effect));
+  if (!cause) return 0;
+  return getReplacementCostValue(pricingRules, effect?.typeEffet, cause, effect?.designation || "");
+}
+
 export function getReplacementCostValue(pricingRules = [], typeEffet, cause, designation = "") {
   const wantedType = normalizePricingKey(typeEffet);
   const wantedCause = normalizePricingKey(cause, { cause: true });
