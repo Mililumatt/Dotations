@@ -2979,6 +2979,15 @@ async function fillMobileSignatureShareLink(request) {
       includeExpiresAt: true,
     },
   });
+  const qrCompactUrl = await getAbsoluteMobileSignatureUrl(request, {
+    includeSessionBridge: true,
+    sessionBridgeOptions: {
+      // QR payload must stay short enough for reliable camera scan.
+      includeAccessToken: false,
+      includeRefreshToken: true,
+      includeExpiresAt: true,
+    },
+  });
 
   wrapper.hidden = false;
   input.value = absoluteUrl;
@@ -2987,7 +2996,7 @@ async function fillMobileSignatureShareLink(request) {
     reachabilityHintNode.textContent = getMobileSignatureReachabilityHint(absoluteUrl);
   }
   if (qrWrapper && qrImage) {
-    const qrTargetUrl = getQrFriendlySignatureUrl(absoluteUrl);
+    const qrTargetUrl = getQrFriendlySignatureUrl(qrCompactUrl || absoluteUrl);
     const providerUrls = getQrProviderUrls(qrTargetUrl);
     if (!providerUrls || !providerUrls.length) {
       qrWrapper.hidden = true;
@@ -9155,6 +9164,20 @@ function getSignatureValidationDate(person, docType, signer) {
     return "";
   }
   return String(person.signatures[docType][signer]?.validatedAt || "");
+}
+
+function getSignatureStorageRef(person, docType, signer) {
+  if (!person?.signatures?.[docType]) {
+    return "";
+  }
+  return String(person.signatures[docType][signer]?.storageRef || "");
+}
+
+function getSignatureStoragePublicUrl(person, docType, signer) {
+  if (!person?.signatures?.[docType]) {
+    return "";
+  }
+  return String(person.signatures[docType][signer]?.storagePublicUrl || "");
 }
 
 function setSignatureValue(person, docType, signer, value, validatedAt = "", storageRef = "", storagePublicUrl = "") {
