@@ -1022,7 +1022,6 @@ function hasSessionBridgeParamsInUrl() {
 }
 
 async function getSupabaseUserAccessToken() {
-  const hasMobileSignatureToken = hasMobileSignatureTokenInUrl();
   const isMobileSignaturePage = isMobileSignaturePageContext();
   const session = getStoredSupabaseSession();
   if (session && isSessionTokenFresh(session)) {
@@ -1045,7 +1044,7 @@ async function getSupabaseUserAccessToken() {
       clearStoredSupabaseSession();
     }
   }
-  if (isMobileSignaturePage || hasMobileSignatureToken) {
+  if (isMobileSignaturePage) {
     throw new Error("BACKEND_AUTH_REQUIRED");
   }
   return promptSupabaseLoginAndStoreSession();
