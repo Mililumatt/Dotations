@@ -160,10 +160,7 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
     .filter((amount) => amount > 0);
   const totalFacturable = facturableAmounts.reduce((sum, amount) => sum + amount, 0);
   const normalizeCostCause = (cause) => {
-    const normalized = normalizeLabel(cause);
-    if (normalized === "PERDU") return "PERTE";
-    if (normalized === "CASSE") return "DETRUIT";
-    return normalized;
+    return normalizeEffectCause(cause);
   };
   const costByType = new Map();
   const causeColumns = Array.from(
