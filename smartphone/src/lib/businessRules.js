@@ -150,17 +150,30 @@ function getLatestSignatureMs(person, docType) {
   return Math.max(p, r);
 }
 
-function hasSignedArchiveFor(person, typeLabel, documentsArchives = [], latestSignatureMs = 0) {
+function getExpectedDocumentFingerprint(person, docType) {
+  const direct = String(person?.documentFingerprints?.[docType] || "").trim();
+  if (direct) return direct;
+  const signatureScoped = String(person?.signatures?.[docType]?.fingerprint || "").trim();
+  if (signatureScoped) return signatureScoped;
+  return "";
+}
+
+function hasSignedArchiveFor(person, typeLabel, documentsArchives = [], latestSignatureMs = 0, expectedFingerprint = "") {
   const archives = (documentsArchives || []).filter((entry) => {
     if (String(entry?.personId || "") !== String(person?.id || "")) return false;
     if (normalizeText(entry?.typeDocument) !== normalizeText(typeLabel)) return false;
     if (!String(entry?.pdfPath || "").trim()) return false;
-    if (normalizeText(entry?.statutSignature) !== "SIGNE") return false;
     return true;
   });
   if (!archives.length) return false;
+  if (expectedFingerprint) {
+    const fingerprintMatch = archives.some((entry) => String(entry?.fingerprint || "").trim() === expectedFingerprint);
+    if (fingerprintMatch) return true;
+  }
+  const signedArchives = archives.filter((entry) => normalizeText(entry?.statutSignature) === "SIGNE");
+  if (!signedArchives.length) return false;
   if (!latestSignatureMs) return true;
-  return archives.some((entry) => (Date.parse(String(entry?.dateArchivage || "")) || 0) >= latestSignatureMs);
+  return signedArchives.some((entry) => (Date.parse(String(entry?.dateArchivage || "")) || 0) >= latestSignatureMs);
 }
 
 export function buildUiOverviewAlerts(persons = [], documentsArchives = [], todayIso = new Date().toISOString().slice(0, 10)) {
@@ -213,8 +226,20 @@ export function buildUiOverviewAlerts(persons = [], documentsArchives = [], toda
     ).length;
     const arrivalSigned = isDocumentFullySigned(person, "arrival");
     const exitSigned = isDocumentFullySigned(person, "exit");
-    const hasArrivalPdf = hasSignedArchiveFor(person, "ARRIVEE", docs, getLatestSignatureMs(person, "arrival"));
-    const hasExitPdf = hasSignedArchiveFor(person, "SORTIE", docs, getLatestSignatureMs(person, "exit"));
+    const hasArrivalPdf = hasSignedArchiveFor(
+      person,
+      "ARRIVEE",
+      docs,
+      getLatestSignatureMs(person, "arrival"),
+      getExpectedDocumentFingerprint(person, "arrival")
+    );
+    const hasExitPdf = hasSignedArchiveFor(
+      person,
+      "SORTIE",
+      docs,
+      getLatestSignatureMs(person, "exit"),
+      getExpectedDocumentFingerprint(person, "exit")
+    );
 
     if (currentEffectsCount > 0 && !arrivalSigned) {
       alerts.push({
