@@ -1073,6 +1073,19 @@ async function getSupabaseUserAccessToken(options = {}) {
   return promptSupabaseLoginAndStoreSession();
 }
 
+async function enforceUiLoginOnEachOpen() {
+  if (isMobileSignaturePageContext()) {
+    return;
+  }
+  try {
+    clearStoredSupabaseSession();
+    await promptSupabaseLoginAndStoreSession();
+  } catch (error) {
+    window.alert("CONNEXION OBLIGATOIRE POUR OUVRIR L'INTERFACE.");
+    throw new Error("BACKEND_AUTH_REQUIRED");
+  }
+}
+
 function renderRoleBadge() {
   let badge = document.getElementById("dotations-role-badge");
   if (!badge) {
@@ -3298,6 +3311,7 @@ async function loadData() {
   reorderOverviewSearchBlock();
   importSupabaseSessionFromUrlIfPresent();
   restoreNavigationContext();
+  await enforceUiLoginOnEachOpen();
   clearSearchInputsOnInitialLoad();
   bindSearchClearOnBrowserEvents();
   applyActiveNav();
