@@ -94,6 +94,7 @@ const PASSWORD_RESET_COOLDOWN_KEY = "dotations-reset-password-last-sent-at";
 const PASSWORD_RESET_COOLDOWN_MS = 70 * 1000;
 const ADMIN_INVITE_COOLDOWN_KEY = "dotations-admin-invite-last-sent-at";
 const ADMIN_INVITE_COOLDOWN_MS = 70 * 1000;
+const ADMIN_INTERACTIVE_AUTH_MARKER_KEY = "dotations-admin-interactive-auth-ok";
 const PDF_LAYOUT_VERSION = "2026-03-14-exit-layout-fix-3";
 const PDF_FORMAT_LOCK = "v1";
 let pdfModalCleanupBound = false;
@@ -627,6 +628,7 @@ function clearStoredSupabaseSession() {
       sessionStorage.removeItem(storageKey);
       localStorage.removeItem(storageKey);
     }
+    sessionStorage.removeItem(ADMIN_INTERACTIVE_AUTH_MARKER_KEY);
   } catch (error) {
     // ignore storage failures
   }
@@ -657,6 +659,11 @@ async function promptSupabaseLoginAndStoreSession() {
     throw new Error("BACKEND_AUTH_REQUIRED");
   }
   storeSupabaseSession(data);
+  try {
+    sessionStorage.setItem(ADMIN_INTERACTIVE_AUTH_MARKER_KEY, "1");
+  } catch (error) {
+    // ignore marker failures
+  }
   await logAdminLoginEvent(accessToken, data);
   return accessToken;
 }
@@ -1021,8 +1028,24 @@ function hasSessionBridgeParamsInUrl() {
   );
 }
 
-async function getSupabaseUserAccessToken() {
+async function getSupabaseUserAccessToken(options = {}) {
   const isMobileSignaturePage = isMobileSignaturePageContext();
+  const requireInteractiveLogin = options?.requireInteractiveLogin === true;
+  if (requireInteractiveLogin) {
+    const alreadyValidated = (() => {
+      try {
+        return sessionStorage.getItem(ADMIN_INTERACTIVE_AUTH_MARKER_KEY) === "1";
+      } catch (error) {
+        return false;
+      }
+    })();
+    if (!alreadyValidated) {
+      if (isMobileSignaturePage) {
+        throw new Error("BACKEND_AUTH_REQUIRED");
+      }
+      return promptSupabaseLoginAndStoreSession();
+    }
+  }
   const session = getStoredSupabaseSession();
   if (session && isSessionTokenFresh(session)) {
     const token = String(session.access_token || "").trim();
@@ -1156,6 +1179,12 @@ function setAdminArchivedUserIds(ids = []) {
 async function openAdminUsersModal() {
   if (state.currentUserRoleLabel !== "ADMIN") {
     window.alert("ACCES REFUSE : COMPTE ADMIN REQUIS.");
+    return;
+  }
+  try {
+    await promptSupabaseLoginAndStoreSession();
+  } catch (error) {
+    window.alert("CONNEXION ADMIN REQUISE.");
     return;
   }
   if (document.getElementById("admin-users-modal")) {
@@ -1399,14 +1428,14 @@ async function openAdminUsersModal() {
       });
     };
     try {
-      let accessToken = await getSupabaseUserAccessToken();
+      let accessToken = await getSupabaseUserAccessToken({ requireInteractiveLogin: true });
       if (!accessToken) {
         throw new Error("BACKEND_AUTH_REQUIRED");
       }
       let response = await loadVersions(accessToken);
       if (response.status === 401 || response.status === 403) {
         clearStoredSupabaseSession();
-        accessToken = await getSupabaseUserAccessToken();
+        accessToken = await getSupabaseUserAccessToken({ requireInteractiveLogin: true });
         if (!accessToken) {
           throw new Error("BACKEND_AUTH_REQUIRED");
         }
@@ -1672,7 +1701,7 @@ async function openAdminUsersModal() {
         if (!window.confirm(`Restaurer app_state ${appStateId} revision ${sourceRevision} ?`)) {
           return;
         }
-        const accessToken = await getSupabaseUserAccessToken();
+        const accessToken = await getSupabaseUserAccessToken({ requireInteractiveLogin: true });
         if (!accessToken) {
           throw new Error("BACKEND_AUTH_REQUIRED");
         }
