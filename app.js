@@ -933,8 +933,12 @@ function promptSupabaseCredentialsForm() {
           ${suggestedEmails.map((email) => `<option value="${escapeHtml(email)}">${escapeHtml(email)}</option>`).join("")}
         </select>
         <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Mot de passe</label>
-        <input id="supabase-login-password" name="password" type="password" autocomplete="current-password" required
-          style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:12px;" />
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
+          <input id="supabase-login-password" name="password" type="password" autocomplete="current-password" required
+            style="flex:1 1 auto;width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;" />
+          <button type="button" id="supabase-login-toggle-password" aria-label="Afficher le mot de passe"
+            style="height:40px;min-width:40px;padding:0 10px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;">👁</button>
+        </div>
         <div id="supabase-login-status" style="font-size:12px;color:#4a6170;margin:-6px 0 10px;"></div>
         <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:nowrap;">
           <button type="button" id="supabase-login-forgot-id"
@@ -955,6 +959,7 @@ function promptSupabaseCredentialsForm() {
     const emailSelect = box.querySelector("#supabase-login-email-select");
     const usernameProxyInput = box.querySelector("#supabase-login-username-proxy");
     const passwordInput = box.querySelector("#supabase-login-password");
+    const togglePasswordButton = box.querySelector("#supabase-login-toggle-password");
     const statusNode = box.querySelector("#supabase-login-status");
     const forgotIdButton = box.querySelector("#supabase-login-forgot-id");
     const forgotButton = box.querySelector("#supabase-login-forgot");
@@ -986,6 +991,14 @@ function promptSupabaseCredentialsForm() {
       if (usernameProxyInput) {
         usernameProxyInput.value = String(emailSelect.value || "").trim();
       }
+    });
+
+    togglePasswordButton?.addEventListener("click", () => {
+      if (!passwordInput) return;
+      const show = passwordInput.type === "password";
+      passwordInput.type = show ? "text" : "password";
+      togglePasswordButton.textContent = show ? "🙈" : "👁";
+      togglePasswordButton.setAttribute("aria-label", show ? "Masquer le mot de passe" : "Afficher le mot de passe");
     });
 
     const cleanup = () => {
