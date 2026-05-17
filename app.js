@@ -11,6 +11,7 @@ const DEFAULT_FILTERS = {
 const state = {
   data: null,
   supabaseRevision: null,
+  latestDataEtag: "",
   currentSheetPersonId: "",
   editingEffectId: "",
   editingReferenceId: "",
@@ -2590,14 +2591,16 @@ async function fetchLatestDataSnapshot() {
   if (mode === "SUPABASE") {
     const etagKey = "__dotations_data_etag";
     const cacheKey = "__dotations_data_snapshot";
-    let knownEtag = "";
+    let knownEtag = String(state.latestDataEtag || "");
     let cachedSnapshot = null;
     try {
-      knownEtag = String(sessionStorage.getItem(etagKey) || "");
+      const storedEtag = String(sessionStorage.getItem(etagKey) || "");
+      if (storedEtag) {
+        knownEtag = storedEtag;
+      }
       const raw = sessionStorage.getItem(cacheKey);
       cachedSnapshot = raw ? JSON.parse(raw) : null;
     } catch (error) {
-      knownEtag = "";
       cachedSnapshot = null;
     }
     const headers = knownEtag ? { "If-None-Match": knownEtag } : {};
@@ -2605,14 +2608,30 @@ async function fetchLatestDataSnapshot() {
       "data",
       { method: "GET", headers, acceptedStatuses: [304] }
     );
-    if (response.status === 304 && cachedSnapshot && typeof cachedSnapshot === "object") {
-      return cachedSnapshot;
+    if (response.status === 304) {
+      if (cachedSnapshot && typeof cachedSnapshot === "object") {
+        return cachedSnapshot;
+      }
+      const fallbackResponse = await callEdgeApi("data", { method: "GET" });
+      const fallbackSnapshot = await fallbackResponse.json();
+      const fallbackEtag = String(fallbackResponse.headers.get("etag") || "").trim();
+      if (fallbackEtag) {
+        state.latestDataEtag = fallbackEtag;
+      }
+      return fallbackSnapshot;
     }
     const nextSnapshot = await response.json();
     const responseEtag = String(response.headers.get("etag") || "").trim();
+    if (responseEtag) {
+      state.latestDataEtag = responseEtag;
+    }
     if (responseEtag && nextSnapshot && typeof nextSnapshot === "object") {
       try {
         sessionStorage.setItem(etagKey, responseEtag);
+      } catch (error) {
+        // ignore etag cache write failures
+      }
+      try {
         sessionStorage.setItem(cacheKey, JSON.stringify(nextSnapshot));
       } catch (error) {
         // ignore storage cache failures
