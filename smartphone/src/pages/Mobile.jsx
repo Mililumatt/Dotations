@@ -135,6 +135,7 @@ export default function Mobile() {
   const personsRef = useRef([]);
   const selectedPersonRef = useRef(null);
   const skipNextPushRef = useRef(true);
+  const lastManualRefreshAtRef = useRef(0);
 
   const applyUrlState = (state) => {
     const wantedTab = isValidTab(state?.tab) ? state.tab : "overview";
@@ -569,6 +570,16 @@ export default function Mobile() {
     setActiveTab(tab);
   };
 
+  const handleManualRefresh = () => {
+    const now = Date.now();
+    const elapsed = now - Number(lastManualRefreshAtRef.current || 0);
+    if (elapsed < 4000) {
+      return;
+    }
+    lastManualRefreshAtRef.current = now;
+    loadData();
+  };
+
   const topSaveButtonStyle = (() => {
     if (saveStatus === "unsaved") {
       return {
@@ -757,7 +768,7 @@ export default function Mobile() {
           >
             {saveStatus === "saving" ? "SAUVEGARDE..." : saveStatus === "unsaved" ? "SAUVEGARDER" : "SAUVEGARDE"}
           </button>
-          <button onClick={loadData} style={{ flex: "0 0 auto", fontSize: 9, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(63,97,112,0.12)", color: "#213b48", cursor: "pointer" }}>
+          <button onClick={handleManualRefresh} style={{ flex: "0 0 auto", fontSize: 9, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(63,97,112,0.12)", color: "#213b48", cursor: "pointer" }}>
             ↻
           </button>
           <button onClick={handleLogout} style={{ flex: "0 0 auto", fontSize: 9, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(63,97,112,0.12)", color: "#213b48", cursor: "pointer" }}>
