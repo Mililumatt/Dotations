@@ -923,6 +923,9 @@ function promptSupabaseCredentialsForm() {
     box.innerHTML = `
       <div style="font-weight:700;font-size:16px;margin-bottom:10px;color:#132833;">Connexion requise</div>
       <form id="supabase-login-form" autocomplete="on">
+        <input id="supabase-login-username-proxy" name="email" type="email" autocomplete="username email"
+          tabindex="-1" aria-hidden="true"
+          style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
         <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Email Supabase</label>
         <select id="supabase-login-email-select" name="username" required
           style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:10px;background:#fff;">
@@ -950,6 +953,7 @@ function promptSupabaseCredentialsForm() {
 
     const form = box.querySelector("#supabase-login-form");
     const emailSelect = box.querySelector("#supabase-login-email-select");
+    const usernameProxyInput = box.querySelector("#supabase-login-username-proxy");
     const passwordInput = box.querySelector("#supabase-login-password");
     const statusNode = box.querySelector("#supabase-login-status");
     const forgotIdButton = box.querySelector("#supabase-login-forgot-id");
@@ -973,7 +977,16 @@ function promptSupabaseCredentialsForm() {
       } else {
         emailSelect.value = "";
       }
+      if (usernameProxyInput) {
+        usernameProxyInput.value = String(emailSelect.value || "").trim();
+      }
     };
+
+    emailSelect?.addEventListener("change", () => {
+      if (usernameProxyInput) {
+        usernameProxyInput.value = String(emailSelect.value || "").trim();
+      }
+    });
 
     const cleanup = () => {
       backdrop.remove();
