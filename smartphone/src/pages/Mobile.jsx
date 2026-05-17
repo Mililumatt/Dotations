@@ -120,6 +120,7 @@ export default function Mobile() {
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyAvailable, setPasskeyAvailable] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [roleLabel, setRoleLabel] = useState("LECTURE");
   const [loadError, setLoadError] = useState("");
@@ -275,6 +276,12 @@ export default function Mobile() {
       unsubscribe?.();
       window.removeEventListener("beforeunload", cleanupWindowMarker);
     };
+  }, []);
+
+  useEffect(() => {
+    setPasskeyAvailable(
+      supportsWebAuthnPlatform() && typeof supabase?.auth?.signInWithPasskey === "function"
+    );
   }, []);
 
   useEffect(() => {
@@ -633,14 +640,16 @@ export default function Mobile() {
           >
             {resetBusy ? "ENVOI..." : "MOT DE PASSE OUBLIE"}
           </button>
-          <button
-            type="button"
-            onClick={handlePasskeyLogin}
-            disabled={passkeyBusy}
-            style={{ height: 36, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#fff", color: "#1d3440", fontWeight: 700, cursor: "pointer" }}
-          >
-            {passkeyBusy ? "VERIFICATION..." : "DEVERROUILLER PAR EMPREINTE"}
-          </button>
+          {passkeyAvailable ? (
+            <button
+              type="button"
+              onClick={handlePasskeyLogin}
+              disabled={passkeyBusy}
+              style={{ height: 36, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#fff", color: "#1d3440", fontWeight: 700, cursor: "pointer" }}
+            >
+              {passkeyBusy ? "VERIFICATION..." : "DEVERROUILLER PAR EMPREINTE"}
+            </button>
+          ) : null}
           <button type="submit" disabled={loginBusy} style={{ height: 38, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#3f6170", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
             {loginBusy ? "CONNEXION..." : "SE CONNECTER"}
           </button>
