@@ -14192,13 +14192,15 @@ async function saveDataToFile(options = {}) {
 
   const {
     silent = false,
-    reloadAfter = true,
+    reloadAfter = null,
     successText = "data.json MIS A JOUR",
     alertText = "",
     closeAfterAlert = false,
     promptDownload = !silent,
     reloadOnConflict = true,
   } = resolvedOptions;
+  const shouldReloadAfter =
+    typeof reloadAfter === "boolean" ? reloadAfter : getDataBackendMode() !== "SUPABASE";
 
   if (state.saveInFlight) {
     showDataStatus("SAUVEGARDE EN COURS...");
@@ -14291,7 +14293,7 @@ async function saveDataToFile(options = {}) {
     } else {
       pulseSaveButtons();
     }
-    if (reloadAfter) {
+    if (shouldReloadAfter) {
       try {
         await reloadData(mode === "SUPABASE" ? "RELECTURE DES DONNEES SUPABASE..." : "RELECTURE DE data.json...");
       } catch (reloadError) {
