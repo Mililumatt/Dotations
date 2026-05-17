@@ -122,3 +122,16 @@ Date de mise a jour: 10/05/2026
 - Toujours ajouter aussi:
   - la phrase de commit,
   - le statut des verifications anti-regression.
+
+## 11) Regle tests avant validation (obligatoire)
+
+- Toujours tester les codages avant de les valider.
+- Ordre obligatoire:
+  1. verifier la syntaxe (`node --check app.js`) si `app.js` est touche,
+  2. lancer les tests automatiques disponibles du repo,
+  3. faire une verification manuelle ciblee des zones impactees.
+- Interdiction de presenter un patch comme valide sans resultat de tests.
+- Le compte-rendu doit toujours indiquer:
+  - tests lances,
+  - resultat (OK/ECHEC),
+  - points restants a verifier manuellement.
