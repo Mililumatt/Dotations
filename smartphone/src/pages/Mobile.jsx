@@ -119,6 +119,7 @@ export default function Mobile() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [roleLabel, setRoleLabel] = useState("LECTURE");
   const [loadError, setLoadError] = useState("");
@@ -238,12 +239,7 @@ export default function Mobile() {
     let mounted = true;
     const isFreshWindowOpen = !window.sessionStorage.getItem(MOBILE_WINDOW_SESSION_KEY);
     window.sessionStorage.setItem(MOBILE_WINDOW_SESSION_KEY, "1");
-    const supports = supportsWebAuthnPlatform();
-    setBiometricSupported(supports);
-    const enabled = supports && window.localStorage.getItem(MOBILE_BIOMETRIC_ENABLED_KEY) === "1";
-    setBiometricEnabled(Boolean(enabled));
-
-    if (isFreshWindowOpen && !enabled) {
+    if (isFreshWindowOpen) {
       // Force a clean auth state on fresh window open so login is required again.
       supabase.auth.signOut().catch(() => {});
     }
@@ -297,18 +293,29 @@ export default function Mobile() {
       setBiometricUnlocked(false);
       return;
     }
-    if (biometricEnabled) {
-      setBiometricRequired(true);
-      if (!biometricUnlocked) {
-        setLoading(false);
-        return;
-      }
-    } else {
-      setBiometricRequired(false);
-      setBiometricUnlocked(false);
-    }
     loadData();
-  }, [session, authLoading, biometricEnabled, biometricUnlocked]);
+  }, [session, authLoading]);
+
+  const handlePasskeyLogin = async () => {
+    setLoginError("");
+    setPasskeyBusy(true);
+    try {
+      if (typeof supabase?.auth?.signInWithPasskey !== "function") {
+        throw new Error("PASSKEY_NON_DISPONIBLE");
+      }
+      const { error } = await supabase.auth.signInWithPasskey();
+      if (error) throw error;
+    } catch (error) {
+      const message = String(error?.message || "");
+      setLoginError(
+        message && message !== "PASSKEY_NON_DISPONIBLE"
+          ? message
+          : "Empreinte non disponible sur cette configuration."
+      );
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
 
   const enableBiometricLock = async () => {
     if (!session?.user?.id || !supportsWebAuthnPlatform()) return;
@@ -626,6 +633,14 @@ export default function Mobile() {
           >
             {resetBusy ? "ENVOI..." : "MOT DE PASSE OUBLIE"}
           </button>
+          <button
+            type="button"
+            onClick={handlePasskeyLogin}
+            disabled={passkeyBusy}
+            style={{ height: 36, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#fff", color: "#1d3440", fontWeight: 700, cursor: "pointer" }}
+          >
+            {passkeyBusy ? "VERIFICATION..." : "DEVERROUILLER PAR EMPREINTE"}
+          </button>
           <button type="submit" disabled={loginBusy} style={{ height: 38, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#3f6170", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
             {loginBusy ? "CONNEXION..." : "SE CONNECTER"}
           </button>
@@ -634,7 +649,7 @@ export default function Mobile() {
     );
   }
 
-  if (biometricRequired && !biometricUnlocked) {
+  if (false && biometricRequired && !biometricUnlocked) {
     return (
       <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #ebe6dc 0%, #d9e2e7 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
         <div style={{ width: "100%", maxWidth: 360, background: "rgba(255,255,255,0.78)", border: "1px solid rgba(63,97,112,0.25)", borderRadius: 12, padding: 16, display: "grid", gap: 10 }}>
@@ -739,7 +754,7 @@ export default function Mobile() {
           <button onClick={handleLogout} style={{ flex: "0 0 auto", fontSize: 9, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(63,97,112,0.12)", color: "#213b48", cursor: "pointer" }}>
             ⎋
           </button>
-          {biometricSupported ? (
+          {false && biometricSupported ? (
             biometricEnabled ? (
               <button onClick={disableBiometricLock} style={{ flex: "0 0 auto", fontSize: 8, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(255,255,255,0.78)", color: "#213b48", cursor: "pointer" }}>
                 EMPREINTE ON
