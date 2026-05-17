@@ -923,15 +923,13 @@ function promptSupabaseCredentialsForm() {
     box.innerHTML = `
       <div style="font-weight:700;font-size:16px;margin-bottom:10px;color:#132833;">Connexion requise</div>
       <form id="supabase-login-form" autocomplete="on">
-        <input id="supabase-login-username-proxy" name="email" type="email" autocomplete="username email"
-          tabindex="-1" aria-hidden="true"
-          style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
         <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Email Supabase</label>
-        <select id="supabase-login-email-select" name="username" required
-          style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:10px;background:#fff;">
-          <option value="">Selectionner un compte...</option>
-          ${suggestedEmails.map((email) => `<option value="${escapeHtml(email)}">${escapeHtml(email)}</option>`).join("")}
-        </select>
+        <input id="supabase-login-email-input" name="username" type="email" autocomplete="username email" required
+          list="supabase-login-email-options" placeholder="Selectionner un compte..."
+          style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:10px;background:#fff;" />
+        <datalist id="supabase-login-email-options">
+          ${suggestedEmails.map((email) => `<option value="${escapeHtml(email)}"></option>`).join("")}
+        </datalist>
         <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Mot de passe</label>
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
           <input id="supabase-login-password" name="password" type="password" autocomplete="current-password" required
@@ -956,8 +954,8 @@ function promptSupabaseCredentialsForm() {
     document.body.appendChild(backdrop);
 
     const form = box.querySelector("#supabase-login-form");
-    const emailSelect = box.querySelector("#supabase-login-email-select");
-    const usernameProxyInput = box.querySelector("#supabase-login-username-proxy");
+    const emailInput = box.querySelector("#supabase-login-email-input");
+    const emailOptions = box.querySelector("#supabase-login-email-options");
     const passwordInput = box.querySelector("#supabase-login-password");
     const togglePasswordButton = box.querySelector("#supabase-login-toggle-password");
     const statusNode = box.querySelector("#supabase-login-status");
@@ -966,32 +964,22 @@ function promptSupabaseCredentialsForm() {
     const cancelButton = box.querySelector("#supabase-login-cancel");
 
     const renderEmailOptions = (emails = [], preferredEmail = "") => {
-      if (!emailSelect) return;
+      if (!emailOptions) return;
       const normalized = Array.from(
         new Set((emails || []).map((entry) => String(entry || "").trim().toLowerCase()).filter(Boolean)),
       );
-      emailSelect.innerHTML = `
-        <option value="">Selectionner un compte...</option>
-        ${normalized.map((email) => `<option value="${escapeHtml(email)}">${escapeHtml(email)}</option>`).join("")}
-      `;
+      emailOptions.innerHTML = normalized.map((email) => `<option value="${escapeHtml(email)}"></option>`).join("");
       const preferred = String(preferredEmail || "").trim().toLowerCase();
-      if (preferred && normalized.includes(preferred)) {
-        emailSelect.value = preferred;
-      } else if (normalized[0]) {
-        emailSelect.value = normalized[0];
-      } else {
-        emailSelect.value = "";
-      }
-      if (usernameProxyInput) {
-        usernameProxyInput.value = String(emailSelect.value || "").trim();
+      if (emailInput) {
+        if (preferred && normalized.includes(preferred)) {
+          emailInput.value = preferred;
+        } else if (normalized[0]) {
+          emailInput.value = normalized[0];
+        } else {
+          emailInput.value = "";
+        }
       }
     };
-
-    emailSelect?.addEventListener("change", () => {
-      if (usernameProxyInput) {
-        usernameProxyInput.value = String(emailSelect.value || "").trim();
-      }
-    });
 
     togglePasswordButton?.addEventListener("click", () => {
       if (!passwordInput) return;
@@ -1019,7 +1007,7 @@ function promptSupabaseCredentialsForm() {
     });
 
     forgotButton.addEventListener("click", async () => {
-      const email = String(emailSelect.value || "").trim();
+      const email = String(emailInput?.value || "").trim();
       if (!email) {
         statusNode.textContent = "Saisissez d'abord votre email.";
         statusNode.style.color = "#8e2c2c";
@@ -1047,7 +1035,7 @@ function promptSupabaseCredentialsForm() {
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const email = String(emailSelect.value || "").trim();
+      const email = String(emailInput?.value || "").trim();
       const password = String(passwordInput.value || "");
       if (email) {
         mergeLoginEmailSuggestions([email]);
@@ -1063,7 +1051,7 @@ function promptSupabaseCredentialsForm() {
 
     window.setTimeout(() => {
       renderEmailOptions(suggestedEmails, primaryEmail);
-      emailSelect?.focus();
+      emailInput?.focus();
     }, 0);
 
     const session = getStoredSupabaseSession();
