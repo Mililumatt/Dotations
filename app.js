@@ -24,6 +24,7 @@ const state = {
   pdfProgressTimerId: 0,
   pdfGenerationActive: false,
   mobileSignaturePollTimerId: 0,
+  mobileSignaturePollInFlight: false,
   mobileSignatureNetworkInfo: null,
   autoSaveNavigationBound: false,
   searchClearBrowserEventsBound: false,
@@ -58,6 +59,7 @@ const state = {
   lastPdfOpenKey: "",
   lastPdfOpenAtMs: 0,
 };
+const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 10000;
 
 const WORKING_DATA_KEY = "dashboard-working-data";
 const LEGACY_CONTRACT_TYPES = ["CDI", "CDD", "INTERIMAIRE"];
@@ -4089,6 +4091,7 @@ function stopMobileSignaturePolling() {
     window.clearInterval(state.mobileSignaturePollTimerId);
     state.mobileSignaturePollTimerId = 0;
   }
+  state.mobileSignaturePollInFlight = false;
 }
 
 function getActiveDocumentMobileSignatureRequest() {
@@ -4108,6 +4111,13 @@ function getActiveDocumentMobileSignatureRequest() {
 }
 
 async function pollMobileSignatureRequest() {
+  if (document.visibilityState === "hidden") {
+    return;
+  }
+  if (state.mobileSignaturePollInFlight) {
+    return;
+  }
+  state.mobileSignaturePollInFlight = true;
   const page = document.body.dataset.page || "";
   if (page !== "arrival-document" && page !== "exit-document") {
     stopMobileSignaturePolling();
@@ -4185,6 +4195,8 @@ async function pollMobileSignatureRequest() {
     }
   } catch (error) {
     // ignore polling errors
+  } finally {
+    state.mobileSignaturePollInFlight = false;
   }
 }
 
@@ -4201,7 +4213,7 @@ function syncMobileSignaturePolling() {
   pollMobileSignatureRequest();
   state.mobileSignaturePollTimerId = window.setInterval(() => {
     pollMobileSignatureRequest();
-  }, 2500);
+  }, MOBILE_SIGNATURE_POLL_INTERVAL_MS);
 }
 
 function applyActiveNav() {
