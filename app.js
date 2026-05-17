@@ -14240,7 +14240,10 @@ async function saveDataToFile(options = {}) {
       if (mode === "SUPABASE") {
         await callEdgeApi("save", {
           method: "POST",
-          body: JSON.stringify(state.data),
+          body: JSON.stringify({
+            payload: state.data,
+            expectedRevision: Number(state.supabaseRevision),
+          }),
         });
         saveStatusText = "DONNEES SAUVEGARDEES VIA BACKEND";
         saveAlertText = alertText || "DONNEES MISES A JOUR VIA BACKEND";
