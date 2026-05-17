@@ -215,7 +215,7 @@ export default function MobileOverview({ persons, effets, documentsArchives, uiA
         {[
           { label: "EN POSTE", value: enPoste },
           { label: "EFFETS CONFIES", value: totalEffets },
-          { label: "NON RENDUS A CE JOUR", value: nonRendus },
+          { label: "NON RENDUS", value: nonRendus },
         ].map(k => (
           <div key={k.label} style={{ ...card, padding: "8px 10px", marginBottom: 0, display: "flex", flexDirection: "column" }}>
             <p style={label}>{k.label}</p>
