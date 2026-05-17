@@ -236,7 +236,9 @@ async function fetchLoginEmailSuggestionsFromBackend(accessToken) {
     if (!response.ok) return [];
     const payload = await response.json().catch(() => ({}));
     const users = normalizeAdminUsersList(payload);
-    return users
+    const authBackedUsers = users.filter((entry) => isAdminUserResettable(entry));
+    const source = authBackedUsers.length ? authBackedUsers : users;
+    return source
       .map((entry) => String(entry?.email || "").trim().toLowerCase())
       .filter(Boolean);
   } catch (error) {
@@ -1321,6 +1323,23 @@ function normalizeAdminUserRole(role) {
   return normalizeRequestedUserRole(role);
 }
 
+function toOptionalBoolean(value) {
+  if (value === true || value === false) return value;
+  if (value === 1 || value === 0) return Boolean(value);
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (["true", "1", "yes", "y", "ok", "auth", "valid"].includes(normalized)) return true;
+  if (["false", "0", "no", "n", "invalid", "profile_only", "orphan"].includes(normalized)) return false;
+  return null;
+}
+
+function isAdminUserResettable(entry) {
+  if (!entry) return false;
+  if (entry.canResetPassword === false) return false;
+  if (entry.isAuthUser === false) return false;
+  return Boolean(String(entry.email || "").trim());
+}
+
 function normalizeAdminUsersList(payload) {
   const candidates = [
     payload?.users,
@@ -1334,11 +1353,19 @@ function normalizeAdminUsersList(payload) {
   if (!Array.isArray(list)) return [];
   return list.map((entry) => {
     const role = normalizeAdminUserRole(entry?.role || entry?.profile?.role || "viewer");
+    const isAuthUser = toOptionalBoolean(
+      entry?.is_auth_user ?? entry?.isAuthUser ?? entry?.auth_user_exists ?? entry?.authUserExists
+    );
+    const canResetPassword = toOptionalBoolean(
+      entry?.can_reset_password ?? entry?.canResetPassword ?? entry?.resettable ?? entry?.password_reset_enabled
+    );
     return {
       id: String(entry?.id || entry?.user_id || "").trim(),
       email: String(entry?.email || "").trim(),
       role,
       createdAt: String(entry?.created_at || entry?.createdAt || "").trim(),
+      isAuthUser,
+      canResetPassword,
     };
   });
 }
@@ -1558,6 +1585,15 @@ async function openAdminUsersModal() {
           <tr data-user-id="${escapeHtml(user.id)}">
             <td style="padding:8px;border-bottom:1px solid #e2ebef;font-size:12px;color:#1c3440;">${escapeHtml(user.email || "-")}</td>
             <td style="padding:8px;border-bottom:1px solid #e2ebef;font-size:12px;color:#1c3440;">${escapeHtml(formatAdminUserDate(user.createdAt))}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2ebef;font-size:11px;color:#1c3440;">
+              ${
+                user.canResetPassword === false || user.isAuthUser === false
+                  ? "NON RESETTABLE"
+                  : user.canResetPassword === true || user.isAuthUser === true
+                    ? "AUTH OK"
+                    : "INCONNU"
+              }
+            </td>
             <td style="padding:8px;border-bottom:1px solid #e2ebef;">
               <select data-action="role" style="height:30px;padding:0 8px;border:1px solid #9bb2be;border-radius:7px;">
                 <option value="viewer"${user.role === "viewer" ? " selected" : ""}>LECTURE</option>
@@ -1578,11 +1614,12 @@ async function openAdminUsersModal() {
           <tr style="background:#f3f7f9;">
             <th style="text-align:left;padding:8px;font-size:11px;color:#3d5865;">EMAIL</th>
             <th style="text-align:left;padding:8px;font-size:11px;color:#3d5865;">CREATION</th>
+            <th style="text-align:left;padding:8px;font-size:11px;color:#3d5865;">AUTH</th>
             <th style="text-align:left;padding:8px;font-size:11px;color:#3d5865;">ROLE</th>
             <th style="text-align:left;padding:8px;font-size:11px;color:#3d5865;">ACTION</th>
           </tr>
         </thead>
-        <tbody>${rows || `<tr><td colspan="4" style="padding:12px;text-align:center;color:#4a6170;font-size:12px;">AUCUN UTILISATEUR</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="5" style="padding:12px;text-align:center;color:#4a6170;font-size:12px;">AUCUN UTILISATEUR</td></tr>`}</tbody>
       </table>
     `;
   };
