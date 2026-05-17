@@ -2184,7 +2184,11 @@ async function callEdgeApi(pathname, options = {}, retryOnAuthFailure = true) {
     body: options.body || undefined,
     cache: "no-store",
   });
-  if (!response.ok) {
+  const acceptedStatuses = Array.isArray(options?.acceptedStatuses)
+    ? options.acceptedStatuses.map((code) => Number(code)).filter((code) => Number.isFinite(code))
+    : [];
+  const isExplicitlyAccepted = acceptedStatuses.includes(Number(response.status));
+  if (!response.ok && !isExplicitlyAccepted) {
     const detail = await response.text().catch(() => "");
     const detailUpper = String(detail || "").toUpperCase();
     if ((response.status === 401 || response.status === 403) && retryOnAuthFailure) {
@@ -2584,8 +2588,37 @@ async function saveSupabaseStateData(payload) {
 async function fetchLatestDataSnapshot() {
   const mode = getDataBackendMode();
   if (mode === "SUPABASE") {
-    const response = await callEdgeApi("data", { method: "GET" });
-    return response.json();
+    const etagKey = "__dotations_data_etag";
+    const cacheKey = "__dotations_data_snapshot";
+    let knownEtag = "";
+    let cachedSnapshot = null;
+    try {
+      knownEtag = String(sessionStorage.getItem(etagKey) || "");
+      const raw = sessionStorage.getItem(cacheKey);
+      cachedSnapshot = raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      knownEtag = "";
+      cachedSnapshot = null;
+    }
+    const headers = knownEtag ? { "If-None-Match": knownEtag } : {};
+    const response = await callEdgeApi(
+      "data",
+      { method: "GET", headers, acceptedStatuses: [304] }
+    );
+    if (response.status === 304 && cachedSnapshot && typeof cachedSnapshot === "object") {
+      return cachedSnapshot;
+    }
+    const nextSnapshot = await response.json();
+    const responseEtag = String(response.headers.get("etag") || "").trim();
+    if (responseEtag && nextSnapshot && typeof nextSnapshot === "object") {
+      try {
+        sessionStorage.setItem(etagKey, responseEtag);
+        sessionStorage.setItem(cacheKey, JSON.stringify(nextSnapshot));
+      } catch (error) {
+        // ignore storage cache failures
+      }
+    }
+    return nextSnapshot;
   }
   const response = await fetch(`/api/data?ts=${Date.now()}`, { cache: "no-store" });
   if (!response.ok) {
