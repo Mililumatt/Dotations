@@ -13,6 +13,8 @@ const MOBILE_BRAND_LOGO_URL = "https://dphrvdhqhgycmllietuk.supabase.co/storage/
 const MOBILE_ADMIN_CONTACT_EMAIL = "sebastien.duc@outlook.fr";
 const MOBILE_PASSWORD_RESET_COOLDOWN_KEY = "dotations_mobile_reset_password_last_sent_at";
 const MOBILE_PASSWORD_RESET_COOLDOWN_MS = 70 * 1000;
+const MOBILE_BIOMETRIC_ENABLED_KEY = "dotations_mobile_biometric_enabled_v1";
+const MOBILE_BIOMETRIC_CREDENTIAL_ID_KEY = "dotations_mobile_biometric_credential_id_v1";
 
 const TABS = [
   { id: "overview", label: "VUE D'ENSEMBLE", icon: "🏠" },
@@ -71,6 +73,35 @@ function readUrlState() {
   };
 }
 
+function supportsWebAuthnPlatform() {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.PublicKeyCredential !== "undefined" &&
+    typeof navigator !== "undefined" &&
+    !!navigator.credentials
+  );
+}
+
+function randomChallenge(size = 32) {
+  const bytes = new Uint8Array(size);
+  crypto.getRandomValues(bytes);
+  return bytes;
+}
+
+function toBase64Url(bytes) {
+  const raw = String.fromCharCode(...new Uint8Array(bytes));
+  return btoa(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function fromBase64Url(value) {
+  const base64 = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "===".slice((base64.length + 3) % 4);
+  const raw = atob(padded);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
 export default function Mobile() {
   const [activeTab, setActiveTab] = useState("overview");
   const [persons, setPersons] = useState([]);
@@ -92,6 +123,12 @@ export default function Mobile() {
   const [roleLabel, setRoleLabel] = useState("LECTURE");
   const [loadError, setLoadError] = useState("");
   const [brandLogoReady, setBrandLogoReady] = useState(false);
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricRequired, setBiometricRequired] = useState(false);
+  const [biometricUnlocked, setBiometricUnlocked] = useState(false);
+  const [biometricBusy, setBiometricBusy] = useState(false);
+  const [biometricError, setBiometricError] = useState("");
 
   const personsRef = useRef([]);
   const selectedPersonRef = useRef(null);
@@ -201,8 +238,12 @@ export default function Mobile() {
     let mounted = true;
     const isFreshWindowOpen = !window.sessionStorage.getItem(MOBILE_WINDOW_SESSION_KEY);
     window.sessionStorage.setItem(MOBILE_WINDOW_SESSION_KEY, "1");
+    const supports = supportsWebAuthnPlatform();
+    setBiometricSupported(supports);
+    const enabled = supports && window.localStorage.getItem(MOBILE_BIOMETRIC_ENABLED_KEY) === "1";
+    setBiometricEnabled(Boolean(enabled));
 
-    if (isFreshWindowOpen) {
+    if (isFreshWindowOpen && !enabled) {
       // Force a clean auth state on fresh window open so login is required again.
       supabase.auth.signOut().catch(() => {});
     }
@@ -252,10 +293,99 @@ export default function Mobile() {
       setSelectedPerson(null);
       setLoading(false);
       setLoadError("");
+      setBiometricRequired(false);
+      setBiometricUnlocked(false);
       return;
     }
+    if (biometricEnabled) {
+      setBiometricRequired(true);
+      if (!biometricUnlocked) {
+        setLoading(false);
+        return;
+      }
+    } else {
+      setBiometricRequired(false);
+      setBiometricUnlocked(false);
+    }
     loadData();
-  }, [session, authLoading]);
+  }, [session, authLoading, biometricEnabled, biometricUnlocked]);
+
+  const enableBiometricLock = async () => {
+    if (!session?.user?.id || !supportsWebAuthnPlatform()) return;
+    setBiometricError("");
+    setBiometricBusy(true);
+    try {
+      const userIdBytes = new TextEncoder().encode(String(session.user.id || "dotations-mobile-user"));
+      const cred = await navigator.credentials.create({
+        publicKey: {
+          challenge: randomChallenge(32),
+          rp: { name: "Dotations", id: window.location.hostname },
+          user: {
+            id: userIdBytes,
+            name: String(session.user.email || "mobile@dotations.local"),
+            displayName: "Dotations Mobile",
+          },
+          pubKeyCredParams: [
+            { type: "public-key", alg: -7 },
+            { type: "public-key", alg: -257 },
+          ],
+          authenticatorSelection: {
+            authenticatorAttachment: "platform",
+            residentKey: "required",
+            userVerification: "required",
+          },
+          timeout: 60000,
+          attestation: "none",
+        },
+      });
+      if (!cred?.rawId) throw new Error("BIOMETRIE_INDISPONIBLE");
+      window.localStorage.setItem(MOBILE_BIOMETRIC_CREDENTIAL_ID_KEY, toBase64Url(cred.rawId));
+      window.localStorage.setItem(MOBILE_BIOMETRIC_ENABLED_KEY, "1");
+      setBiometricEnabled(true);
+      setBiometricUnlocked(true);
+      setBiometricRequired(false);
+    } catch (error) {
+      setBiometricError("Activation empreinte impossible.");
+    } finally {
+      setBiometricBusy(false);
+    }
+  };
+
+  const disableBiometricLock = () => {
+    window.localStorage.removeItem(MOBILE_BIOMETRIC_ENABLED_KEY);
+    window.localStorage.removeItem(MOBILE_BIOMETRIC_CREDENTIAL_ID_KEY);
+    setBiometricEnabled(false);
+    setBiometricRequired(false);
+    setBiometricUnlocked(false);
+    setBiometricError("");
+  };
+
+  const unlockWithBiometric = async () => {
+    setBiometricError("");
+    const rawId = window.localStorage.getItem(MOBILE_BIOMETRIC_CREDENTIAL_ID_KEY) || "";
+    if (!rawId) {
+      disableBiometricLock();
+      return;
+    }
+    setBiometricBusy(true);
+    try {
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge: randomChallenge(32),
+          allowCredentials: [{ type: "public-key", id: fromBase64Url(rawId) }],
+          userVerification: "required",
+          timeout: 60000,
+        },
+      });
+      if (!assertion) throw new Error("BIOMETRIE_REFUSEE");
+      setBiometricUnlocked(true);
+      setBiometricRequired(false);
+    } catch (error) {
+      setBiometricError("Empreinte refusée ou indisponible.");
+    } finally {
+      setBiometricBusy(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -504,6 +634,33 @@ export default function Mobile() {
     );
   }
 
+  if (biometricRequired && !biometricUnlocked) {
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #ebe6dc 0%, #d9e2e7 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <div style={{ width: "100%", maxWidth: 360, background: "rgba(255,255,255,0.78)", border: "1px solid rgba(63,97,112,0.25)", borderRadius: 12, padding: 16, display: "grid", gap: 10 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#1d3440" }}>DEVERROUILLAGE MOBILE</div>
+          <div style={{ fontSize: 12, color: "#355464" }}>Validez avec votre empreinte pour ouvrir l'application.</div>
+          {biometricError ? <div style={{ color: "#8e2c2c", fontSize: 12 }}>{biometricError}</div> : null}
+          <button
+            type="button"
+            onClick={unlockWithBiometric}
+            disabled={biometricBusy}
+            style={{ height: 38, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#3f6170", color: "#fff", fontWeight: 700, cursor: "pointer" }}
+          >
+            {biometricBusy ? "VERIFICATION..." : "DEVERROUILLER PAR EMPREINTE"}
+          </button>
+          <button
+            type="button"
+            onClick={handleLogout}
+            style={{ height: 36, borderRadius: 8, border: "1px solid rgba(63,97,112,0.35)", background: "#fff", color: "#1d3440", fontWeight: 700, cursor: "pointer" }}
+          >
+            CHANGER D'UTILISATEUR
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #ebe6dc 0%, #d9e2e7 100%)", display: "flex", flexDirection: "column", maxWidth: 480, margin: "0 auto", position: "relative" }}>
       <div style={{ background: "linear-gradient(180deg, #c2d2da 0%, #d9e2e7 100%)", padding: "8px 10px 8px", borderBottom: "1px solid rgba(63,97,112,0.2)", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -582,6 +739,17 @@ export default function Mobile() {
           <button onClick={handleLogout} style={{ flex: "0 0 auto", fontSize: 9, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(63,97,112,0.12)", color: "#213b48", cursor: "pointer" }}>
             ⎋
           </button>
+          {biometricSupported ? (
+            biometricEnabled ? (
+              <button onClick={disableBiometricLock} style={{ flex: "0 0 auto", fontSize: 8, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(255,255,255,0.78)", color: "#213b48", cursor: "pointer" }}>
+                EMPREINTE ON
+              </button>
+            ) : (
+              <button onClick={enableBiometricLock} disabled={biometricBusy} style={{ flex: "0 0 auto", fontSize: 8, padding: "0 8px", height: 26, borderRadius: 7, border: "1px solid rgba(63,97,112,0.3)", background: "rgba(255,255,255,0.78)", color: "#213b48", cursor: "pointer" }}>
+                {biometricBusy ? "..." : "EMPREINTE OFF"}
+              </button>
+            )
+          ) : null}
         </div>
       </div>
 
