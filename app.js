@@ -2586,6 +2586,33 @@ async function saveSupabaseStateData(payload) {
   }
 }
 
+async function saveSupabasePayloadWithRetry(payload, maxAttempts = 3) {
+  let lastError = null;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (!Number.isFinite(Number(state.supabaseRevision))) {
+      await fetchSupabaseStateData();
+    }
+    try {
+      await callEdgeApi("save", {
+        method: "POST",
+        body: JSON.stringify({
+          payload,
+          expectedRevision: Number(state.supabaseRevision),
+        }),
+      });
+      return;
+    } catch (error) {
+      if (!isSaveConflictError(error)) {
+        throw error;
+      }
+      lastError = error;
+      await fetchSupabaseStateData();
+      await new Promise((resolve) => window.setTimeout(resolve, 80));
+    }
+  }
+  throw lastError || buildSaveConflictError();
+}
+
 async function forceSaveSupabaseStateData(payload) {
   const currentRevision = Number(state.supabaseRevision);
   const nextRevision = Number.isFinite(currentRevision) ? currentRevision + 1 : 1;
@@ -14425,16 +14452,7 @@ async function saveDataToFile(options = {}) {
       let saveAlertText = alertText || "data.json A ETE MIS A JOUR";
       let saveSource = "LOCAL";
       if (mode === "SUPABASE") {
-        if (!Number.isFinite(Number(state.supabaseRevision))) {
-          await fetchSupabaseStateData();
-        }
-        await callEdgeApi("save", {
-          method: "POST",
-          body: JSON.stringify({
-            payload: state.data,
-            expectedRevision: Number(state.supabaseRevision),
-          }),
-        });
+        await saveSupabasePayloadWithRetry(state.data, 3);
         saveStatusText = "DONNEES SAUVEGARDEES VIA BACKEND";
         saveAlertText = alertText || "DONNEES MISES A JOUR VIA BACKEND";
         saveSource = "BACKEND";
