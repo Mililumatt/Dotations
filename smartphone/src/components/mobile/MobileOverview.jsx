@@ -154,12 +154,16 @@ export default function MobileOverview({ persons, effets, documentsArchives, uiA
     }
     return list;
   });
-  const activePersonIds = new Set((persons || []).map((p) => String(p?.id || "")));
+  const activePersonIds = new Set(
+    (persons || [])
+      .map((p) => String(p?.id || "").trim())
+      .filter(Boolean)
+  );
   const computedAlerts = [...alerts, ...signatureAlerts].filter((entry) =>
     activePersonIds.has(String(entry?.personId || ""))
   );
   const readonlyAlerts = Array.isArray(uiAlertsReadonly)
-    ? uiAlertsReadonly.filter((entry) => activePersonIds.has(String(entry?.personId || "")))
+    ? uiAlertsReadonly.filter((entry) => activePersonIds.has(String(entry?.personId || "").trim()))
     : [];
   const allAlerts = readonlyAlerts.length > 0 ? readonlyAlerts : computedAlerts;
   const isFallbackAlertMode = !uiAlertsSourceReady;
@@ -245,7 +249,10 @@ export default function MobileOverview({ persons, effets, documentsArchives, uiA
             {allAlerts.map((a) => {
               const s = alertStyle(a.type);
               const iconS = alertIconStyle(a.type);
-              const person = persons.find((p) => String(p.id) === String(a.personId));
+              const person = persons.find(
+                (p) => String(p?.id || "").trim() === String(a?.personId || "").trim()
+              );
+              if (!person) return null;
               const personPrefix = person ? `${person.nom || ""} ${person.prenom || ""}`.trim() : "";
               const displayText = personPrefix ? `${personPrefix} : ${a.text}` : a.text;
               return (
