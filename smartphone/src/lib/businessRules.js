@@ -220,7 +220,13 @@ function hasSignedArchiveFor(person, typeLabel, documentsArchives = [], latestSi
 
 export function buildUiOverviewAlerts(persons = [], documentsArchives = [], todayIso = new Date().toISOString().slice(0, 10)) {
   const people = Array.isArray(persons)
-    ? persons.filter((person) => person && String(person?.id || "").trim())
+    ? persons.filter(
+        (person) =>
+          person &&
+          String(person?.id || "").trim() &&
+          person?.is_deleted !== true &&
+          person?.isDeleted !== true
+      )
     : [];
   const docs = Array.isArray(documentsArchives)
     ? documentsArchives.filter(

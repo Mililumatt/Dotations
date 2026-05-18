@@ -155,7 +155,10 @@ export default function MobileOverview({ persons, effets, documentsArchives, uiA
     return list;
   });
   const computedAlerts = [...alerts, ...signatureAlerts];
-  const readonlyAlerts = Array.isArray(uiAlertsReadonly) ? uiAlertsReadonly : [];
+  const activePersonIds = new Set((persons || []).map((p) => String(p?.id || "")));
+  const readonlyAlerts = Array.isArray(uiAlertsReadonly)
+    ? uiAlertsReadonly.filter((entry) => activePersonIds.has(String(entry?.personId || "")))
+    : [];
   const allAlerts = readonlyAlerts.length > 0 ? readonlyAlerts : computedAlerts;
   const isFallbackAlertMode = !uiAlertsSourceReady;
   const isAlertListScrollable = allAlerts.length > 3;
