@@ -632,6 +632,69 @@ function normalizeLegacySignature(personId, docType, signer, raw = {}) {
   };
 }
 
+function upsertLegacySignatureOnPerson(person, { docType, signer, data = {} }) {
+  const sigRoot = { ...defaultLegacySignatures(), ...(person?.signatures || {}) };
+  const prev = sigRoot?.[docType]?.[signer] || {};
+  sigRoot[docType] = sigRoot[docType] || {};
+  sigRoot[docType][signer] = {
+    ...prev,
+    image: Object.prototype.hasOwnProperty.call(data || {}, "signatureData")
+      ? normalizeSignatureData(data.signatureData)
+      : toString(prev.image),
+    validatedAt: Object.prototype.hasOwnProperty.call(data || {}, "signedAt")
+      ? cleanDate(data.signedAt) || new Date().toISOString()
+      : cleanDate(prev.validatedAt),
+    signataireId: Object.prototype.hasOwnProperty.call(data || {}, "signataireId")
+      ? toString(data.signataireId)
+      : toString(prev.signataireId),
+    signataireName: Object.prototype.hasOwnProperty.call(data || {}, "signataireName")
+      ? toString(data.signataireName).trim()
+      : toString(prev.signataireName).trim(),
+    signataireFunction: Object.prototype.hasOwnProperty.call(data || {}, "signataireFunction")
+      ? toString(data.signataireFunction).trim()
+      : toString(prev.signataireFunction).trim(),
+  };
+  if (signer === "representant") {
+    if (!person.representants || typeof person.representants !== "object") person.representants = {};
+    if (!person.representants[docType] || typeof person.representants[docType] !== "object") person.representants[docType] = {};
+    person.representants[docType].id = toString(sigRoot[docType][signer].signataireId);
+    person.representants[docType].nom = toString(sigRoot[docType][signer].signataireName).trim();
+    person.representants[docType].fonction = toString(sigRoot[docType][signer].signataireFunction).trim();
+  }
+  person.signatures = sigRoot;
+  applySignedDocumentCompletion(person, docType);
+  return sigRoot[docType][signer];
+}
+
+async function saveLegacySignatureWithConflictRetry({ personId, docType, signer, data = {} }) {
+  const normalizedPersonId = toString(personId);
+  ensureValidDocType(docType);
+  ensureValidSigner(signer);
+  let lastConflict = null;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const row = await getAppStateRowDirect();
+    const payload = row?.payload;
+    if (!payload || !Array.isArray(payload.personnes)) {
+      throw new Error("Sauvegarde signature impossible: source legacy indisponible");
+    }
+    const person = payload.personnes.find((p) => toString(p?.id) === normalizedPersonId);
+    if (!person) throw new Error("Sauvegarde signature impossible: personne introuvable");
+    const savedRaw = upsertLegacySignatureOnPerson(person, { docType, signer, data });
+    try {
+      await saveAppStatePayloadOnce(payload, row?.revision, 0);
+      return normalizeLegacySignature(normalizedPersonId, docType, signer, savedRaw);
+    } catch (error) {
+      if (error?.code === "APP_STATE_CONFLICT") {
+        lastConflict = error;
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastConflict || buildAppStateConflictError();
+}
+
 function toSqlSignatureCreatePayload(data = {}) {
   const docType = ensureValidDocType(data?.docType);
   const signer = ensureValidSigner(data?.signer);
@@ -992,37 +1055,23 @@ export const db = {
     async create(data) {
       await requireRole("Creation signature", WRITE_ROLES);
       ensureWritable('creation signature');
-      const row = await getAppStateRow();
-      const payload = row?.payload;
       const personId = toString(data?.personId);
       const docType = ensureValidDocType(data?.docType);
       const signer = ensureValidSigner(data?.signer);
       const signatureData = normalizeSignatureData(data?.signatureData);
+      const row = await getAppStateRow();
+      const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes) && personId) {
-        const person = payload.personnes.find((p) => toString(p?.id) === personId);
-        if (!person) throw new Error("Creation signature impossible: personne introuvable");
-        const sigRoot = { ...defaultLegacySignatures(), ...(person.signatures || {}) };
-        const prev = sigRoot?.[docType]?.[signer] || {};
-        sigRoot[docType] = sigRoot[docType] || {};
-        sigRoot[docType][signer] = {
-          ...prev,
-          image: signatureData,
-          validatedAt: cleanDate(data?.signedAt) || new Date().toISOString(),
-          signataireId: toString(data?.signataireId),
-          signataireName: toString(data?.signataireName).trim(),
-          signataireFunction: toString(data?.signataireFunction).trim(),
-        };
-        if (signer === "representant") {
-          if (!person.representants || typeof person.representants !== "object") person.representants = {};
-          if (!person.representants[docType] || typeof person.representants[docType] !== "object") person.representants[docType] = {};
-          person.representants[docType].id = toString(data?.signataireId);
-          person.representants[docType].nom = toString(data?.signataireName).trim();
-          person.representants[docType].fonction = toString(data?.signataireFunction).trim();
-        }
-        person.signatures = sigRoot;
-        applySignedDocumentCompletion(person, docType);
-        await saveAppStatePayload(payload, row?.revision);
-        return normalizeLegacySignature(personId, docType, signer, sigRoot[docType][signer]);
+        return saveLegacySignatureWithConflictRetry({
+          personId,
+          docType,
+          signer,
+          data: {
+            ...data,
+            signatureData,
+            signedAt: cleanDate(data?.signedAt) || new Date().toISOString(),
+          },
+        });
       }
       const created = await sqlSignature.create(toSqlSignatureCreatePayload(data));
       await applySqlPersonCompletionFromSignatures(data?.personId, data?.docType);
@@ -1035,40 +1084,7 @@ export const db = {
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes) && isLegacySignatureId(id)) {
         const { personId, docType, signer } = parseLegacySignatureId(id);
-        ensureValidDocType(docType);
-        ensureValidSigner(signer);
-        const person = payload.personnes.find((p) => toString(p?.id) === personId);
-        if (!person) throw new Error("Mise a jour signature impossible: personne introuvable");
-        const sigRoot = { ...defaultLegacySignatures(), ...(person.signatures || {}) };
-        const prev = sigRoot?.[docType]?.[signer] || {};
-        sigRoot[docType] = sigRoot[docType] || {};
-        sigRoot[docType][signer] = {
-          ...prev,
-          image: Object.prototype.hasOwnProperty.call(data || {}, "signatureData")
-            ? normalizeSignatureData(data.signatureData)
-            : toString(prev.image),
-          validatedAt: Object.prototype.hasOwnProperty.call(data || {}, "signedAt") ? cleanDate(data.signedAt) : cleanDate(prev.validatedAt),
-          signataireId: Object.prototype.hasOwnProperty.call(data || {}, "signataireId") ? toString(data.signataireId) : toString(prev.signataireId),
-          signataireName: Object.prototype.hasOwnProperty.call(data || {}, "signataireName") ? toString(data.signataireName).trim() : toString(prev.signataireName).trim(),
-          signataireFunction: Object.prototype.hasOwnProperty.call(data || {}, "signataireFunction") ? toString(data.signataireFunction).trim() : toString(prev.signataireFunction).trim(),
-        };
-        if (signer === "representant") {
-          if (!person.representants || typeof person.representants !== "object") person.representants = {};
-          if (!person.representants[docType] || typeof person.representants[docType] !== "object") person.representants[docType] = {};
-          person.representants[docType].id = Object.prototype.hasOwnProperty.call(data || {}, "signataireId")
-            ? toString(data.signataireId)
-            : toString(person.representants[docType].id);
-          person.representants[docType].nom = Object.prototype.hasOwnProperty.call(data || {}, "signataireName")
-            ? toString(data.signataireName).trim()
-            : toString(person.representants[docType].nom).trim();
-          person.representants[docType].fonction = Object.prototype.hasOwnProperty.call(data || {}, "signataireFunction")
-            ? toString(data.signataireFunction).trim()
-            : toString(person.representants[docType].fonction).trim();
-        }
-        person.signatures = sigRoot;
-        applySignedDocumentCompletion(person, docType);
-        await saveAppStatePayload(payload, row?.revision);
-        return normalizeLegacySignature(personId, docType, signer, sigRoot[docType][signer]);
+        return saveLegacySignatureWithConflictRetry({ personId, docType, signer, data });
       }
       const updated = await sqlSignature.update(id, toSqlSignatureUpdatePayload(data));
       await applySqlPersonCompletionFromSignatures(updated?.personId, updated?.docType);
