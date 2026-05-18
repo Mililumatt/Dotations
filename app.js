@@ -2586,6 +2586,35 @@ async function saveSupabaseStateData(payload) {
   }
 }
 
+async function forceSaveSupabaseStateData(payload) {
+  const currentRevision = Number(state.supabaseRevision);
+  const nextRevision = Number.isFinite(currentRevision) ? currentRevision + 1 : 1;
+  const endpoint = `${getSupabaseRestEndpoint()}?id=eq.${encodeURIComponent(
+    SUPABASE_APP_STATE_ID
+  )}&select=id,revision`;
+  const response = await fetch(endpoint, {
+    method: "PATCH",
+    headers: getSupabaseHeaders({
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    }),
+    body: JSON.stringify({
+      payload,
+      revision: nextRevision,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error("SUPABASE FORCE SAVE FAILED");
+  }
+  const rows = await response.json().catch(() => null);
+  const updated = Array.isArray(rows) ? rows[0] : null;
+  if (!updated?.id) {
+    throw new Error("SUPABASE FORCE SAVE EMPTY");
+  }
+  const persistedRevision = Number(updated.revision);
+  state.supabaseRevision = Number.isFinite(persistedRevision) ? persistedRevision : nextRevision;
+}
+
 async function saveSupabaseSignatureWithRebase({
   personId,
   docType,
@@ -2639,7 +2668,34 @@ async function saveSupabaseSignatureWithRebase({
       throw error;
     }
   }
-  throw lastConflictError || buildSaveConflictError();
+  try {
+    const latestPayload = await fetchSupabaseStateData();
+    const persons = Array.isArray(latestPayload?.personnes) ? latestPayload.personnes : [];
+    const person = persons.find((entry) => String(entry?.id || "") === normalizedPersonId);
+    if (!person) throw new Error("PERSONNE INTROUVABLE POUR SAUVEGARDE SIGNATURE");
+    setSignatureValue(
+      person,
+      normalizedDocType,
+      normalizedSigner,
+      String(signatureValue || ""),
+      String(validatedAt || ""),
+      String(storageRef || ""),
+      String(storagePublicUrl || "")
+    );
+    if (normalizedDocType === "exit" && String(signatureValue || "")) {
+      applySignedExitCompletion(person);
+    }
+    if (mobileRequestToken) {
+      const requests = Array.isArray(latestPayload?.mobileSignatureRequests) ? latestPayload.mobileSignatureRequests : [];
+      const request = requests.find((entry) => String(entry?.token || "") === mobileRequestToken);
+      if (request) markMobileSignatureRequestSigned(request);
+    }
+    await forceSaveSupabaseStateData(latestPayload);
+    state.data = latestPayload;
+    return latestPayload;
+  } catch (error) {
+    throw lastConflictError || error || buildSaveConflictError();
+  }
 }
 
 async function fetchLatestDataSnapshot() {
