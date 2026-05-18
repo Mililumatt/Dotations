@@ -515,6 +515,27 @@ async function saveAppStatePayload(payload, expectedRevision) {
   return appStateSaveQueue;
 }
 
+async function forceSaveAppStatePayload(payload) {
+  const normalizedPayload = payload && typeof payload === "object" ? payload : {};
+  const latestRow = await getAppStateRowDirect();
+  const latestRevision = Number(latestRow?.revision);
+  const nextRevision = Number.isFinite(latestRevision) ? latestRevision + 1 : 1;
+  const { data, error } = await supabase
+    .from("app_state")
+    .update({ payload: normalizedPayload, revision: nextRevision })
+    .eq("id", "main")
+    .select("id,revision");
+  if (error) {
+    const details = [error.message, error.details, error.hint].filter(Boolean).join(" | ");
+    throw new Error(`Mise a jour forcee app_state impossible: ${details || "Erreur inconnue"}`);
+  }
+  const updated = Array.isArray(data) ? data[0] : null;
+  if (!updated?.id) {
+    throw new Error("Mise a jour forcee app_state impossible: ligne introuvable");
+  }
+  return Number(updated.revision) || nextRevision;
+}
+
 async function getAppStatePayload() {
   const row = await getAppStateRow();
   return row?.payload || {};
@@ -692,7 +713,20 @@ async function saveLegacySignatureWithConflictRetry({ personId, docType, signer,
       throw error;
     }
   }
-  throw lastConflict || buildAppStateConflictError();
+  try {
+    const row = await getAppStateRowDirect();
+    const payload = row?.payload;
+    if (!payload || !Array.isArray(payload.personnes)) {
+      throw lastConflict || buildAppStateConflictError();
+    }
+    const person = payload.personnes.find((p) => toString(p?.id) === normalizedPersonId);
+    if (!person) throw new Error("Sauvegarde signature impossible: personne introuvable");
+    const savedRaw = upsertLegacySignatureOnPerson(person, { docType, signer, data });
+    await forceSaveAppStatePayload(payload);
+    return normalizeLegacySignature(normalizedPersonId, docType, signer, savedRaw);
+  } catch {
+    throw lastConflict || buildAppStateConflictError();
+  }
 }
 
 function toSqlSignatureCreatePayload(data = {}) {
