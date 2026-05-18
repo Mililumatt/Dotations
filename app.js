@@ -14425,6 +14425,9 @@ async function saveDataToFile(options = {}) {
       let saveAlertText = alertText || "data.json A ETE MIS A JOUR";
       let saveSource = "LOCAL";
       if (mode === "SUPABASE") {
+        if (!Number.isFinite(Number(state.supabaseRevision))) {
+          await fetchSupabaseStateData();
+        }
         await callEdgeApi("save", {
           method: "POST",
           body: JSON.stringify({
