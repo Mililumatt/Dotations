@@ -192,6 +192,11 @@ function MobileEffetForm({ personId, editingEffet, onSaved, onCancel, setSaveSta
     initialForm && JSON.stringify(form || {}) !== JSON.stringify(initialForm || {});
 
   useEffect(() => {
+    if (saving) return;
+    setSaveStatus(hasUnsavedChanges ? "unsaved" : "saved");
+  }, [saving, hasUnsavedChanges, setSaveStatus]);
+
+  useEffect(() => {
     const onSaveRequest = (event) => {
       const tab = String(event?.detail?.tab || "").trim();
       if (tab !== "fiche") return;

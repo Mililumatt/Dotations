@@ -216,6 +216,16 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
   };
 
   useEffect(() => {
+    if (activeSection !== "effets") return;
+    if (saving) return;
+    const currentKey = JSON.stringify(
+      localEffets.map((entry) => [entry.id, entry.statut, entry.cause, entry.dateRetour || "", Boolean(entry._rendus)])
+    );
+    const dirty = Boolean(localEffets.length) && currentKey !== lastSavedEffetsKeyRef.current;
+    setSaveStatus(dirty ? "unsaved" : "saved");
+  }, [activeSection, saving, localEffets, setSaveStatus]);
+
+  useEffect(() => {
     const onSaveRequest = (event) => {
       const tab = String(event?.detail?.tab || "").trim();
       if (tab !== "sortie") return;
@@ -425,6 +435,7 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
             existingSignature={getSig("personnel")}
             signataireName={`${selectedPerson.nom || ""} ${selectedPerson.prenom || ""}`.trim()}
             signataireFunction={selectedPerson.fonction || ""}
+            setSaveStatus={setSaveStatus}
             onSaved={handleSignatureSaved}
           />
           <div style={{ ...card, marginBottom: 8 }}>
@@ -449,6 +460,7 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
             signataireId={representantId}
             signataireName={representantName}
             signataireFunction={representantFunction}
+            setSaveStatus={setSaveStatus}
             onSaved={handleSignatureSaved}
           />
           <div style={{ display: "flex", gap: 8, marginTop: 4 }}>

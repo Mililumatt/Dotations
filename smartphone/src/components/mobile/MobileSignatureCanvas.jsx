@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 
 const MOBILE_SIGNATURE_CANVAS_CSS_HEIGHT = 220;
 
-export default function MobileSignatureCanvas({ personId, docType, signer, signerLabel, existingSignature, onSaved, signataireName = "", signataireFunction = "", signataireId = "" }) {
+export default function MobileSignatureCanvas({ personId, docType, signer, signerLabel, existingSignature, onSaved, signataireName = "", signataireFunction = "", signataireId = "", setSaveStatus = null }) {
   const canvasRef = useRef(null);
   const [drawing, setDrawing] = useState(false);
   const [signed, setSigned] = useState(false);
@@ -141,6 +141,7 @@ export default function MobileSignatureCanvas({ personId, docType, signer, signe
     const { canvas } = prepared;
     const data = canvas.toDataURL("image/png");
     setSaving(true);
+    if (setSaveStatus) setSaveStatus("saving");
     try {
       const signedAt = new Date().toISOString();
       const existing = existingSignature;
@@ -166,6 +167,7 @@ export default function MobileSignatureCanvas({ personId, docType, signer, signe
       setValidated(true);
       setDirty(false);
       setMsg("SIGNATURE VALIDEE ✓");
+      if (setSaveStatus) setSaveStatus("saved");
       setTimeout(() => setMsg(null), 2500);
       if (onSaved) {
         await onSaved({
@@ -180,11 +182,18 @@ export default function MobileSignatureCanvas({ personId, docType, signer, signe
       console.error("Signature save error:", error);
       const message = String(error?.message || "").toUpperCase();
       setMsg(message || "ERREUR DE SAUVEGARDE SUPABASE");
+      if (setSaveStatus) setSaveStatus("error");
       setTimeout(() => setMsg(null), 2500);
     } finally {
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!setSaveStatus) return;
+    if (saving) return;
+    setSaveStatus(dirty ? "unsaved" : "saved");
+  }, [dirty, saving, setSaveStatus]);
 
   useEffect(() => {
     const onSaveRequest = (event) => {

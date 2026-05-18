@@ -258,6 +258,7 @@ export default function MobileDocumentArrivee({ persons, effets, selectedPerson,
             existingSignature={getSig("personnel")}
             signataireName={`${selectedPerson.nom || ""} ${selectedPerson.prenom || ""}`.trim()}
             signataireFunction={selectedPerson.fonction || ""}
+            setSaveStatus={setSaveStatus}
             onSaved={handleSignatureSaved}
           />
           <div style={{ ...card, marginBottom: 8 }}>
@@ -282,6 +283,7 @@ export default function MobileDocumentArrivee({ persons, effets, selectedPerson,
             signataireId={representantId}
             signataireName={representantName}
             signataireFunction={representantFunction}
+            setSaveStatus={setSaveStatus}
             onSaved={handleSignatureSaved}
           />
           <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
