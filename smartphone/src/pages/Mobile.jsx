@@ -186,21 +186,16 @@ export default function Mobile() {
       const documentsArchives = oRes.status === "fulfilled"
         ? (Array.isArray(oRes.value?.payload?.documentsArchives) ? oRes.value.payload.documentsArchives : [])
         : [];
+      const operationalPersons =
+        oRes.status === "fulfilled" && Array.isArray(oRes.value?.persons)
+          ? oRes.value.persons
+          : [];
       const payloadPeople =
         oRes.status === "fulfilled" && Array.isArray(oRes.value?.payload?.personnes)
           ? oRes.value.payload.personnes
           : [];
-      const payloadPersonIds = new Set(
-        (payloadPeople || [])
-          .filter((person) => person && !isSoftDeletedRecord(person))
-          .map((person) => String(person?.id || "").trim())
-          .filter(Boolean)
-      );
-      const personsForMobile =
-        payloadPersonIds.size > 0
-          ? p.filter((person) => payloadPersonIds.has(String(person?.id || "").trim()))
-          : p;
-      const activePersonIds = new Set((p || []).map((person) => String(person?.id || "")));
+      const personsForMobile = operationalPersons.length > 0 ? operationalPersons : p;
+      const activePersonIds = new Set((personsForMobile || []).map((person) => String(person?.id || "")));
       const alertsPeople =
         payloadPeople.length > 0
           ? payloadPeople.filter((person) => activePersonIds.has(String(person?.id || "")))
