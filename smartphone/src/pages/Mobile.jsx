@@ -231,9 +231,15 @@ export default function Mobile() {
       setUiAlertsSourceReady(uiAlertsSourceReady);
 
       const urlState = readUrlState();
+      const selectedId = String(selectedPersonRef.current?.id || "").trim();
       if (urlState.personId) {
-        const found = p.find((person) => String(person.id) === String(urlState.personId));
+        const found = personsForMobile.find((person) => String(person.id) === String(urlState.personId));
         setSelectedPerson(found || null);
+      } else if (selectedId) {
+        const found = personsForMobile.find((person) => String(person.id) === selectedId);
+        setSelectedPerson(found || null);
+      } else {
+        setSelectedPerson(null);
       }
     } catch {
       personsRef.current = [];
