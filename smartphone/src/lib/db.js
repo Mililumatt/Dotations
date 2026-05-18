@@ -89,11 +89,6 @@ function resolveReadonlyMode() {
     if (queryFlag !== null) return queryFlag;
   } catch {}
 
-  try {
-    const localFlag = parseReadonlyFlag(window.localStorage.getItem("smartphone_readonly"));
-    if (localFlag !== null) return localFlag;
-  } catch {}
-
   return false;
 }
 
@@ -822,26 +817,14 @@ const sqlSignature = makeEntity("signatures");
 export const db = {
   Person: {
     async list(order = "-created_at", limit = 200) {
-      try {
-        const sqlRows = await sqlPerson.list(order, limit);
-        if (Array.isArray(sqlRows) && sqlRows.length > 0) {
-          return sqlRows;
-        }
-      } catch {}
       const legacy = await tryLegacyData();
       if (legacy) return sortAndLimit(legacy.persons.filter((p) => !isSoftDeleted(p)), order, limit);
-      return [];
+      return sqlPerson.list(order, limit);
     },
     async filter(filters = {}) {
-      try {
-        const sqlRows = await sqlPerson.filter(filters);
-        if (Array.isArray(sqlRows) && sqlRows.length > 0) {
-          return sqlRows;
-        }
-      } catch {}
       const legacy = await tryLegacyData();
       if (legacy) return legacy.persons.filter((p) => !isSoftDeleted(p) && matchesFilters(p, filters));
-      return [];
+      return sqlPerson.filter(filters);
     },
     async create(data) {
       await requireRole("Creation personne", WRITE_ROLES);
