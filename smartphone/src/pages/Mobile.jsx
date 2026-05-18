@@ -179,6 +179,16 @@ export default function Mobile() {
         oRes.status === "fulfilled" && Array.isArray(oRes.value?.payload?.personnes)
           ? oRes.value.payload.personnes
           : [];
+      const payloadPersonIds = new Set(
+        (payloadPeople || [])
+          .filter((person) => person && person.is_deleted !== true && person.isDeleted !== true)
+          .map((person) => String(person?.id || "").trim())
+          .filter(Boolean)
+      );
+      const personsForMobile =
+        payloadPersonIds.size > 0
+          ? p.filter((person) => payloadPersonIds.has(String(person?.id || "").trim()))
+          : p;
       const activePersonIds = new Set((p || []).map((person) => String(person?.id || "")));
       const alertsPeople =
         payloadPeople.length > 0
@@ -212,8 +222,8 @@ export default function Mobile() {
         }
       }
 
-      personsRef.current = p;
-      setPersons(p);
+      personsRef.current = personsForMobile;
+      setPersons(personsForMobile);
       setEffets(e);
       setBases(b);
       setDocumentsArchives(documentsArchives);
