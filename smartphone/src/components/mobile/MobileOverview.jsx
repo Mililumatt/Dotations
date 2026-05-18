@@ -154,8 +154,10 @@ export default function MobileOverview({ persons, effets, documentsArchives, uiA
     }
     return list;
   });
-  const computedAlerts = [...alerts, ...signatureAlerts];
   const activePersonIds = new Set((persons || []).map((p) => String(p?.id || "")));
+  const computedAlerts = [...alerts, ...signatureAlerts].filter((entry) =>
+    activePersonIds.has(String(entry?.personId || ""))
+  );
   const readonlyAlerts = Array.isArray(uiAlertsReadonly)
     ? uiAlertsReadonly.filter((entry) => activePersonIds.has(String(entry?.personId || "")))
     : [];
