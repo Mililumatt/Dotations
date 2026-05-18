@@ -2651,7 +2651,7 @@ async function saveSupabaseSignatureWithRebase({
       applySignedExitCompletion(person);
     }
     if (mobileRequestToken) {
-      const requests = Array.isArray(latestPayload?.mobileSignatureRequests) ? latestPayload.mobileSignatureRequests : [];
+      const requests = Array.isArray(latestPayload?.demandesSignatureMobile) ? latestPayload.demandesSignatureMobile : [];
       const request = requests.find((entry) => String(entry?.token || "") === mobileRequestToken);
       if (request) markMobileSignatureRequestSigned(request);
     }
@@ -2686,7 +2686,7 @@ async function saveSupabaseSignatureWithRebase({
       applySignedExitCompletion(person);
     }
     if (mobileRequestToken) {
-      const requests = Array.isArray(latestPayload?.mobileSignatureRequests) ? latestPayload.mobileSignatureRequests : [];
+      const requests = Array.isArray(latestPayload?.demandesSignatureMobile) ? latestPayload.demandesSignatureMobile : [];
       const request = requests.find((entry) => String(entry?.token || "") === mobileRequestToken);
       if (request) markMobileSignatureRequestSigned(request);
     }
@@ -4299,7 +4299,10 @@ async function pollMobileSignatureRequest() {
   ].filter(Boolean);
 
   try {
-    const json = await fetchLatestDataSnapshot();
+    const json =
+      getDataBackendMode() === "SUPABASE"
+        ? await fetchSupabaseStateData()
+        : await fetchLatestDataSnapshot();
     const requests = Array.isArray(json?.demandesSignatureMobile) ? json.demandesSignatureMobile : [];
     const person = Array.isArray(json?.personnes)
       ? json.personnes.find((entry) => String(entry.id || "") === String(personId || "")) || null
