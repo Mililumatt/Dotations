@@ -15,6 +15,7 @@ const MOBILE_PASSWORD_RESET_COOLDOWN_KEY = "dotations_mobile_reset_password_last
 const MOBILE_PASSWORD_RESET_COOLDOWN_MS = 70 * 1000;
 const MOBILE_BIOMETRIC_ENABLED_KEY = "dotations_mobile_biometric_enabled_v1";
 const MOBILE_BIOMETRIC_CREDENTIAL_ID_KEY = "dotations_mobile_biometric_credential_id_v1";
+const MOBILE_SYNC_INTERVAL_MS = 20000;
 
 const TABS = [
   { id: "overview", label: "VUE D'ENSEMBLE", icon: "🏠" },
@@ -136,6 +137,7 @@ export default function Mobile() {
   const selectedPersonRef = useRef(null);
   const skipNextPushRef = useRef(true);
   const lastManualRefreshAtRef = useRef(0);
+  const loadDataRef = useRef(async () => {});
 
   const applyUrlState = (state) => {
     const wantedTab = isValidTab(state?.tab) ? state.tab : "overview";
@@ -238,6 +240,10 @@ export default function Mobile() {
   };
 
   useEffect(() => {
+    loadDataRef.current = loadData;
+  });
+
+  useEffect(() => {
     let mounted = true;
     const isFreshWindowOpen = !window.sessionStorage.getItem(MOBILE_WINDOW_SESSION_KEY);
     window.sessionStorage.setItem(MOBILE_WINDOW_SESSION_KEY, "1");
@@ -302,6 +308,22 @@ export default function Mobile() {
       return;
     }
     loadData();
+  }, [session, authLoading]);
+
+  useEffect(() => {
+    if (authLoading || !session) return undefined;
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "hidden") return;
+      loadDataRef.current?.();
+    };
+    const intervalId = window.setInterval(refreshIfVisible, MOBILE_SYNC_INTERVAL_MS);
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
   }, [session, authLoading]);
 
   const handlePasskeyLogin = async () => {

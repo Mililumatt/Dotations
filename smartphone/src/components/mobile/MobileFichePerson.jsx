@@ -76,7 +76,7 @@ export default function MobileFichePerson({ persons, effets, selectedPerson, onS
       }
       setLastSavedForm(form);
       setSaveStatus("saved");
-      onDataChange();
+      await onDataChange();
     } catch (error) {
       console.error("Person save error:", error);
       setMsg(String(error?.message || "ERREUR DE SAUVEGARDE SUPABASE").toUpperCase());
@@ -96,7 +96,7 @@ export default function MobileFichePerson({ persons, effets, selectedPerson, onS
       await db.Person.delete(selectedPerson.id);
       onSelectPerson(null);
       setSaveStatus("saved");
-      onDataChange();
+      await onDataChange();
       setForm({ nom: "", prenom: "", fonction: "", sites: [], typePersonnel: "", typeContrat: "", dateEntree: "", dateSortiePrevue: "", dateSortieReelle: "" });
     } catch (error) {
       console.error("Person delete error:", error);
@@ -301,7 +301,7 @@ export default function MobileFichePerson({ persons, effets, selectedPerson, onS
           bases={bases}
           personId={selectedPerson.id}
           editingEffet={editingEffet}
-          onSaved={() => { setEditingEffet(null); setActiveSection("effets"); onDataChange(); setSaveStatus("saved"); }}
+          onSaved={async () => { setEditingEffet(null); setActiveSection("effets"); await onDataChange(); setSaveStatus("saved"); }}
           onCancel={() => { setEditingEffet(null); setActiveSection("effets"); }}
           setSaveStatus={setSaveStatus}
         />
