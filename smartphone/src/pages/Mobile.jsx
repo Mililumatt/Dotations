@@ -83,6 +83,17 @@ function supportsWebAuthnPlatform() {
   );
 }
 
+function isSoftDeletedRecord(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  const rawIsDeleted = entry.is_deleted ?? entry.isDeleted;
+  const deletedFlag =
+    rawIsDeleted === true ||
+    String(rawIsDeleted || "").trim().toLowerCase() === "true" ||
+    String(rawIsDeleted || "").trim() === "1";
+  const deletedAt = String(entry.deleted_at || entry.deletedAt || "").trim();
+  return deletedFlag || Boolean(deletedAt);
+}
+
 function randomChallenge(size = 32) {
   const bytes = new Uint8Array(size);
   crypto.getRandomValues(bytes);
@@ -181,7 +192,7 @@ export default function Mobile() {
           : [];
       const payloadPersonIds = new Set(
         (payloadPeople || [])
-          .filter((person) => person && person.is_deleted !== true && person.isDeleted !== true)
+          .filter((person) => person && !isSoftDeletedRecord(person))
           .map((person) => String(person?.id || "").trim())
           .filter(Boolean)
       );
