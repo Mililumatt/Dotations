@@ -2586,6 +2586,62 @@ async function saveSupabaseStateData(payload) {
   }
 }
 
+async function saveSupabaseSignatureWithRebase({
+  personId,
+  docType,
+  signer,
+  signatureValue,
+  validatedAt,
+  storageRef = "",
+  storagePublicUrl = "",
+  mobileRequestToken = "",
+}) {
+  const normalizedPersonId = String(personId || "");
+  const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
+  const normalizedSigner = normalizeMobileSignatureSigner(signer || "");
+  if (!normalizedPersonId || !normalizedDocType || !normalizedSigner) {
+    throw new Error("SIGNATURE CONTEXT INVALIDE");
+  }
+  let lastConflictError = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const latestPayload = await fetchSupabaseStateData();
+    const persons = Array.isArray(latestPayload?.personnes) ? latestPayload.personnes : [];
+    const person = persons.find((entry) => String(entry?.id || "") === normalizedPersonId);
+    if (!person) throw new Error("PERSONNE INTROUVABLE POUR SAUVEGARDE SIGNATURE");
+
+    setSignatureValue(
+      person,
+      normalizedDocType,
+      normalizedSigner,
+      String(signatureValue || ""),
+      String(validatedAt || ""),
+      String(storageRef || ""),
+      String(storagePublicUrl || "")
+    );
+    if (normalizedDocType === "exit" && String(signatureValue || "")) {
+      applySignedExitCompletion(person);
+    }
+    if (mobileRequestToken) {
+      const requests = Array.isArray(latestPayload?.mobileSignatureRequests) ? latestPayload.mobileSignatureRequests : [];
+      const request = requests.find((entry) => String(entry?.token || "") === mobileRequestToken);
+      if (request) markMobileSignatureRequestSigned(request);
+    }
+
+    try {
+      await saveSupabaseStateData(latestPayload);
+      state.data = latestPayload;
+      return latestPayload;
+    } catch (error) {
+      if (isSaveConflictError(error)) {
+        lastConflictError = error;
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastConflictError || buildSaveConflictError();
+}
+
 async function fetchLatestDataSnapshot() {
   const mode = getDataBackendMode();
   if (mode === "SUPABASE") {
@@ -10036,24 +10092,51 @@ function bindSignatureCanvases() {
       if (requestMatchesCanvas && nextValue) {
         markMobileSignatureRequestSigned(currentMobileRequest);
       }
-      await saveDataToFile(
-        isMobileSignaturePage
-          ? {
-              // Mobile signature: keep UI stable, avoid immediate stale reload wiping the just-signed value.
-              silent: false,
-              reloadAfter: false,
-              successText: saveText,
-              alertText: "SIGNATURE ENREGISTREE",
-              closeAfterAlert: false,
-            }
-          : {
-              silent: !mustAlertAndClose,
-              reloadAfter: !mustAlertAndClose,
-              successText: saveText,
-              alertText: "DONNEES SUPABASE MISES A JOUR",
-              closeAfterAlert: mustAlertAndClose,
-            }
-      );
+      try {
+        await saveDataToFile(
+          isMobileSignaturePage
+            ? {
+                // Mobile signature: keep UI stable, avoid immediate stale reload wiping the just-signed value.
+                silent: false,
+                reloadAfter: false,
+                successText: saveText,
+                alertText: "SIGNATURE ENREGISTREE",
+                closeAfterAlert: false,
+                throwOnConflict: true,
+              }
+            : {
+                silent: !mustAlertAndClose,
+                reloadAfter: !mustAlertAndClose,
+                successText: saveText,
+                alertText: "DONNEES SUPABASE MISES A JOUR",
+                closeAfterAlert: mustAlertAndClose,
+              }
+        );
+      } catch (saveError) {
+        const canRebaseMobileSignature =
+          isMobileSignaturePage &&
+          isSaveConflictError(saveError) &&
+          getDataBackendMode() === "SUPABASE" &&
+          Boolean(nextValue);
+        if (!canRebaseMobileSignature) {
+          throw saveError;
+        }
+        await saveSupabaseSignatureWithRebase({
+          personId: person.id,
+          docType,
+          signer,
+          signatureValue: nextValue,
+          validatedAt,
+          storageRef: signatureStorageRef,
+          storagePublicUrl: signatureStoragePublicUrl,
+          mobileRequestToken: String(currentMobileRequest?.token || ""),
+        });
+        clearWorkingData();
+        state.isDirty = false;
+        clearUndoStack();
+        renderDirtyState();
+        showDataStatus("SIGNATURE ENREGISTREE");
+      }
       if (document.body.dataset.page === "mobile-signature") {
         const expectedPersonId = String(person?.id || "");
         const expectedDocType = String(docType || "");
@@ -14250,6 +14333,7 @@ async function saveDataToFile(options = {}) {
     closeAfterAlert = false,
     promptDownload = !silent,
     reloadOnConflict = true,
+    throwOnConflict = false,
   } = resolvedOptions;
   const shouldReloadAfter =
     typeof reloadAfter === "boolean" ? reloadAfter : getDataBackendMode() !== "SUPABASE";
@@ -14372,6 +14456,9 @@ async function saveDataToFile(options = {}) {
         return;
       }
       if (isSaveConflictError(error)) {
+      if (throwOnConflict) {
+        throw error;
+      }
       if (reloadOnConflict && (getDataBackendMode() === "SUPABASE" || isSupabaseConfigured())) {
         try {
           await reloadData("CONFLIT DETECTE - RECHARGEMENT DES DONNEES DISTANTES...");
