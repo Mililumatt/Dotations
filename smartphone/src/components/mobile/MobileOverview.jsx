@@ -165,8 +165,8 @@ export default function MobileOverview({ persons, effets, documentsArchives, uiA
   const readonlyAlerts = Array.isArray(uiAlertsReadonly)
     ? uiAlertsReadonly.filter((entry) => activePersonIds.has(String(entry?.personId || "").trim()))
     : [];
-  const allAlerts = readonlyAlerts.length > 0 ? readonlyAlerts : computedAlerts;
-  const isFallbackAlertMode = !uiAlertsSourceReady;
+  const allAlerts = uiAlertsSourceReady ? readonlyAlerts : [];
+  const isFallbackAlertMode = false;
   const isAlertListScrollable = allAlerts.length > 3;
 
   const alertStyle = (type) => {
