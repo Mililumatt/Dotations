@@ -201,7 +201,13 @@ function toString(value) {
 
 function isSoftDeleted(entry) {
   if (!entry || typeof entry !== "object") return false;
-  return entry.is_deleted === true || entry.isDeleted === true;
+  const rawIsDeleted = entry.is_deleted ?? entry.isDeleted;
+  const deletedFlag =
+    rawIsDeleted === true ||
+    String(rawIsDeleted || "").trim().toLowerCase() === "true" ||
+    String(rawIsDeleted || "").trim() === "1";
+  const deletedAt = String(entry.deleted_at || entry.deletedAt || "").trim();
+  return deletedFlag || Boolean(deletedAt);
 }
 
 function markSoftDeleted(entry = {}, deletedBy = "") {
