@@ -10148,7 +10148,23 @@ function bindSignatureCanvases() {
       if (requestMatchesCanvas && nextValue) {
         markMobileSignatureRequestSigned(currentMobileRequest);
       }
-      try {
+      if (isMobileSignaturePage && getDataBackendMode() === "SUPABASE" && nextValue) {
+        await saveSupabaseSignatureWithRebase({
+          personId: person.id,
+          docType,
+          signer,
+          signatureValue: nextValue,
+          validatedAt,
+          storageRef: signatureStorageRef,
+          storagePublicUrl: signatureStoragePublicUrl,
+          mobileRequestToken: String(currentMobileRequest?.token || ""),
+        });
+        clearWorkingData();
+        state.isDirty = false;
+        clearUndoStack();
+        renderDirtyState();
+        showDataStatus("SIGNATURE ENREGISTREE");
+      } else {
         await saveDataToFile(
           isMobileSignaturePage
             ? {
@@ -10168,30 +10184,6 @@ function bindSignatureCanvases() {
                 closeAfterAlert: mustAlertAndClose,
               }
         );
-      } catch (saveError) {
-        const canRebaseMobileSignature =
-          isMobileSignaturePage &&
-          isSaveConflictError(saveError) &&
-          getDataBackendMode() === "SUPABASE" &&
-          Boolean(nextValue);
-        if (!canRebaseMobileSignature) {
-          throw saveError;
-        }
-        await saveSupabaseSignatureWithRebase({
-          personId: person.id,
-          docType,
-          signer,
-          signatureValue: nextValue,
-          validatedAt,
-          storageRef: signatureStorageRef,
-          storagePublicUrl: signatureStoragePublicUrl,
-          mobileRequestToken: String(currentMobileRequest?.token || ""),
-        });
-        clearWorkingData();
-        state.isDirty = false;
-        clearUndoStack();
-        renderDirtyState();
-        showDataStatus("SIGNATURE ENREGISTREE");
       }
       if (document.body.dataset.page === "mobile-signature") {
         const expectedPersonId = String(person?.id || "");
