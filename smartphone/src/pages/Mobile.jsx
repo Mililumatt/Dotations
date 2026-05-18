@@ -622,6 +622,14 @@ export default function Mobile() {
     loadData();
   };
 
+  const handleTopSave = () => {
+    window.dispatchEvent(
+      new CustomEvent("dotations-mobile-save-request", {
+        detail: { tab: activeTab },
+      })
+    );
+  };
+
   const topSaveButtonStyle = (() => {
     if (saveStatus === "unsaved") {
       return {
@@ -796,6 +804,8 @@ export default function Mobile() {
           </span>
           <button
             type="button"
+            onClick={handleTopSave}
+            disabled={saveStatus === "saving"}
             style={{
               flex: "0 0 auto",
               fontSize: 8,
@@ -804,7 +814,8 @@ export default function Mobile() {
               borderRadius: 7,
               fontWeight: 700,
               letterSpacing: "0.04em",
-              cursor: "default",
+              cursor: saveStatus === "saving" ? "default" : "pointer",
+              opacity: saveStatus === "saving" ? 0.65 : 1,
               ...topSaveButtonStyle,
             }}
           >

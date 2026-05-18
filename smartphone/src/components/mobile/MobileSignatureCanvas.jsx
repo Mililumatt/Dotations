@@ -10,6 +10,7 @@ export default function MobileSignatureCanvas({ personId, docType, signer, signe
   const [saving, setSaving] = useState(false);
   const [validated, setValidated] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [dirty, setDirty] = useState(false);
   const lastPos = useRef(null);
   const [loadedSignatureData, setLoadedSignatureData] = useState("");
 
@@ -69,6 +70,7 @@ export default function MobileSignatureCanvas({ personId, docType, signer, signe
       setLoadedSignatureData("");
       setSigned(false);
       setValidated(false);
+      setDirty(false);
       return;
     }
 
@@ -79,6 +81,7 @@ export default function MobileSignatureCanvas({ personId, docType, signer, signe
       setLoadedSignatureData(incoming);
       setSigned(true);
       setValidated(Boolean(existingSignature?.signedAt));
+      setDirty(false);
     };
     img.src = incoming;
   }, [existingSignature]);
@@ -118,6 +121,7 @@ export default function MobileSignatureCanvas({ personId, docType, signer, signe
   const endDraw = () => {
     setDrawing(false);
     setSigned(true);
+    setDirty(true);
   };
 
   const clear = () => {
@@ -128,6 +132,7 @@ export default function MobileSignatureCanvas({ personId, docType, signer, signe
     setSigned(false);
     setLoadedSignatureData("");
     setValidated(false);
+    setDirty(true);
   };
 
   const save = async () => {
@@ -159,6 +164,7 @@ export default function MobileSignatureCanvas({ personId, docType, signer, signe
       setLoadedSignatureData(data);
       setSigned(true);
       setValidated(true);
+      setDirty(false);
       setMsg("SIGNATURE VALIDEE ✓");
       setTimeout(() => setMsg(null), 2500);
       if (onSaved) {
@@ -179,6 +185,19 @@ export default function MobileSignatureCanvas({ personId, docType, signer, signe
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    const onSaveRequest = (event) => {
+      const tab = String(event?.detail?.tab || "").trim();
+      const expectedTab = docType === "arrival" ? "arrivee" : docType === "exit" ? "sortie" : "";
+      if (!expectedTab || tab !== expectedTab) return;
+      if (saving) return;
+      if (!signed || !dirty) return;
+      save();
+    };
+    window.addEventListener("dotations-mobile-save-request", onSaveRequest);
+    return () => window.removeEventListener("dotations-mobile-save-request", onSaveRequest);
+  }, [docType, saving, signed, dirty, personId, signer, signataireId, signataireName, signataireFunction, existingSignature?.id]);
 
   return (
     <div style={{ background: "rgba(244,241,234,0.92)", border: "1px solid rgba(173,190,199,0.98)", borderRadius: 11, padding: "10px", marginBottom: 8 }}>

@@ -61,6 +61,7 @@ function inferCauseFromStatus(value) {
 
 function MobileEffetForm({ personId, editingEffet, onSaved, onCancel, setSaveStatus, bases = {} }) {
   const [form, setForm] = useState({ typeEffet: "", designation: "", siteReference: "", numeroIdentification: "", vehiculeImmatriculation: "", dateRemise: "", dateRetour: "", statut: "ACTIF", cause: "", dateRemplacement: "", coutRemplacement: "", commentaire: "" });
+  const [initialForm, setInitialForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const typesEffetsRef = Array.from(
@@ -113,7 +114,7 @@ function MobileEffetForm({ personId, editingEffet, onSaved, onCancel, setSaveSta
 
   useEffect(() => {
     if (editingEffet) {
-      setForm({
+      const nextForm = {
         typeEffet: editingEffet.typeEffet || "",
         designation: editingEffet.designation || "",
         siteReference: editingEffet.siteReference || "",
@@ -126,9 +127,13 @@ function MobileEffetForm({ personId, editingEffet, onSaved, onCancel, setSaveSta
         dateRemplacement: editingEffet.dateRemplacement || "",
         coutRemplacement: editingEffet.coutRemplacement || "",
         commentaire: editingEffet.commentaire || "",
-      });
+      };
+      setForm(nextForm);
+      setInitialForm(nextForm);
     } else {
-      setForm({ typeEffet: "", designation: "", siteReference: "", numeroIdentification: "", vehiculeImmatriculation: "", dateRemise: new Date().toISOString().slice(0, 10), dateRetour: "", statut: "ACTIF", cause: "", dateRemplacement: "", coutRemplacement: "", commentaire: "" });
+      const nextForm = { typeEffet: "", designation: "", siteReference: "", numeroIdentification: "", vehiculeImmatriculation: "", dateRemise: new Date().toISOString().slice(0, 10), dateRetour: "", statut: "ACTIF", cause: "", dateRemplacement: "", coutRemplacement: "", commentaire: "" };
+      setForm(nextForm);
+      setInitialForm(nextForm);
     }
   }, [editingEffet]);
 
@@ -182,6 +187,21 @@ function MobileEffetForm({ personId, editingEffet, onSaved, onCancel, setSaveSta
       setError(String(error?.message || "ERREUR DE SAUVEGARDE SUPABASE").toUpperCase());
     }
   };
+
+  const hasUnsavedChanges =
+    initialForm && JSON.stringify(form || {}) !== JSON.stringify(initialForm || {});
+
+  useEffect(() => {
+    const onSaveRequest = (event) => {
+      const tab = String(event?.detail?.tab || "").trim();
+      if (tab !== "fiche") return;
+      if (saving) return;
+      if (!hasUnsavedChanges) return;
+      handleSave();
+    };
+    window.addEventListener("dotations-mobile-save-request", onSaveRequest);
+    return () => window.removeEventListener("dotations-mobile-save-request", onSaveRequest);
+  }, [saving, hasUnsavedChanges, form, initialForm, personId, editingEffet?.id]);
 
   return (
     <div style={{ background: "rgba(244,241,234,0.98)", border: "1px solid rgba(173,190,199,0.98)", borderRadius: 11, padding: "12px", boxShadow: "0 4px 12px rgba(31,49,59,0.10)" }}>

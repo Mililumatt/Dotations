@@ -70,7 +70,6 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
   const [localEffets, setLocalEffets] = useState([]);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
-  const autoSaveTimerRef = useRef(null);
   const lastSavedEffetsKeyRef = useRef("");
 
   useEffect(() => {
@@ -217,28 +216,22 @@ export default function MobileDocumentSortie({ persons, effets, selectedPerson, 
   };
 
   useEffect(() => {
-    if (!selectedPerson?.id) return;
-    if (saving) return;
-    if (!localEffets.length) return;
-    const currentKey = JSON.stringify(
-      localEffets.map((entry) => [entry.id, entry.statut, entry.cause, entry.dateRetour || "", Boolean(entry._rendus)])
-    );
-    if (!lastSavedEffetsKeyRef.current) {
-      lastSavedEffetsKeyRef.current = currentKey;
-      return;
-    }
-    if (currentKey === lastSavedEffetsKeyRef.current) return;
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    autoSaveTimerRef.current = setTimeout(() => {
-      handleSaveEffets({ silent: true });
-    }, 350);
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-        autoSaveTimerRef.current = null;
-      }
+    const onSaveRequest = (event) => {
+      const tab = String(event?.detail?.tab || "").trim();
+      if (tab !== "sortie") return;
+      if (activeSection !== "effets") return;
+      if (saving) return;
+      if (!selectedPerson?.id) return;
+      if (!localEffets.length) return;
+      const currentKey = JSON.stringify(
+        localEffets.map((entry) => [entry.id, entry.statut, entry.cause, entry.dateRetour || "", Boolean(entry._rendus)])
+      );
+      if (currentKey === lastSavedEffetsKeyRef.current) return;
+      handleSaveEffets({ silent: false });
     };
-  }, [selectedPerson?.id, localEffets, saving]);
+    window.addEventListener("dotations-mobile-save-request", onSaveRequest);
+    return () => window.removeEventListener("dotations-mobile-save-request", onSaveRequest);
+  }, [activeSection, saving, selectedPerson?.id, localEffets]);
 
   return (
     <div style={{ padding: "12px 12px 0" }}>
