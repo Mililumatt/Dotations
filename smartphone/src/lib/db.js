@@ -355,13 +355,17 @@ function normalizeLegacyEffet(effet = {}, personId = "") {
 }
 
 function listLegacyPersonsFromPayload(payload = {}) {
-  return ensureArray(payload.personnes).map(normalizeLegacyPerson);
+  return ensureArray(payload.personnes)
+    .filter((person) => !isSoftDeleted(person))
+    .map(normalizeLegacyPerson);
 }
 
 function listLegacyEffetsFromPayload(payload = {}) {
   const out = [];
   ensureArray(payload.personnes).forEach((person) => {
+    if (isSoftDeleted(person)) return;
     ensureArray(person?.effetsConfies).forEach((effet) => {
+      if (isSoftDeleted(effet)) return;
       out.push(normalizeLegacyEffet(effet, person?.id));
     });
   });
