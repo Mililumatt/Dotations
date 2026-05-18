@@ -14510,6 +14510,9 @@ async function saveDataToFile(options = {}) {
       if (throwOnConflict) {
         throw error;
       }
+      const currentPage = String(document?.body?.dataset?.page || "");
+      const isDocumentSignaturePage =
+        currentPage === "arrival-document" || currentPage === "exit-document";
       if (reloadOnConflict && (getDataBackendMode() === "SUPABASE" || isSupabaseConfigured())) {
         try {
           await reloadData("CONFLIT DETECTE - RECHARGEMENT DES DONNEES DISTANTES...");
@@ -14517,8 +14520,12 @@ async function saveDataToFile(options = {}) {
           console.error(refreshError);
         }
       }
-      showDataStatus("CONFLIT DE SAUVEGARDE - RECHARGER PUIS REESSAYER");
-      if (!silent) {
+      showDataStatus(
+        isDocumentSignaturePage
+          ? "CONFLIT DETECTE - DONNEES RECHARGEES"
+          : "CONFLIT DE SAUVEGARDE - RECHARGER PUIS REESSAYER"
+      );
+      if (!silent && !isDocumentSignaturePage) {
         window.alert(error.message);
       }
       return;
