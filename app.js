@@ -4320,6 +4320,12 @@ function stopMobileSignaturePolling() {
   state.mobileSignaturePollBackoffUntil = 0;
   state.mobileSignaturePollErrorCount = 0;
   state.mobileSignaturePollIntervalMs = 0;
+  const page = document.body.dataset.page || "";
+  if (page === "arrival-document" || page === "exit-document") {
+    setMobileSignaturePollStatus("PAUSE REPRISE SIGNATURES (ONGLET CACHE/OFF)", "warning");
+  } else {
+    setMobileSignaturePollStatus("PAUSE REPRISE SIGNATURES (HORS PAGE)");
+  }
 }
 
 function updateBrowserStorageAlert() {
@@ -4396,6 +4402,39 @@ function getActiveDocumentMobileSignatureRequest() {
     getActiveMobileSignatureRequest(personId, docType, "personnel") ||
     getActiveMobileSignatureRequest(personId, docType, "representant")
   );
+}
+
+function setMobileSignaturePollStatus(message, tone = "normal") {
+  const headerActions = document.querySelector(".page-header__actions");
+  if (!headerActions) {
+    return;
+  }
+
+  let node = document.getElementById("dotations-mobile-signature-poll-status");
+  if (!node) {
+    node = document.createElement("span");
+    node.id = "dotations-mobile-signature-poll-status";
+    node.className = "page-header__storage-alert";
+    node.setAttribute("role", "status");
+    headerActions.appendChild(node);
+  }
+
+  if (!message) {
+    node.hidden = true;
+    return;
+  }
+
+  node.hidden = false;
+  node.textContent = message;
+  node.classList.remove(
+    "page-header__storage-alert--warning",
+    "page-header__storage-alert--critical"
+  );
+  if (tone === "warning") {
+    node.classList.add("page-header__storage-alert--warning");
+  } else if (tone === "critical") {
+    node.classList.add("page-header__storage-alert--critical");
+  }
 }
 
 async function pollMobileSignatureRequest() {
@@ -4559,6 +4598,12 @@ function syncMobileSignaturePolling() {
   const desiredInterval = state.mobileSignaturePollHasPendingRequest
     ? MOBILE_SIGNATURE_POLL_INTERVAL_MS
     : MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS;
+  setMobileSignaturePollStatus(
+    state.mobileSignaturePollHasPendingRequest
+      ? "VERIF SIGNATURES EN MODE RAPIDE (15s)"
+      : "VERIF SIGNATURES EN MODE RALENTI (30s)",
+    state.mobileSignaturePollHasPendingRequest ? "normal" : "warning"
+  );
   if (state.mobileSignaturePollTimerId) {
     if (state.mobileSignaturePollIntervalMs !== desiredInterval) {
       window.clearInterval(state.mobileSignaturePollTimerId);
@@ -4595,6 +4640,10 @@ function scheduleMobileSignatureRenderSync() {
     return;
   }
   const delay = MOBILE_SIGNATURE_POLL_RENDER_SYNC_DEBOUNCE_MS - (now - lastRequested);
+  setMobileSignaturePollStatus(
+    `REPRISE SIGNATURES DANS ${Math.ceil(delay / 1000)}S`,
+    "critical"
+  );
   if (state.mobileSignaturePollRenderSyncTimerId) {
     window.clearTimeout(state.mobileSignaturePollRenderSyncTimerId);
   }
