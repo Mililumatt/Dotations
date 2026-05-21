@@ -8,7 +8,7 @@ const DEFAULT_FILTERS = {
   typeEffet: "",
 };
 
-const state = {
+  const state = {
   data: null,
   supabaseRevision: null,
   latestDataEtag: "",
@@ -28,6 +28,7 @@ const state = {
   mobileSignaturePollInFlight: false,
   mobileSignaturePollBackoffUntil: 0,
   mobileSignaturePollErrorCount: 0,
+  mobileSignaturePollResumeTimerId: 0,
   mobileSignatureVisibilityBound: false,
   browserStorageQuotaLevel: 0,
   mobileSignatureNetworkInfo: null,
@@ -69,6 +70,7 @@ const state = {
 };
 const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
+const MOBILE_SIGNATURE_POLL_RESUME_DELAY_MS = 5000;
 const BROWSER_STORAGE_WARNING_RATIO = 0.8;
 const BROWSER_STORAGE_ALERT_RATIO = 0.9;
 const DATA_FETCH_DEBOUNCE_MS = 1200;
@@ -4298,6 +4300,10 @@ function stopMobileSignaturePolling() {
     window.clearInterval(state.mobileSignaturePollTimerId);
     state.mobileSignaturePollTimerId = 0;
   }
+  if (state.mobileSignaturePollResumeTimerId) {
+    window.clearTimeout(state.mobileSignaturePollResumeTimerId);
+    state.mobileSignaturePollResumeTimerId = 0;
+  }
   state.mobileSignaturePollInFlight = false;
   state.mobileSignaturePollBackoffUntil = 0;
   state.mobileSignaturePollErrorCount = 0;
@@ -4532,7 +4538,14 @@ function bindMobileSignatureVisibilityPolling() {
       stopMobileSignaturePolling();
       return;
     }
-    syncMobileSignaturePolling();
+    if (state.mobileSignaturePollResumeTimerId) {
+      window.clearTimeout(state.mobileSignaturePollResumeTimerId);
+      state.mobileSignaturePollResumeTimerId = 0;
+    }
+    state.mobileSignaturePollResumeTimerId = window.setTimeout(() => {
+      state.mobileSignaturePollResumeTimerId = 0;
+      syncMobileSignaturePolling();
+    }, MOBILE_SIGNATURE_POLL_RESUME_DELAY_MS);
   });
   state.mobileSignatureVisibilityBound = true;
 }
