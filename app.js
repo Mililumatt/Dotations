@@ -59,8 +59,12 @@ const state = {
   saveInFlight: false,
   lastPdfOpenKey: "",
   lastPdfOpenAtMs: 0,
+  latestDataFetchPromise: null,
+  latestDataFetchAt: 0,
+  latestDataSnapshotCache: null,
 };
 const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 10000;
+const DATA_FETCH_DEBOUNCE_MS = 1200;
 
 const WORKING_DATA_KEY = "dashboard-working-data";
 const LEGACY_CONTRACT_TYPES = ["CDI", "CDD", "INTERIMAIRE"];
@@ -2704,64 +2708,87 @@ async function saveSupabaseSignatureWithRebase({
   }
 }
 
-async function fetchLatestDataSnapshot() {
-  const mode = getDataBackendMode();
-  if (mode === "SUPABASE") {
-    const etagKey = "__dotations_data_etag";
-    const cacheKey = "__dotations_data_snapshot";
-    let knownEtag = String(state.latestDataEtag || "");
-    let cachedSnapshot = null;
-    try {
-      const storedEtag = String(sessionStorage.getItem(etagKey) || "");
-      if (storedEtag) {
-        knownEtag = storedEtag;
-      }
-      const raw = sessionStorage.getItem(cacheKey);
-      cachedSnapshot = raw ? JSON.parse(raw) : null;
-    } catch (error) {
-      cachedSnapshot = null;
-    }
-    const headers = knownEtag ? { "If-None-Match": knownEtag } : {};
-    const response = await callEdgeApi(
-      "data",
-      { method: "GET", headers, acceptedStatuses: [304] }
-    );
-    if (response.status === 304) {
-      if (cachedSnapshot && typeof cachedSnapshot === "object") {
-        return cachedSnapshot;
-      }
-      const fallbackResponse = await callEdgeApi("data", { method: "GET" });
-      const fallbackSnapshot = await fallbackResponse.json();
-      const fallbackEtag = String(fallbackResponse.headers.get("etag") || "").trim();
-      if (fallbackEtag) {
-        state.latestDataEtag = fallbackEtag;
-      }
-      return fallbackSnapshot;
-    }
-    const nextSnapshot = await response.json();
-    const responseEtag = String(response.headers.get("etag") || "").trim();
-    if (responseEtag) {
-      state.latestDataEtag = responseEtag;
-    }
-    if (responseEtag && nextSnapshot && typeof nextSnapshot === "object") {
-      try {
-        sessionStorage.setItem(etagKey, responseEtag);
-      } catch (error) {
-        // ignore etag cache write failures
-      }
-      try {
-        sessionStorage.setItem(cacheKey, JSON.stringify(nextSnapshot));
-      } catch (error) {
-        // ignore storage cache failures
-      }
-    }
-    return nextSnapshot;
+async function fetchLatestDataSnapshot({ forceFresh = false } = {}) {
+  const now = Date.now();
+  const hasFreshCachedSnapshot = state.latestDataSnapshotCache && now - (state.latestDataFetchAt || 0) <= DATA_FETCH_DEBOUNCE_MS;
+  if (state.latestDataFetchPromise) {
+    return state.latestDataFetchPromise;
   }
-  const response = await fetch(`/api/data?ts=${Date.now()}`, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error("LOCAL LOAD FAILED");
+  if (!forceFresh && hasFreshCachedSnapshot && !state.isDirty) {
+    return state.latestDataSnapshotCache;
   }
-  return response.json();
+
+  const fetchPromise = (async () => {
+    const mode = getDataBackendMode();
+    if (mode === "SUPABASE") {
+      const etagKey = "__dotations_data_etag";
+      const cacheKey = "__dotations_data_snapshot";
+      let knownEtag = String(state.latestDataEtag || "");
+      let cachedSnapshot = null;
+      try {
+        const storedEtag = String(sessionStorage.getItem(etagKey) || "");
+        if (storedEtag) {
+          knownEtag = storedEtag;
+        }
+        const raw = sessionStorage.getItem(cacheKey);
+        cachedSnapshot = raw ? JSON.parse(raw) : null;
+      } catch (error) {
+        cachedSnapshot = null;
+      }
+      const headers = knownEtag ? { "If-None-Match": knownEtag } : {};
+      const response = await callEdgeApi(
+        "data",
+        { method: "GET", headers, acceptedStatuses: [304] }
+      );
+      if (response.status === 304) {
+        if (cachedSnapshot && typeof cachedSnapshot === "object") {
+          return cachedSnapshot;
+        }
+        const fallbackResponse = await callEdgeApi("data", { method: "GET" });
+        const fallbackSnapshot = await fallbackResponse.json();
+        const fallbackEtag = String(fallbackResponse.headers.get("etag") || "").trim();
+        if (fallbackEtag) {
+          state.latestDataEtag = fallbackEtag;
+        }
+        return fallbackSnapshot;
+      }
+      const nextSnapshot = await response.json();
+      const responseEtag = String(response.headers.get("etag") || "").trim();
+      if (responseEtag) {
+        state.latestDataEtag = responseEtag;
+      }
+      if (responseEtag && nextSnapshot && typeof nextSnapshot === "object") {
+        try {
+          sessionStorage.setItem(etagKey, responseEtag);
+        } catch (error) {
+          // ignore etag cache write failures
+        }
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify(nextSnapshot));
+        } catch (error) {
+          // ignore storage cache failures
+        }
+      }
+      return nextSnapshot;
+    }
+    const response = await fetch(`/api/data?ts=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("LOCAL LOAD FAILED");
+    }
+    return response.json();
+  })();
+
+  state.latestDataFetchPromise = fetchPromise;
+  try {
+    const snapshot = await fetchPromise;
+    state.latestDataSnapshotCache = snapshot;
+    state.latestDataFetchAt = Date.now();
+    return snapshot;
+  } finally {
+    if (state.latestDataFetchPromise === fetchPromise) {
+      state.latestDataFetchPromise = null;
+    }
+  }
 }
 
 function isLikelyLocalUrl(value) {
@@ -4308,7 +4335,7 @@ async function pollMobileSignatureRequest() {
     const json =
       getDataBackendMode() === "SUPABASE"
         ? await fetchSupabaseStateData()
-        : await fetchLatestDataSnapshot();
+        : await fetchLatestDataSnapshot({ forceFresh: true });
     const requests = Array.isArray(json?.demandesSignatureMobile) ? json.demandesSignatureMobile : [];
     const person = Array.isArray(json?.personnes)
       ? json.personnes.find((entry) => String(entry.id || "") === String(personId || "")) || null
