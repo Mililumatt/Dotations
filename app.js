@@ -4320,11 +4320,10 @@ function stopMobileSignaturePolling() {
   state.mobileSignaturePollBackoffUntil = 0;
   state.mobileSignaturePollErrorCount = 0;
   state.mobileSignaturePollIntervalMs = 0;
-  const page = document.body.dataset.page || "";
-  if (page === "arrival-document" || page === "exit-document") {
+  if (document.body.dataset.page === "arrival-document" || document.body.dataset.page === "exit-document") {
     setMobileSignaturePollStatus("PAUSE REPRISE SIGNATURES (ONGLET CACHE/OFF)", "warning");
   } else {
-    setMobileSignaturePollStatus("PAUSE REPRISE SIGNATURES (HORS PAGE)");
+    setMobileSignaturePollStatus("");
   }
 }
 
@@ -4405,12 +4404,21 @@ function getActiveDocumentMobileSignatureRequest() {
 }
 
 function setMobileSignaturePollStatus(message, tone = "normal") {
+  const isPollPage = document.body.dataset.page === "arrival-document" || document.body.dataset.page === "exit-document";
+  const existingNode = document.getElementById("dotations-mobile-signature-poll-status");
+  if (!isPollPage) {
+    if (existingNode) {
+      existingNode.hidden = true;
+    }
+    return;
+  }
+
   const headerActions = document.querySelector(".page-header__actions");
   if (!headerActions) {
     return;
   }
 
-  let node = document.getElementById("dotations-mobile-signature-poll-status");
+  let node = existingNode;
   if (!node) {
     node = document.createElement("span");
     node.id = "dotations-mobile-signature-poll-status";
