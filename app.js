@@ -28,6 +28,7 @@ const state = {
   mobileSignaturePollInFlight: false,
   mobileSignaturePollBackoffUntil: 0,
   mobileSignaturePollErrorCount: 0,
+  mobileSignatureVisibilityBound: false,
   browserStorageQuotaLevel: 0,
   mobileSignatureNetworkInfo: null,
   autoSaveNavigationBound: false,
@@ -3777,6 +3778,7 @@ async function loadData() {
   bindStockAdjustmentForm();
   bindRepresentativeSignatoryForm();
   bindMobileSignatureSettingsForm();
+  bindMobileSignatureVisibilityPolling();
   bindRegisterButtonsAutoSave();
   bindReferenceFilters();
   bindArchiveFilterForm();
@@ -4515,6 +4517,24 @@ function syncMobileSignaturePolling() {
   state.mobileSignaturePollTimerId = window.setInterval(() => {
     pollMobileSignatureRequest();
   }, MOBILE_SIGNATURE_POLL_INTERVAL_MS);
+}
+
+function bindMobileSignatureVisibilityPolling() {
+  if (state.mobileSignatureVisibilityBound) {
+    return;
+  }
+  document.addEventListener("visibilitychange", () => {
+    const page = document.body.dataset.page || "";
+    if (page !== "arrival-document" && page !== "exit-document") {
+      return;
+    }
+    if (document.visibilityState === "hidden") {
+      stopMobileSignaturePolling();
+      return;
+    }
+    syncMobileSignaturePolling();
+  });
+  state.mobileSignatureVisibilityBound = true;
 }
 
 function applyActiveNav() {
