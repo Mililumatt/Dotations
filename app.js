@@ -4608,8 +4608,8 @@ function syncMobileSignaturePolling() {
     : MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS;
   setMobileSignaturePollStatus(
     state.mobileSignaturePollHasPendingRequest
-      ? "Verification des signatures active (toutes les 15s)"
-      : "Verification des signatures active (toutes les 30s)",
+      ? "Verification des signatures active (prochaine dans 15s)"
+      : "Verification des signatures active (prochaine dans 30s)",
     state.mobileSignaturePollHasPendingRequest ? "normal" : "warning"
   );
   if (state.mobileSignaturePollTimerId) {
