@@ -10776,11 +10776,13 @@ function renderPersonPicker() {
     setCurrentPersonId(personId, "replace");
     renderPersonPicker();
     if (page === "arrival-document") {
+      state.mobileSignaturePollLastSyncAt = 0;
       renderArrivalDocument(personId);
       refreshDocumentSignatureCanvases("arrival");
       updateSortableHeaders("arrivalEffects");
       syncMobileSignaturePolling();
     } else if (page === "exit-document") {
+      state.mobileSignaturePollLastSyncAt = 0;
       renderExitDocument(personId);
       refreshDocumentSignatureCanvases("exit");
       updateSortableHeaders("exitEffects");
