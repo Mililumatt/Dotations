@@ -63,7 +63,7 @@ const state = {
   latestDataFetchAt: 0,
   latestDataSnapshotCache: null,
 };
-const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 10000;
+const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const DATA_FETCH_DEBOUNCE_MS = 1200;
 
 const WORKING_DATA_KEY = "dashboard-working-data";
