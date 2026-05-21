@@ -864,6 +864,11 @@ body[data-pdf-mode="true"] .document-effects-action-col {
   color: #7a5a22;
 }
 
+.page-header__storage-alert:empty,
+.page-header__storage-alert[hidden] {
+  display: none !important;
+}
+
 .page-header__storage-alert--warning {
   border-color: rgba(216, 169, 104, 0.45);
   background: rgba(232, 215, 167, 0.22);
