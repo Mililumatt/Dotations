@@ -74,6 +74,7 @@ const state = {
   latestDataSnapshotCache: null,
   pageRenderRafId: 0,
   filterInputDebounceTimerId: 0,
+  referenceFilterDebounceTimerId: 0,
 };
 const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
@@ -8279,12 +8280,27 @@ function bindReferenceFilters() {
   if (!form) {
     return;
   }
+
+  const scheduleReferenceFilterUpdate = () => {
+    if (state.referenceFilterDebounceTimerId) {
+      window.clearTimeout(state.referenceFilterDebounceTimerId);
+    }
+    state.referenceFilterDebounceTimerId = window.setTimeout(() => {
+      state.referenceFilterDebounceTimerId = 0;
+      renderReferenceEffectsTable();
+    }, FILTER_INPUT_DEBOUNCE_MS);
+  };
+
   const applyReferenceReset = () => {
+    if (state.referenceFilterDebounceTimerId) {
+      window.clearTimeout(state.referenceFilterDebounceTimerId);
+      state.referenceFilterDebounceTimerId = 0;
+    }
     resetReferenceBasesPageFields();
   };
 
   form.oninput = () => {
-    renderReferenceEffectsTable();
+    scheduleReferenceFilterUpdate();
   };
 
   form.onreset = (event) => {
