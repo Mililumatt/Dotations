@@ -2,3 +2,7 @@
 snapshots/
 snapshots_ok/
 LATEST_MAJOR_SNAPSHOT.txt
+
+# Sauvegardes locales
+sauvegarde Github/
+sauvegarde Supabase/
