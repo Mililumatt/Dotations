@@ -849,6 +849,32 @@ body[data-pdf-mode="true"] .document-effects-action-col {
   border-color: rgba(63, 97, 112, 0.35);
 }
 
+.page-header__storage-alert {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  border: 1px solid rgba(216, 169, 104, 0.45);
+  background: rgba(232, 215, 167, 0.2);
+  color: #7a5a22;
+}
+
+.page-header__storage-alert--warning {
+  border-color: rgba(216, 169, 104, 0.45);
+  background: rgba(232, 215, 167, 0.22);
+}
+
+.page-header__storage-alert--critical {
+  border-color: rgba(209, 110, 91, 0.52);
+  background: rgba(217, 137, 106, 0.18);
+  color: #8b4738;
+}
+
 body.has-modal-open {
   overflow: hidden;
 }

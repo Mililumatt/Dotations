@@ -28,6 +28,7 @@ const state = {
   mobileSignaturePollInFlight: false,
   mobileSignaturePollBackoffUntil: 0,
   mobileSignaturePollErrorCount: 0,
+  browserStorageQuotaLevel: 0,
   mobileSignatureNetworkInfo: null,
   autoSaveNavigationBound: false,
   searchClearBrowserEventsBound: false,
@@ -67,6 +68,8 @@ const state = {
 };
 const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
+const BROWSER_STORAGE_WARNING_RATIO = 0.8;
+const BROWSER_STORAGE_ALERT_RATIO = 0.9;
 const DATA_FETCH_DEBOUNCE_MS = 1200;
 
 const WORKING_DATA_KEY = "dashboard-working-data";
@@ -3793,6 +3796,7 @@ async function loadData() {
     renderPage();
     clearSearchInputsOnInitialLoad();
     showDataStatus("DONNEES EN COURS REPRISES - SAUVEGARDER POUR LES RENDRE DEFINITIVES");
+    void updateBrowserStorageAlert();
     scheduleBackgroundAutoSave();
     return;
   }
@@ -3855,6 +3859,7 @@ async function reloadData(statusText = "RECHARGEMENT DES DONNEES...") {
     showDataStatus(
       getDataBackendMode() === "SUPABASE" ? "DONNEES SUPABASE CHARGEES" : "DONNEES LOCALES CHARGEES"
     );
+    void updateBrowserStorageAlert();
     state.previousSignatureValidationMap = buildSignatureValidationMap(state.data);
     window.setTimeout(() => {
       notifyFullySignedDocumentsOnReload(previousSignatureValidationMap);
@@ -4294,6 +4299,66 @@ function stopMobileSignaturePolling() {
   state.mobileSignaturePollInFlight = false;
   state.mobileSignaturePollBackoffUntil = 0;
   state.mobileSignaturePollErrorCount = 0;
+}
+
+function updateBrowserStorageAlert() {
+  if (!navigator?.storage?.estimate) {
+    return Promise.resolve(null);
+  }
+
+  return (async () => {
+    try {
+      const estimate = await navigator.storage.estimate();
+      const usage = Number(estimate?.usage || 0);
+      const quota = Number(estimate?.quota || 0);
+      if (!quota || !Number.isFinite(usage) || !Number.isFinite(quota)) {
+        return null;
+      }
+
+      const ratio = usage / quota;
+      const usageMo = Math.round(usage / (1024 * 1024));
+      const quotaMo = Math.max(1, Math.round(quota / (1024 * 1024)));
+      const ratioPercent = Math.round(ratio * 100);
+      const level = ratio >= BROWSER_STORAGE_ALERT_RATIO ? 2 : ratio >= BROWSER_STORAGE_WARNING_RATIO ? 1 : 0;
+
+      const headerActions = document.querySelector(".page-header__actions");
+      if (!headerActions) {
+        return null;
+      }
+
+      let node = document.getElementById("dotations-browser-storage-badge");
+      if (!node) {
+        node = document.createElement("span");
+        node.id = "dotations-browser-storage-badge";
+        node.className = "page-header__storage-alert";
+        node.setAttribute("role", "status");
+        headerActions.appendChild(node);
+      }
+
+      node.classList.remove(
+        "page-header__storage-alert--warning",
+        "page-header__storage-alert--critical"
+      );
+
+      if (level === 0) {
+        node.hidden = true;
+        state.browserStorageQuotaLevel = 0;
+        return level;
+      }
+
+      node.hidden = false;
+      node.textContent = `STOCKAGE NAVIGATEUR ${ratioPercent}% (${usageMo}/${quotaMo} Mo)`;
+      if (level === 2) {
+        node.classList.add("page-header__storage-alert--critical");
+      } else {
+        node.classList.add("page-header__storage-alert--warning");
+      }
+      state.browserStorageQuotaLevel = level;
+      return level;
+    } catch (error) {
+      return null;
+    }
+  })();
 }
 
 function getActiveDocumentMobileSignatureRequest() {
