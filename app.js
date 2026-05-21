@@ -26,6 +26,8 @@ const state = {
   pdfGenerationActive: false,
   mobileSignaturePollTimerId: 0,
   mobileSignaturePollInFlight: false,
+  mobileSignaturePollBackoffUntil: 0,
+  mobileSignaturePollErrorCount: 0,
   mobileSignatureNetworkInfo: null,
   autoSaveNavigationBound: false,
   searchClearBrowserEventsBound: false,
@@ -64,6 +66,7 @@ const state = {
   latestDataSnapshotCache: null,
 };
 const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
+const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
 const DATA_FETCH_DEBOUNCE_MS = 1200;
 
 const WORKING_DATA_KEY = "dashboard-working-data";
@@ -4289,6 +4292,8 @@ function stopMobileSignaturePolling() {
     state.mobileSignaturePollTimerId = 0;
   }
   state.mobileSignaturePollInFlight = false;
+  state.mobileSignaturePollBackoffUntil = 0;
+  state.mobileSignaturePollErrorCount = 0;
 }
 
 function getActiveDocumentMobileSignatureRequest() {
@@ -4309,6 +4314,9 @@ function getActiveDocumentMobileSignatureRequest() {
 
 async function pollMobileSignatureRequest() {
   if (document.visibilityState === "hidden") {
+    return;
+  }
+  if (state.mobileSignaturePollBackoffUntil && Date.now() < state.mobileSignaturePollBackoffUntil) {
     return;
   }
   if (state.mobileSignaturePollInFlight) {
@@ -4336,6 +4344,9 @@ async function pollMobileSignatureRequest() {
       getDataBackendMode() === "SUPABASE"
         ? await fetchSupabaseStateData()
         : await fetchLatestDataSnapshot({ forceFresh: true });
+
+    state.mobileSignaturePollErrorCount = 0;
+    state.mobileSignaturePollBackoffUntil = 0;
     const requests = Array.isArray(json?.demandesSignatureMobile) ? json.demandesSignatureMobile : [];
     const person = Array.isArray(json?.personnes)
       ? json.personnes.find((entry) => String(entry.id || "") === String(personId || "")) || null
@@ -4394,7 +4405,9 @@ async function pollMobileSignatureRequest() {
       else if (signedPersonnel) showDataStatus("SIGNATURE MOBILE DU PERSONNEL ENREGISTREE");
     }
   } catch (error) {
-    // ignore polling errors
+    const previousErrorCount = Math.min((state.mobileSignaturePollErrorCount || 0) + 1, 4);
+    state.mobileSignaturePollErrorCount = previousErrorCount;
+    state.mobileSignaturePollBackoffUntil = Date.now() + MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS * previousErrorCount;
   } finally {
     state.mobileSignaturePollInFlight = false;
   }
