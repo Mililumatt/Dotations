@@ -29,6 +29,8 @@ const state = {
   mobileSignaturePollBackoffUntil: 0,
   mobileSignaturePollErrorCount: 0,
   mobileSignaturePollResumeTimerId: 0,
+  mobileSignaturePollRenderSyncTimerId: 0,
+  mobileSignaturePollRenderSyncAt: 0,
   mobileSignaturePollHasPendingRequest: true,
   mobileSignaturePollIntervalMs: 0,
   mobileSignaturePollLastSyncAt: 0,
@@ -75,6 +77,7 @@ const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
 const MOBILE_SIGNATURE_POLL_RESUME_DELAY_MS = 5000;
 const MOBILE_SIGNATURE_POLL_SYNC_MIN_GAP_MS = 2000;
+const MOBILE_SIGNATURE_POLL_RENDER_SYNC_DEBOUNCE_MS = 30000;
 const MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS = 30000;
 const BROWSER_STORAGE_WARNING_RATIO = 0.8;
 const BROWSER_STORAGE_ALERT_RATIO = 0.9;
@@ -4305,6 +4308,10 @@ function stopMobileSignaturePolling() {
     window.clearInterval(state.mobileSignaturePollTimerId);
     state.mobileSignaturePollTimerId = 0;
   }
+  if (state.mobileSignaturePollRenderSyncTimerId) {
+    window.clearTimeout(state.mobileSignaturePollRenderSyncTimerId);
+    state.mobileSignaturePollRenderSyncTimerId = 0;
+  }
   if (state.mobileSignaturePollResumeTimerId) {
     window.clearTimeout(state.mobileSignaturePollResumeTimerId);
     state.mobileSignaturePollResumeTimerId = 0;
@@ -4573,6 +4580,29 @@ function syncMobileSignaturePolling() {
       pollMobileSignatureRequest();
     }, desiredInterval);
   }
+}
+
+function scheduleMobileSignatureRenderSync() {
+  const page = document.body.dataset.page || "";
+  if (page !== "arrival-document" && page !== "exit-document") {
+    return;
+  }
+  const now = Date.now();
+  const lastRequested = state.mobileSignaturePollRenderSyncAt || 0;
+  if (!lastRequested || now - lastRequested >= MOBILE_SIGNATURE_POLL_RENDER_SYNC_DEBOUNCE_MS) {
+    state.mobileSignaturePollRenderSyncAt = now;
+    syncMobileSignaturePolling();
+    return;
+  }
+  const delay = MOBILE_SIGNATURE_POLL_RENDER_SYNC_DEBOUNCE_MS - (now - lastRequested);
+  if (state.mobileSignaturePollRenderSyncTimerId) {
+    window.clearTimeout(state.mobileSignaturePollRenderSyncTimerId);
+  }
+  state.mobileSignaturePollRenderSyncTimerId = window.setTimeout(() => {
+    state.mobileSignaturePollRenderSyncTimerId = 0;
+    state.mobileSignaturePollRenderSyncAt = Date.now();
+    syncMobileSignaturePolling();
+  }, delay);
 }
 
 function bindMobileSignatureVisibilityPolling() {
@@ -8417,14 +8447,14 @@ function renderPage() {
     renderArrivalDocument(currentPersonId);
     refreshDocumentSignatureCanvases("arrival");
     updateSortableHeaders("arrivalEffects");
-    syncMobileSignaturePolling();
+    scheduleMobileSignatureRenderSync();
   }
 
   if (page === "exit-document") {
     renderExitDocument(currentPersonId);
     refreshDocumentSignatureCanvases("exit");
     updateSortableHeaders("exitEffects");
-    syncMobileSignaturePolling();
+    scheduleMobileSignatureRenderSync();
   }
 
   if (page === "reference-bases") {
@@ -10822,13 +10852,13 @@ function renderPersonPicker() {
       renderArrivalDocument(personId);
       refreshDocumentSignatureCanvases("arrival");
       updateSortableHeaders("arrivalEffects");
-      syncMobileSignaturePolling();
+      scheduleMobileSignatureRenderSync();
     } else if (page === "exit-document") {
       state.mobileSignaturePollLastSyncAt = 0;
       renderExitDocument(personId);
       refreshDocumentSignatureCanvases("exit");
       updateSortableHeaders("exitEffects");
-      syncMobileSignaturePolling();
+      scheduleMobileSignatureRenderSync();
     } else {
       renderPage();
     }
