@@ -4403,11 +4403,6 @@ async function pollMobileSignatureRequest() {
     getActiveMobileSignatureRequest(personId, docType, "personnel"),
     getActiveMobileSignatureRequest(personId, docType, "representant"),
   ].filter(Boolean);
-  if (trackedRequests.length === 0) {
-    stopMobileSignaturePolling();
-    return;
-  }
-
   try {
     const json =
       getDataBackendMode() === "SUPABASE"
@@ -4435,13 +4430,37 @@ async function pollMobileSignatureRequest() {
     state.data = json;
     migrateDataModel({ suppressDirty: true });
 
+    const activeServerRequests = requests.filter((entry) => {
+      return (
+        entry &&
+        String(entry?.personId || "") === String(personId || "") &&
+        normalizeMobileSignatureSigner(entry?.signer || "") &&
+        normalizeText(entry?.docType || "") === normalizeText(docType) &&
+        entry?.status === "EN ATTENTE" &&
+        Date.parse(entry?.expiresAt || "") > Date.now()
+      );
+    });
+    const allTrackedRequests = new Map();
+    trackedRequests.forEach((request) => {
+      const token = String(request?.token || "").trim();
+      if (token) {
+        allTrackedRequests.set(token, request);
+      }
+    });
+    activeServerRequests.forEach((request) => {
+      const token = String(request?.token || "").trim();
+      if (token) {
+        allTrackedRequests.set(token, request);
+      }
+    });
+
     const nextRequestsByToken = new Map(
-      trackedRequests
-        .map((request) => requests.find((entry) => String(entry?.token || "") === String(request?.token || "")) || null)
-        .filter(Boolean)
-        .map((request) => [String(request.token || ""), request])
+      Array.from(allTrackedRequests.values()).map((request) => [String(request?.token || ""), request])
     );
-    const anyPending = Array.from(nextRequestsByToken.values()).some((request) => request.status === "EN ATTENTE");
+    const anyPending = Array.from(nextRequestsByToken.values()).some((request) => request?.status === "EN ATTENTE");
+    if (!anyPending && trackedRequests.length === 0 && activeServerRequests.length === 0) {
+      return;
+    }
     if (!anyPending) {
       renderMobileSignatureLink(docType, "personnel", "");
       renderMobileSignatureLink(docType, "representant", "");
@@ -4490,9 +4509,6 @@ function syncMobileSignaturePolling() {
   }
   const personId = getCurrentPersonId();
   if (!personId) {
-    return;
-  }
-  if (!getActiveDocumentMobileSignatureRequest()) {
     return;
   }
   pollMobileSignatureRequest();
