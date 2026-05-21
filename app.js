@@ -4321,7 +4321,7 @@ function stopMobileSignaturePolling() {
   state.mobileSignaturePollErrorCount = 0;
   state.mobileSignaturePollIntervalMs = 0;
   if (document.body.dataset.page === "arrival-document" || document.body.dataset.page === "exit-document") {
-    setMobileSignaturePollStatus("PAUSE REPRISE SIGNATURES (ONGLET CACHE/OFF)", "warning");
+    setMobileSignaturePollStatus("Verification des signatures en pause", "warning");
   } else {
     setMobileSignaturePollStatus("");
   }
@@ -4608,8 +4608,8 @@ function syncMobileSignaturePolling() {
     : MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS;
   setMobileSignaturePollStatus(
     state.mobileSignaturePollHasPendingRequest
-      ? "VERIF SIGNATURES EN MODE RAPIDE (15s)"
-      : "VERIF SIGNATURES EN MODE RALENTI (30s)",
+      ? "Verification des signatures active (toutes les 15s)"
+      : "Verification des signatures active (toutes les 30s)",
     state.mobileSignaturePollHasPendingRequest ? "normal" : "warning"
   );
   if (state.mobileSignaturePollTimerId) {
@@ -4649,7 +4649,7 @@ function scheduleMobileSignatureRenderSync() {
   }
   const delay = MOBILE_SIGNATURE_POLL_RENDER_SYNC_DEBOUNCE_MS - (now - lastRequested);
   setMobileSignaturePollStatus(
-    `REPRISE SIGNATURES DANS ${Math.ceil(delay / 1000)}S`,
+    `Verification des signatures dans ${Math.ceil(delay / 1000)}s`,
     "critical"
   );
   if (state.mobileSignaturePollRenderSyncTimerId) {
