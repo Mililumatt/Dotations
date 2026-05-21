@@ -72,6 +72,7 @@ const state = {
   latestDataFetchPromise: null,
   latestDataFetchAt: 0,
   latestDataSnapshotCache: null,
+  pageRenderRafId: 0,
 };
 const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
@@ -4832,7 +4833,7 @@ function bindOverviewUrgencyActions() {
       state.urgentMode = !state.urgentMode;
       saveNavigationContext({ filters: state.filters, urgentMode: state.urgentMode });
       updateUrgencyModeUi();
-      renderPage();
+      schedulePageRender();
       showActionStatus(
         state.urgentMode ? "warning" : "update",
         state.urgentMode ? "MODE URGENCES ACTIVE" : "MODE URGENCES DESACTIVE"
@@ -5922,7 +5923,7 @@ function bindFilterForms() {
       clearFormSearchFields(form);
       applyFiltersToForm(form);
       updateUrgencyModeUi();
-      renderPage();
+      schedulePageRender();
     };
 
     form.oninput = (event) => {
@@ -5942,7 +5943,7 @@ function bindFilterForms() {
         ...readFilters(form),
       };
       saveNavigationContext({ filters: state.filters, urgentMode: state.urgentMode });
-      renderPage();
+      schedulePageRender();
     };
 
     form.onreset = () => {
@@ -5966,6 +5967,18 @@ function bindFilterForms() {
 function syncFilterFormsFromState() {
   document.querySelectorAll(".js-filter-form").forEach((form) => applyFiltersToForm(form));
 }
+
+function schedulePageRender() {
+  if (state.pageRenderRafId) {
+    return;
+  }
+
+  state.pageRenderRafId = window.requestAnimationFrame(() => {
+    state.pageRenderRafId = 0;
+    renderPage();
+  });
+}
+
 function bindArchiveFilterForm() {
   const form = document.getElementById("documents-archives-filter-form");
   if (!form) {
@@ -5991,12 +6004,11 @@ function bindArchiveFilterForm() {
     setCurrentPersonId("", "replace");
     resetArchiveFilters();
     state.tableSorts.documentsArchives = { key: "nom", dir: "asc" };
-    renderDocumentsArchivePage();
-    updateSortableHeaders("documentsArchives");
+    schedulePageRender();
   };
 
   form.oninput = () => {
-    renderDocumentsArchivePage();
+    schedulePageRender();
   };
 
   form.onreset = (event) => {
@@ -6004,8 +6016,7 @@ function bindArchiveFilterForm() {
     setCurrentPersonId("", "replace");
     resetArchiveFilters();
     state.tableSorts.documentsArchives = { key: "nom", dir: "asc" };
-    renderDocumentsArchivePage();
-    updateSortableHeaders("documentsArchives");
+    schedulePageRender();
   };
 
   const searchField = form.elements.archiveSearch;
