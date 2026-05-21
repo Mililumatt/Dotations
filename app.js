@@ -8,7 +8,7 @@ const DEFAULT_FILTERS = {
   typeEffet: "",
 };
 
-  const state = {
+const state = {
   data: null,
   supabaseRevision: null,
   latestDataEtag: "",
@@ -29,6 +29,7 @@ const DEFAULT_FILTERS = {
   mobileSignaturePollBackoffUntil: 0,
   mobileSignaturePollErrorCount: 0,
   mobileSignaturePollResumeTimerId: 0,
+  mobileSignaturePollLastSyncAt: 0,
   mobileSignatureVisibilityBound: false,
   browserStorageQuotaLevel: 0,
   mobileSignatureNetworkInfo: null,
@@ -71,6 +72,7 @@ const DEFAULT_FILTERS = {
 const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
 const MOBILE_SIGNATURE_POLL_RESUME_DELAY_MS = 5000;
+const MOBILE_SIGNATURE_POLL_SYNC_MIN_GAP_MS = 2000;
 const BROWSER_STORAGE_WARNING_RATIO = 0.8;
 const BROWSER_STORAGE_ALERT_RATIO = 0.9;
 const DATA_FETCH_DEBOUNCE_MS = 1200;
@@ -4518,6 +4520,11 @@ function syncMobileSignaturePolling() {
   if (!personId) {
     return;
   }
+  const now = Date.now();
+  if (state.mobileSignaturePollLastSyncAt && now - state.mobileSignaturePollLastSyncAt < MOBILE_SIGNATURE_POLL_SYNC_MIN_GAP_MS) {
+    return;
+  }
+  state.mobileSignaturePollLastSyncAt = now;
   if (state.mobileSignaturePollTimerId) {
     pollMobileSignatureRequest();
     return;
