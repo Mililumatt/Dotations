@@ -29,6 +29,8 @@ const state = {
   mobileSignaturePollBackoffUntil: 0,
   mobileSignaturePollErrorCount: 0,
   mobileSignaturePollResumeTimerId: 0,
+  mobileSignaturePollHasPendingRequest: true,
+  mobileSignaturePollIntervalMs: 0,
   mobileSignaturePollLastSyncAt: 0,
   mobileSignatureVisibilityBound: false,
   browserStorageQuotaLevel: 0,
@@ -73,6 +75,7 @@ const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
 const MOBILE_SIGNATURE_POLL_RESUME_DELAY_MS = 5000;
 const MOBILE_SIGNATURE_POLL_SYNC_MIN_GAP_MS = 2000;
+const MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS = 30000;
 const BROWSER_STORAGE_WARNING_RATIO = 0.8;
 const BROWSER_STORAGE_ALERT_RATIO = 0.9;
 const DATA_FETCH_DEBOUNCE_MS = 1200;
@@ -4309,6 +4312,7 @@ function stopMobileSignaturePolling() {
   state.mobileSignaturePollInFlight = false;
   state.mobileSignaturePollBackoffUntil = 0;
   state.mobileSignaturePollErrorCount = 0;
+  state.mobileSignaturePollIntervalMs = 0;
 }
 
 function updateBrowserStorageAlert() {
@@ -4468,13 +4472,15 @@ async function pollMobileSignatureRequest() {
       Array.from(allTrackedRequests.values()).map((request) => [String(request?.token || ""), request])
     );
     const anyPending = Array.from(nextRequestsByToken.values()).some((request) => request?.status === "EN ATTENTE");
+    state.mobileSignaturePollHasPendingRequest = Boolean(anyPending);
+    ensureMobileSignaturePollingInterval();
+
     if (!anyPending && trackedRequests.length === 0 && activeServerRequests.length === 0) {
       return;
     }
     if (!anyPending) {
       renderMobileSignatureLink(docType, "personnel", "");
       renderMobileSignatureLink(docType, "representant", "");
-      stopMobileSignaturePolling();
     }
 
     const updatedPerson = getCurrentPerson();
@@ -4511,6 +4517,24 @@ async function pollMobileSignatureRequest() {
   }
 }
 
+function ensureMobileSignaturePollingInterval() {
+  if (!state.mobileSignaturePollTimerId) {
+    state.mobileSignaturePollIntervalMs = 0;
+    return;
+  }
+  const desiredInterval = state.mobileSignaturePollHasPendingRequest
+    ? MOBILE_SIGNATURE_POLL_INTERVAL_MS
+    : MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS;
+  if (state.mobileSignaturePollIntervalMs === desiredInterval) {
+    return;
+  }
+  window.clearInterval(state.mobileSignaturePollTimerId);
+  state.mobileSignaturePollTimerId = window.setInterval(() => {
+    pollMobileSignatureRequest();
+  }, desiredInterval);
+  state.mobileSignaturePollIntervalMs = desiredInterval;
+}
+
 function syncMobileSignaturePolling() {
   const page = document.body.dataset.page || "";
   if (page !== "arrival-document" && page !== "exit-document") {
@@ -4525,15 +4549,30 @@ function syncMobileSignaturePolling() {
     return;
   }
   state.mobileSignaturePollLastSyncAt = now;
+  const desiredInterval = state.mobileSignaturePollHasPendingRequest
+    ? MOBILE_SIGNATURE_POLL_INTERVAL_MS
+    : MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS;
   if (state.mobileSignaturePollTimerId) {
-    pollMobileSignatureRequest();
-    return;
+    if (state.mobileSignaturePollIntervalMs !== desiredInterval) {
+      window.clearInterval(state.mobileSignaturePollTimerId);
+      state.mobileSignaturePollTimerId = 0;
+      state.mobileSignaturePollIntervalMs = 0;
+    } else {
+      pollMobileSignatureRequest();
+      return;
+    }
   }
-  stopMobileSignaturePolling();
-  pollMobileSignatureRequest();
-  state.mobileSignaturePollTimerId = window.setInterval(() => {
+  if (!state.mobileSignaturePollIntervalMs) {
     pollMobileSignatureRequest();
-  }, MOBILE_SIGNATURE_POLL_INTERVAL_MS);
+  }
+  if (!state.mobileSignaturePollTimerId) {
+    stopMobileSignaturePolling();
+    pollMobileSignatureRequest();
+    state.mobileSignaturePollIntervalMs = desiredInterval;
+    state.mobileSignaturePollTimerId = window.setInterval(() => {
+      pollMobileSignatureRequest();
+    }, desiredInterval);
+  }
 }
 
 function bindMobileSignatureVisibilityPolling() {
