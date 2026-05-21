@@ -4510,7 +4510,6 @@ async function pollMobileSignatureRequest() {
 }
 
 function syncMobileSignaturePolling() {
-  stopMobileSignaturePolling();
   const page = document.body.dataset.page || "";
   if (page !== "arrival-document" && page !== "exit-document") {
     return;
@@ -4519,6 +4518,11 @@ function syncMobileSignaturePolling() {
   if (!personId) {
     return;
   }
+  if (state.mobileSignaturePollTimerId) {
+    pollMobileSignatureRequest();
+    return;
+  }
+  stopMobileSignaturePolling();
   pollMobileSignatureRequest();
   state.mobileSignaturePollTimerId = window.setInterval(() => {
     pollMobileSignatureRequest();
