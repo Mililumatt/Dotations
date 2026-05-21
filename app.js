@@ -4321,7 +4321,7 @@ function stopMobileSignaturePolling() {
   state.mobileSignaturePollErrorCount = 0;
   state.mobileSignaturePollIntervalMs = 0;
   if (document.body.dataset.page === "arrival-document" || document.body.dataset.page === "exit-document") {
-    setMobileSignaturePollStatus("Verification des signatures en pause", "warning");
+    setMobileSignaturePollStatus("Vérification en pause (onglet masqué ou navigation ailleurs)", "warning");
   } else {
     setMobileSignaturePollStatus("");
   }
@@ -4608,8 +4608,13 @@ function syncMobileSignaturePolling() {
     : MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS;
   const nextCheckAt = new Date(now + desiredInterval);
   const nextCheckTime = `${String(nextCheckAt.getHours()).padStart(2, "0")}:${String(nextCheckAt.getMinutes()).padStart(2, "0")}:${String(nextCheckAt.getSeconds()).padStart(2, "0")}`;
+  const intervalSeconds = Math.max(1, Math.round(desiredInterval / 1000));
+  const isWaiting = !state.mobileSignaturePollHasPendingRequest;
+  const modeText = isWaiting
+    ? "Aucune signature en attente: vérification de fond"
+    : "Signature en attente: vérification active";
   setMobileSignaturePollStatus(
-    `Verification des signatures active (prochaine a ${nextCheckTime})`,
+    `${modeText} · prochaine vérification: ${nextCheckTime} (toutes les ${intervalSeconds}s)`,
     state.mobileSignaturePollHasPendingRequest ? "normal" : "warning"
   );
   if (state.mobileSignaturePollTimerId) {
@@ -4649,7 +4654,7 @@ function scheduleMobileSignatureRenderSync() {
   }
   const delay = MOBILE_SIGNATURE_POLL_RENDER_SYNC_DEBOUNCE_MS - (now - lastRequested);
   setMobileSignaturePollStatus(
-    `Verification des signatures dans ${Math.ceil(delay / 1000)}s`,
+    `Nouvelle vérification prévue dans ${Math.ceil(delay / 1000)} seconde(s)`,
     "critical"
   );
   if (state.mobileSignaturePollRenderSyncTimerId) {
