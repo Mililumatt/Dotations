@@ -6510,9 +6510,20 @@ function bindEffectForm() {
     };
   }
   if (form.elements.designationLibre) {
+    let designationLibreInputDebounceId = 0;
+    const scheduleDesignationLibreUpdate = () => {
+      if (designationLibreInputDebounceId) {
+        window.clearTimeout(designationLibreInputDebounceId);
+      }
+      designationLibreInputDebounceId = window.setTimeout(() => {
+        designationLibreInputDebounceId = 0;
+        syncReplacementCostField();
+        updateEffectRequiredHighlights(form);
+      }, FILTER_INPUT_DEBOUNCE_MS);
+    };
+
     form.elements.designationLibre.oninput = () => {
-      syncReplacementCostField();
-      updateEffectRequiredHighlights(form);
+      scheduleDesignationLibreUpdate();
     };
   }
 
@@ -7620,11 +7631,22 @@ function bindReferenceEffectForm() {
     siteField.onchange = () => {};
   }
   if (designationField) {
-    designationField.oninput = () => {
-      if (normalizeText(typeField?.value || "") === "CLE CES") {
-        designationField.value = normalizeCesDesignationLabel(designationField.value);
+    let referenceDesignationInputDebounceId = 0;
+    const scheduleReferenceDesignationUpdate = () => {
+      if (referenceDesignationInputDebounceId) {
+        window.clearTimeout(referenceDesignationInputDebounceId);
       }
-      syncReferenceSitesSelector();
+      referenceDesignationInputDebounceId = window.setTimeout(() => {
+        referenceDesignationInputDebounceId = 0;
+        if (normalizeText(typeField?.value || "") === "CLE CES") {
+          designationField.value = normalizeCesDesignationLabel(designationField.value);
+        }
+        syncReferenceSitesSelector();
+      }, FILTER_INPUT_DEBOUNCE_MS);
+    };
+
+    designationField.oninput = () => {
+      scheduleReferenceDesignationUpdate();
     };
   }
 
@@ -10334,6 +10356,16 @@ function bindRepresentativeFields() {
       const representative = findRepresentativeById(nameInput.value);
       functionInput.value = representative?.fonction || "";
     };
+    let representativeNameDebounceId = 0;
+    const scheduleRepresentativeSelection = () => {
+      if (representativeNameDebounceId) {
+        window.clearTimeout(representativeNameDebounceId);
+      }
+      representativeNameDebounceId = window.setTimeout(() => {
+        representativeNameDebounceId = 0;
+        applyRepresentativeSelection();
+      }, FILTER_INPUT_DEBOUNCE_MS);
+    };
 
     const syncRepresentative = () => {
       const person = getCurrentPerson();
@@ -10401,7 +10433,9 @@ function bindRepresentativeFields() {
     nameInput.onfocus = syncRepresentativeOptions;
     nameInput.onmousedown = syncRepresentativeOptions;
     nameInput.onclick = syncRepresentativeOptions;
-    nameInput.oninput = applyRepresentativeSelection;
+    nameInput.oninput = () => {
+      scheduleRepresentativeSelection();
+    };
     nameInput.onchange = () => {
       applyRepresentativeSelection();
       updateRepresentativeSignatureActionState(docType);
@@ -11032,29 +11066,40 @@ function renderPersonPicker() {
     return true;
   };
 
-  picker.oninput = () => {
-    const rawValue = String(picker.value || "");
-    if (!rawValue.trim()) {
-      if (useDirectNavigation) {
-        hideSuggestions();
+  let pickerInputDebounceId = 0;
+  const schedulePickerInputUpdate = () => {
+    if (pickerInputDebounceId) {
+      window.clearTimeout(pickerInputDebounceId);
+    }
+    pickerInputDebounceId = window.setTimeout(() => {
+      pickerInputDebounceId = 0;
+      const rawValue = String(picker.value || "");
+      if (!rawValue.trim()) {
+        if (useDirectNavigation) {
+          hideSuggestions();
+        }
+        applyFullResetFromPicker();
+        return;
       }
-      applyFullResetFromPicker();
-      return;
-    }
-    if (useSuggestionBox) {
-      renderSuggestions(rawValue);
-      return;
-    }
-    const normalizedSearch = normalizeText(rawValue);
-    const exactMatch = state.data.personnes.find(
-      (person) => normalizeText(getPersonPickerLabel(person)) === normalizedSearch
-    );
-    const partialMatches = state.data.personnes.filter((person) =>
-      normalizeText(getPersonPickerLabel(person)).includes(normalizedSearch)
-    );
-    if (exactMatch || partialMatches.length === 1) {
-      applyPickerSelection("push");
-    }
+      if (useSuggestionBox) {
+        renderSuggestions(rawValue);
+        return;
+      }
+      const normalizedSearch = normalizeText(rawValue);
+      const exactMatch = state.data.personnes.find(
+        (person) => normalizeText(getPersonPickerLabel(person)) === normalizedSearch
+      );
+      const partialMatches = state.data.personnes.filter((person) =>
+        normalizeText(getPersonPickerLabel(person)).includes(normalizedSearch)
+      );
+      if (exactMatch || partialMatches.length === 1) {
+        applyPickerSelection("push");
+      }
+    }, FILTER_INPUT_DEBOUNCE_MS);
+  };
+
+  picker.oninput = () => {
+    schedulePickerInputUpdate();
   };
   picker.onfocus = () => {
     if (useSuggestionBox) {
