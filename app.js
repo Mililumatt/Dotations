@@ -1244,19 +1244,7 @@ function renderRoleBadge() {
   if (!badge) {
     badge = document.createElement("div");
     badge.id = "dotations-role-badge";
-    badge.style.display = "inline-flex";
-    badge.style.alignItems = "center";
-    badge.style.justifyContent = "center";
-    badge.style.height = "30px";
-    badge.style.padding = "0 10px";
-    badge.style.borderRadius = "10px";
-    badge.style.background = "rgba(63,97,112,0.12)";
-    badge.style.border = "1px solid rgba(63,97,112,0.3)";
-    badge.style.color = "#213b48";
-    badge.style.fontSize = "10px";
-    badge.style.fontWeight = "700";
-    badge.style.letterSpacing = "0.04em";
-    badge.style.whiteSpace = "nowrap";
+    badge.className = "page-header__role-badge";
     const headerActions = document.querySelector(".page-header__actions");
     if (headerActions) {
       headerActions.insertBefore(badge, headerActions.firstChild || null);
@@ -1309,16 +1297,7 @@ function renderSwitchUserButton() {
     button.id = "dotations-switch-user-button";
     button.type = "button";
     button.textContent = "CHANGER D'UTILISATEUR";
-    button.style.height = "30px";
-    button.style.padding = "0 10px";
-    button.style.borderRadius = "10px";
-    button.style.border = "1px solid rgba(63,97,112,0.35)";
-    button.style.background = "#ffffff";
-    button.style.color = "#213b48";
-    button.style.fontSize = "10px";
-    button.style.fontWeight = "700";
-    button.style.letterSpacing = "0.03em";
-    button.style.cursor = "pointer";
+    button.className = "button button--secondary page-header__switch-user";
     const headerActions = document.querySelector(".page-header__actions");
     if (headerActions) {
       headerActions.insertBefore(button, headerActions.firstChild || null);
