@@ -8359,6 +8359,9 @@ function populateSelect(selector, values) {
 
 function renderPage() {
   const page = document.body.dataset.page || "";
+  if (page !== "arrival-document" && page !== "exit-document") {
+    stopMobileSignaturePolling();
+  }
   const persons = getFilteredPersons();
   let currentPersonId = getCurrentPersonId();
   const personExists = (state.data?.personnes || []).some(
