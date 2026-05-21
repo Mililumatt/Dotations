@@ -4598,6 +4598,15 @@ function syncMobileSignaturePolling() {
   if (!personId) {
     return;
   }
+  const docType = page === "exit-document" ? "exit" : "arrival";
+  const hasActiveRequest =
+    Boolean(getActiveMobileSignatureRequest(personId, docType, "personnel")) ||
+    Boolean(getActiveMobileSignatureRequest(personId, docType, "representant"));
+  if (!hasActiveRequest) {
+    stopMobileSignaturePolling();
+    setMobileSignaturePollStatus("Aucune signature mobile en attente sur ce document", "normal");
+    return;
+  }
   const now = Date.now();
   if (state.mobileSignaturePollLastSyncAt && now - state.mobileSignaturePollLastSyncAt < MOBILE_SIGNATURE_POLL_SYNC_MIN_GAP_MS) {
     return;
