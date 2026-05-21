@@ -73,6 +73,7 @@ const state = {
   latestDataFetchAt: 0,
   latestDataSnapshotCache: null,
   pageRenderRafId: 0,
+  filterInputDebounceTimerId: 0,
 };
 const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
@@ -83,6 +84,7 @@ const MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS = 30000;
 const BROWSER_STORAGE_WARNING_RATIO = 0.8;
 const BROWSER_STORAGE_ALERT_RATIO = 0.9;
 const DATA_FETCH_DEBOUNCE_MS = 1200;
+const FILTER_INPUT_DEBOUNCE_MS = 140;
 
 const WORKING_DATA_KEY = "dashboard-working-data";
 const LEGACY_CONTRACT_TYPES = ["CDI", "CDD", "INTERIMAIRE"];
@@ -5915,7 +5917,26 @@ function bindFilterForms() {
   document.querySelectorAll(".js-filter-form").forEach((form) => {
     applyFiltersToForm(form);
 
+    const scheduleFilterUpdate = () => {
+      if (state.filterInputDebounceTimerId) {
+        window.clearTimeout(state.filterInputDebounceTimerId);
+      }
+      state.filterInputDebounceTimerId = window.setTimeout(() => {
+        state.filterInputDebounceTimerId = 0;
+        state.filters = {
+          ...DEFAULT_FILTERS,
+          ...readFilters(form),
+        };
+        saveNavigationContext({ filters: state.filters, urgentMode: state.urgentMode });
+        schedulePageRender();
+      }, FILTER_INPUT_DEBOUNCE_MS);
+    };
+
     const applyFullReset = () => {
+      if (state.filterInputDebounceTimerId) {
+        window.clearTimeout(state.filterInputDebounceTimerId);
+        state.filterInputDebounceTimerId = 0;
+      }
       state.filters = { ...DEFAULT_FILTERS };
       state.urgentMode = false;
       saveNavigationContext({ filters: state.filters, personId: "", urgentMode: false });
@@ -5938,12 +5959,7 @@ function bindFilterForms() {
         applyFullReset();
         return;
       }
-      state.filters = {
-        ...DEFAULT_FILTERS,
-        ...readFilters(form),
-      };
-      saveNavigationContext({ filters: state.filters, urgentMode: state.urgentMode });
-      schedulePageRender();
+      scheduleFilterUpdate();
     };
 
     form.onreset = () => {
