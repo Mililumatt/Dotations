@@ -4606,10 +4606,10 @@ function syncMobileSignaturePolling() {
   const desiredInterval = state.mobileSignaturePollHasPendingRequest
     ? MOBILE_SIGNATURE_POLL_INTERVAL_MS
     : MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS;
+  const nextCheckAt = new Date(now + desiredInterval);
+  const nextCheckTime = `${String(nextCheckAt.getHours()).padStart(2, "0")}:${String(nextCheckAt.getMinutes()).padStart(2, "0")}:${String(nextCheckAt.getSeconds()).padStart(2, "0")}`;
   setMobileSignaturePollStatus(
-    state.mobileSignaturePollHasPendingRequest
-      ? "Verification des signatures active (prochaine dans 15s)"
-      : "Verification des signatures active (prochaine dans 30s)",
+    `Verification des signatures active (prochaine a ${nextCheckTime})`,
     state.mobileSignaturePollHasPendingRequest ? "normal" : "warning"
   );
   if (state.mobileSignaturePollTimerId) {
