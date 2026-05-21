@@ -4403,6 +4403,10 @@ async function pollMobileSignatureRequest() {
     getActiveMobileSignatureRequest(personId, docType, "personnel"),
     getActiveMobileSignatureRequest(personId, docType, "representant"),
   ].filter(Boolean);
+  if (trackedRequests.length === 0) {
+    stopMobileSignaturePolling();
+    return;
+  }
 
   try {
     const json =
