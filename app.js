@@ -4488,6 +4488,9 @@ function syncMobileSignaturePolling() {
   if (!personId) {
     return;
   }
+  if (!getActiveDocumentMobileSignatureRequest()) {
+    return;
+  }
   pollMobileSignatureRequest();
   state.mobileSignaturePollTimerId = window.setInterval(() => {
     pollMobileSignatureRequest();
