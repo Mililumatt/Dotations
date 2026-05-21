@@ -9527,6 +9527,9 @@ async function registerArchivedDocument(person, docType, pdfPath, metadataPath, 
   if (!state.data || !person || !pdfPath) {
     return;
   }
+  if (normalizeText(docType) === "EXIT" && getDossierStatus(person) !== "SORTI") {
+    return;
+  }
   if (!isDocumentFullySigned(person, docType)) {
     return;
   }
@@ -9676,6 +9679,9 @@ function renderDocumentsArchivePage() {
     trackedDocumentTypes.forEach(({ label, signatureType }) => {
       const personId = String(person?.id || "");
       if (!personId) {
+        return;
+      }
+      if (label === "SORTIE" && getDossierStatus(person) !== "SORTI") {
         return;
       }
 
