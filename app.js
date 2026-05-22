@@ -16147,6 +16147,17 @@ window.dotationsResetNetworkDebug = () => {
   };
 };
 
+window.getNetworkDebug = () => getNetworkDebugReport();
+window.resetNetworkDebug = () => {
+  state.networkDebug = {
+    samples: [],
+    routeStats: {},
+    requestCount: 0,
+    totalBytes: 0,
+    startedAt: Date.now(),
+  };
+};
+
 loadData();
     const renderEmailOptions = (emails = []) => {
       if (!emailSelect) return;
