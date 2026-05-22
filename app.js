@@ -6864,14 +6864,20 @@ async function deletePerson(personId) {
 }
 
 function startEditEffect(personId, effectId) {
-  const person = state.data?.personnes?.find((entry) => entry.id === personId);
-  const effect = person?.effetsConfies?.find((entry) => entry.id === effectId);
+  const normalizedPersonId = String(personId || "");
+  const normalizedEffectId = String(effectId || "");
+  const person = state.data?.personnes?.find(
+    (entry) => String(entry.id || "") === normalizedPersonId
+  );
+  const effect = person?.effetsConfies?.find(
+    (entry) => String(entry.id || "") === normalizedEffectId
+  );
   const form = document.getElementById("effect-form");
   if (!person || !effect || !form) {
     return;
   }
 
-  state.editingEffectId = effectId;
+  state.editingEffectId = normalizedEffectId;
   hydrateEffectReferenceSiteSelect(person, effect.siteReference || referenceSiteFromEffect(effect), effect.typeEffet);
   hydrateReferenceSelect(
     person,
