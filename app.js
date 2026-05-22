@@ -76,6 +76,7 @@ const state = {
   listRenderCache: {
     overview: "",
     global: "",
+    overviewAlerts: "",
   },
   pageRenderRafId: 0,
   filterInputDebounceTimerId: 0,
@@ -11326,28 +11327,38 @@ function renderOverview(persons) {
 
   if (alertsSection && alertsList) {
     const alerts = persons.flatMap((person) => getPersonAlerts(person));
-
-    alertsSection.hidden = alerts.length === 0;
-    alertsList.innerHTML = alerts
-      .map(
-        (alert) => `<button type="button" class="overview-alert-item overview-alert-item--${alert.type || "dateSortiePrevue"} js-open-person-alert" data-person-id="${alert.id}">
-          <span class="overview-alert-item__icon overview-alert-item__icon--${alert.type || "dateSortiePrevue"}" aria-hidden="true">${alert.type === "signaturePdf" ? "✎" : alert.type === "dateSortieReelle" ? "✕" : "!"}</span>
-          <span class="overview-alert-item__content">
-            <strong>${escapeHtml(`${alert.nom} ${alert.prenom}`.trim())}</strong>
-            <span>${escapeHtml(alert.message)}</span>
-          </span>
-        </button>`
+    const alertsSignature = `overview-alerts|${alerts
+      .map((alert) =>
+        `${String(alert.id || "")}|${normalizeText(alert.type || "")}|${String(alert.nom || "")}|${String(alert.prenom || "")}|${String(alert.message || "")}`
       )
-      .join("");
+      .join("||")}`;
+    const hasAlertsChanged = state.listRenderCache.overviewAlerts !== alertsSignature;
+    alertsSection.hidden = alerts.length === 0;
+    if (hasAlertsChanged) {
+      state.listRenderCache.overviewAlerts = alertsSignature;
+      alertsList.innerHTML = alerts
+        .map(
+          (alert) => `<button type="button" class="overview-alert-item overview-alert-item--${alert.type || "dateSortiePrevue"} js-open-person-alert" data-person-id="${alert.id}">
+            <span class="overview-alert-item__icon overview-alert-item__icon--${alert.type || "dateSortiePrevue"}" aria-hidden="true">${alert.type === "signaturePdf" ? "✎" : alert.type === "dateSortieReelle" ? "✕" : "!"}</span>
+            <span class="overview-alert-item__content">
+              <strong>${escapeHtml(`${alert.nom} ${alert.prenom}`.trim())}</strong>
+              <span>${escapeHtml(alert.message)}</span>
+            </span>
+          </button>`
+        )
+        .join("");
+    }
 
-    alertsList.querySelectorAll(".js-open-person-alert").forEach((button) => {
-      button.onclick = () => {
-        const personId = button.getAttribute("data-person-id") || "";
-        if (personId) {
-          openPersonSheet(personId);
-        }
-      };
-    });
+    if (hasAlertsChanged) {
+      alertsList.querySelectorAll(".js-open-person-alert").forEach((button) => {
+        button.onclick = () => {
+          const personId = button.getAttribute("data-person-id") || "";
+          if (personId) {
+            openPersonSheet(personId);
+          }
+        };
+      });
+    }
   }
 }
 
