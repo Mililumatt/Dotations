@@ -765,6 +765,27 @@ Pour chaque lot:
 - ✅ Contrôle
   - naviguer plusieurs fois sur Documents archive sans modifier filtres/données doit éviter un rerendu complet.
 
+## 🧪 LOT 1.16 - ÉVITER LE RAFRAÎCHISSEMENT EN-TÊTES SUR OVERVIEW SI INCHANGÉ (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - ne plus relancer `updateSortableHeaders("overviewPersons")` quand les données Overview n’ont pas changé.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - `renderPage()` :
+    - appel `updateSortableHeaders("overviewPersons")` seulement si `renderOverview()` signale un vrai changement.
+  - `renderOverview()` :
+    - retourne un booléen `hasOverviewRowsChanged` ;
+    - ne fait plus d’update d’en-têtes en flux permanent.
+- ✅ Effet attendu
+  - moins de DOM updates à chaque passage sur l’overview.
+- ⚠️ Risque
+  - faible; logique métier inchangée.
+- ✅ Contrôle
+  - vérifier que le tri/sortage Overview reste visible/correct après tri ou changement de filtre.
+
 ---
 
 ## 🧾 RESUME EXECUTIF

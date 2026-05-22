@@ -8978,7 +8978,10 @@ function renderPage() {
   }
 
   if (page === "overview") {
-    renderOverview(persons);
+    const didOverviewChange = renderOverview(persons);
+    if (didOverviewChange) {
+      updateSortableHeaders("overviewPersons");
+    }
   }
 
   if (page === "global") {
@@ -11836,7 +11839,7 @@ function renderOverview(persons) {
 
   let hasOverviewRowsChanged = false;
   if (!body) {
-    updateSortableHeaders("overviewPersons");
+    return false;
   } else {
 
     let inPostCount = 0;
@@ -11919,7 +11922,6 @@ function renderOverview(persons) {
       bindPersonRowActions();
     }
   }
-  updateSortableHeaders("overviewPersons");
 
   if (alertsSection && alertsList) {
     const alerts = persons.flatMap((person) => getPersonAlerts(person));
@@ -11945,6 +11947,7 @@ function renderOverview(persons) {
         .join("");
     }
   }
+  return hasOverviewRowsChanged;
 }
 
 function buildOverviewRows(persons) {
