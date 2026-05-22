@@ -34,6 +34,7 @@ const state = {
   mobileSignaturePollHasPendingRequest: true,
   mobileSignaturePollIntervalMs: 0,
   mobileSignaturePollLastSyncAt: 0,
+  mobileSignaturePollStatusSignature: "",
   mobileSignatureVisibilityBound: false,
   browserStorageQuotaLevel: 0,
   mobileSignatureNetworkInfo: null,
@@ -4745,6 +4746,7 @@ function setMobileSignaturePollStatus(message, tone = "normal") {
     if (existingNode) {
       existingNode.hidden = true;
     }
+    state.mobileSignaturePollStatusSignature = "";
     return;
   }
 
@@ -4763,6 +4765,7 @@ function setMobileSignaturePollStatus(message, tone = "normal") {
   }
 
   if (!message) {
+    state.mobileSignaturePollStatusSignature = "";
     node.hidden = true;
     return;
   }
@@ -4965,10 +4968,14 @@ function syncMobileSignaturePolling() {
   const modeText = isWaiting
     ? "Aucune signature en attente: vérification de fond"
     : "Signature en attente: vérification active";
-  setMobileSignaturePollStatus(
-    `${modeText} · prochaine vérification: ${nextCheckTime} (toutes les ${intervalSeconds}s)`,
-    state.mobileSignaturePollHasPendingRequest ? "normal" : "warning"
-  );
+  const statusSignature = `${modeText}|${intervalSeconds}`;
+  if (state.mobileSignaturePollStatusSignature !== statusSignature) {
+    state.mobileSignaturePollStatusSignature = statusSignature;
+    setMobileSignaturePollStatus(
+      `${modeText} · prochaine vérification toutes les ${intervalSeconds}s`,
+      state.mobileSignaturePollHasPendingRequest ? "normal" : "warning"
+    );
+  }
   if (state.mobileSignaturePollTimerId) {
     if (state.mobileSignaturePollIntervalMs !== desiredInterval) {
       window.clearInterval(state.mobileSignaturePollTimerId);
