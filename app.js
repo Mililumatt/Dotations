@@ -7524,7 +7524,7 @@ function bindReferenceListForms() {
       state.editingSimpleReference = null;
       markDirty();
       hydrateStaticLists();
-      renderPage();
+      schedulePageRender();
       form.reset();
       const submitButton = form.querySelector('button[type="submit"]');
       if (submitButton) {
@@ -7583,7 +7583,7 @@ function bindRepresentativeSignatoryForm() {
       sortRepresentatives();
       state.editingRepresentativeId = "";
       markDirty();
-      renderPage();
+      schedulePageRender();
       form.reset();
       showActionStatus("update", "REPRESENTANT MIS A JOUR");
       return;
