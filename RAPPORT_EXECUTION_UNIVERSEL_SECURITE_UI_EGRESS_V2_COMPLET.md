@@ -375,7 +375,7 @@ Pour chaque lot:
 
 - ✅ Politique securite definie.
 - ✅ Interdictions formalisees.
-- ✅ Pipeline GO + 30s documente.
+- ✅ Pipeline GO documente.
 - ✅ Reversibilite lot par lot explicite.
 - ✅ Strategie egress + stockage 0.5 GB integree.
 - ✅ Strategie UI/UX + saisie heures integree.
