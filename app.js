@@ -73,6 +73,7 @@ const state = {
   latestDataFetchAt: 0,
   latestDataSnapshotCache: null,
   documentRenderCache: { arrival: "", exit: "" },
+  documentCostRenderCache: { arrival: "", exit: "", mobile: "" },
   documentViewRenderCache: { arrival: "", exit: "" },
   listRenderCache: {
     overview: "",
@@ -11142,7 +11143,7 @@ function renderMobileSignaturePage() {
   }
 
   if (mobileCostsHead && mobileCostsBody) {
-    renderDocumentCostsTable(mobileCostsHead, mobileCostsBody);
+    renderDocumentCostsTable(normalizedDocType, mobileCostsHead, mobileCostsBody);
   }
 
   fillMobileSignatureShareLink(request && isRequestUsable ? request : null);
@@ -12492,7 +12493,7 @@ function renderArrivalDocument(personId) {
 }
 
 function renderArrivalCostsTable(headNode, bodyNode) {
-  renderDocumentCostsTable(headNode, bodyNode);
+  renderDocumentCostsTable("arrival", headNode, bodyNode);
 }
 
 function getArrivalCostTypes() {
@@ -12511,9 +12512,27 @@ function getArrivalCostDesignation(typeEffet) {
   return normalizeText(typeEffet) === "CLE CES" ? "CES-PG" : "";
 }
 
-function renderDocumentCostsTable(headNode, bodyNode) {
+function renderDocumentCostsTable(docType, headNode, bodyNode) {
+  const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
   const causes = getArrivalCostCauses();
   const effectTypes = getArrivalCostTypes();
+  const costRows = effectTypes
+    .map((typeEffet) => {
+      const values = causes.map((cause) => getReplacementCostValue(typeEffet, cause, getArrivalCostDesignation(typeEffet)));
+      return `${String(typeEffet)}|||${values.join("||")}`;
+    })
+    .join(";;");
+  const nextCostSignature = [
+    normalizedDocType,
+    String(causes.join("||")),
+    String(effectTypes.join("||")),
+    String(costRows),
+  ].join("##");
+
+  if (state.documentCostRenderCache?.[normalizedDocType] === nextCostSignature) {
+    return;
+  }
+  state.documentCostRenderCache[normalizedDocType] = nextCostSignature;
 
   headNode.innerHTML = `<tr>
     <th>TYPE D'EFFET</th>
@@ -12647,7 +12666,7 @@ function renderExitDocument(personId) {
     representantFunctionInput.value = "";
     representantNameNode.textContent = "-";
     representantFunctionNode.textContent = "-";
-    renderDocumentCostsTable(costsHead, costsBody);
+    renderDocumentCostsTable("arrival", costsHead, costsBody);
     updateRepresentativeSignatureActionState("exit");
     syncDocumentMobileSignatureLink("exit", "", "personnel");
     syncDocumentMobileSignatureLink("exit", "", "representant");
@@ -12859,7 +12878,7 @@ function renderExitDocument(personId) {
   totalBillingClosedNode.textContent = formatAmountWithEuro(totalClosedValue);
   totalBilledValueNode.textContent = formatAmountWithEuro(totalBilledValue);
   totalRemainingValueNode.textContent = formatAmountWithEuro(totalRemainingValue);
-  renderDocumentCostsTable(costsHead, costsBody);
+  renderDocumentCostsTable("exit", costsHead, costsBody);
   bindExitReturnTodayToggles();
   bindExitBillingToggles();
   bindDocumentEffectActions();
