@@ -648,6 +648,25 @@ Pour chaque lot:
 - ✅ Contrôle
   - vérifier que cliquer sur les entêtes “Type / Désignation / ...” trie toujours immédiatement les tableaux.
 
+## 🧪 LOT 1.10 - ÉVITER LES RAFRAÎCHISSEMENTS DE TRI À L'ARRIVÉE/SORTIE (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - enlever les recalculs de tri inutiles quand la vue Entrée/SORTIE n’a pas changé.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - suppression des appels redondants `updateSortableHeaders("arrivalEffects")` et `updateSortableHeaders("exitEffects")` dans `renderPage()`;
+  - la mise à jour d’entêtes se fait désormais dans les rendus documentaires concernés quand l’affichage change réellement.
+- ✅ Effet attendu
+  - moins d’opérations DOM lors des changements rapides entre vues Arrivée et Sortie;
+  - fluidité améliorée sans changement de données.
+- ⚠️ Risque
+  - faible; le tri visuel reste piloté par les fonctions `renderArrivalDocument()` et `renderExitDocument()`.
+- ✅ Contrôle
+  - vérifier que le tri Arrivée/Sortie fonctionne encore après clic sur entête.
+
 ---
 
 ## 🧾 RESUME EXECUTIF

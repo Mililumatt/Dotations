@@ -9027,7 +9027,6 @@ function renderPage() {
       renderArrivalDocument(currentPersonId);
     }
     refreshDocumentSignatureCanvases("arrival");
-    updateSortableHeaders("arrivalEffects");
     scheduleMobileSignatureRenderSync();
   }
 
@@ -9038,7 +9037,6 @@ function renderPage() {
       renderExitDocument(currentPersonId);
     }
     refreshDocumentSignatureCanvases("exit");
-    updateSortableHeaders("exitEffects");
     scheduleMobileSignatureRenderSync();
   }
 
