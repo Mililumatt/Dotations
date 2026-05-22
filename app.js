@@ -3759,34 +3759,50 @@ function buildFallbackMobileSignatureRequestFromUrl(token) {
   };
 }
 
-function getActiveMobileSignatureRequest(personId, docType, signer = "personnel") {
-  cleanupExpiredMobileSignatureRequests();
-  const normalizedSigner = normalizeMobileSignatureSigner(signer);
-  return (state.data?.demandesSignatureMobile || []).find(
-    (entry) =>
-      entry.personId === personId &&
-      entry.docType === normalizeText(docType) &&
-      normalizeMobileSignatureSigner(entry.signer) === normalizedSigner &&
-      entry.status === "EN ATTENTE" &&
-      Date.parse(entry.expiresAt || "") > Date.now()
-  ) || null;
-}
-
-function hasActiveMobileSignatureRequest(personId, docType) {
+function getActiveMobileSignatureRequestContext(personId, docType) {
   cleanupExpiredMobileSignatureRequests();
   const normalizedPersonId = String(personId || "");
   const normalizedDocType = normalizeText(docType);
   const now = Date.now();
-  return (state.data?.demandesSignatureMobile || []).some((entry) => {
-    const requestSigner = normalizeMobileSignatureSigner(entry?.signer || "");
-    return (
-      String(entry?.personId || "") === normalizedPersonId &&
-      normalizeText(entry?.docType || "") === normalizedDocType &&
-      requestSigner &&
-      entry?.status === "EN ATTENTE" &&
-      Date.parse(entry?.expiresAt || "") > now
-    );
-  });
+  const requestContext = {
+    personnel: null,
+    representant: null,
+    hasAny: false,
+  };
+  for (const entry of state.data?.demandesSignatureMobile || []) {
+    const signer = normalizeMobileSignatureSigner(entry?.signer || "");
+    if (
+      String(entry?.personId || "") !== normalizedPersonId ||
+      normalizeText(entry?.docType || "") !== normalizedDocType ||
+      !signer ||
+      entry?.status !== "EN ATTENTE" ||
+      Date.parse(entry?.expiresAt || "") <= now
+    ) {
+      continue;
+    }
+    requestContext.hasAny = true;
+    if (signer === "personnel" && !requestContext.personnel) {
+      requestContext.personnel = entry;
+      continue;
+    }
+    if (signer === "representant" && !requestContext.representant) {
+      requestContext.representant = entry;
+    }
+  }
+  return requestContext;
+}
+
+function getActiveMobileSignatureRequest(personId, docType, signer = "personnel") {
+  const requestContext = getActiveMobileSignatureRequestContext(personId, docType);
+  const normalizedSigner = normalizeMobileSignatureSigner(signer);
+  if (normalizedSigner === "representant") {
+    return requestContext.representant;
+  }
+  return requestContext.personnel;
+}
+
+function hasActiveMobileSignatureRequest(personId, docType) {
+  return getActiveMobileSignatureRequestContext(personId, docType).hasAny;
 }
 
 function createMobileSignatureRequest(personId, docType, signer = "personnel") {
@@ -4752,32 +4768,8 @@ function getActiveDocumentMobileSignatureRequest() {
     return null;
   }
   const docType = page === "exit-document" ? "exit" : "arrival";
-  cleanupExpiredMobileSignatureRequests();
-  const normalizedPersonId = String(personId);
-  const normalizedDocType = normalizeText(docType);
-  const now = Date.now();
-  let representativeRequest = null;
-  for (const entry of state.data.demandesSignatureMobile || []) {
-    if (
-      String(entry?.personId || "") !== normalizedPersonId ||
-      normalizeText(entry?.docType || "") !== normalizedDocType ||
-      entry?.status !== "EN ATTENTE" ||
-      Date.parse(entry?.expiresAt || "") <= now
-    ) {
-      continue;
-    }
-    const signer = normalizeMobileSignatureSigner(entry?.signer || "");
-    if (!signer) {
-      continue;
-    }
-    if (signer === "personnel") {
-      return entry;
-    }
-    if (signer === "representant" && !representativeRequest) {
-      representativeRequest = entry;
-    }
-  }
-  return representativeRequest;
+  const { personnel, representant } = getActiveMobileSignatureRequestContext(personId, docType);
+  return personnel || representant;
 }
 
 function setMobileSignaturePollStatus(message, tone = "normal") {
