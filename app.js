@@ -4809,16 +4809,36 @@ async function pollMobileSignatureRequest() {
     return;
   }
   const docType = page === "exit-document" ? "exit" : "arrival";
-  const trackedRequests = [
-    getActiveMobileSignatureRequest(personId, docType, "personnel"),
-    getActiveMobileSignatureRequest(personId, docType, "representant"),
-  ].filter(Boolean);
   try {
     const json = await fetchLatestDataSnapshot();
+    const normalizedDocType = normalizeText(docType);
+    const pollNow = Date.now();
+    let trackedPersonnelRequest = null;
+    let trackedRepresentativeRequest = null;
+    const requests = Array.isArray(json?.demandesSignatureMobile) ? json.demandesSignatureMobile : [];
+    const activeServerRequests = [];
+
+    for (const entry of requests) {
+      const isSamePerson = String(entry?.personId || "") === String(personId || "");
+      const isSameDocType = normalizeText(entry?.docType || "") === normalizedDocType;
+      const signer = normalizeMobileSignatureSigner(entry?.signer || "");
+      if (!isSamePerson || !isSameDocType || !signer || !entry) {
+        continue;
+      }
+      if (entry?.status === "EN ATTENTE" && Date.parse(entry?.expiresAt || "") > pollNow) {
+        activeServerRequests.push(entry);
+        if (signer === "personnel" && !trackedPersonnelRequest) {
+          trackedPersonnelRequest = entry;
+        } else if (signer === "representant" && !trackedRepresentativeRequest) {
+          trackedRepresentativeRequest = entry;
+        }
+      }
+    }
+
+    const trackedRequests = [trackedPersonnelRequest, trackedRepresentativeRequest].filter(Boolean);
 
     state.mobileSignaturePollErrorCount = 0;
     state.mobileSignaturePollBackoffUntil = 0;
-    const requests = Array.isArray(json?.demandesSignatureMobile) ? json.demandesSignatureMobile : [];
     const person = Array.isArray(json?.personnes)
       ? json.personnes.find((entry) => String(entry.id || "") === String(personId || "")) || null
       : null;
@@ -4827,17 +4847,6 @@ async function pollMobileSignatureRequest() {
       stopMobileSignaturePolling();
       return;
     }
-
-    const activeServerRequests = requests.filter((entry) => {
-      return (
-        entry &&
-        String(entry?.personId || "") === String(personId || "") &&
-        normalizeMobileSignatureSigner(entry?.signer || "") &&
-        normalizeText(entry?.docType || "") === normalizeText(docType) &&
-        entry?.status === "EN ATTENTE" &&
-        Date.parse(entry?.expiresAt || "") > Date.now()
-      );
-    });
     const allTrackedRequests = new Map();
     trackedRequests.forEach((request) => {
       const token = String(request?.token || "").trim();
