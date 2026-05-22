@@ -109,6 +109,28 @@
 - ✅ Suivre logs egress mensuels Supabase.
 - ✅ Prioriser suppression des boucles SELECT/POST.
 
+#### 🧪 4.2.1 Mesure egress en conditions réelles (10 min)
+- ✅ Objectif : vérifier si les appels réseau continuent d'augmenter vite ou se stabilisent.
+- ✅ Principe : suivre uniquement l'évolution sur fenêtre glissante de 10 minutes (pas la valeur brute seule).
+- ✅ Cible :
+  - si le trafic reste stable sur plusieurs rafraîchissements, traitement correct;
+  - si la taille monte vite sans action métier, il reste un problème d'egress.
+- ✅ Mesures suivies :
+  - taille des réponses par route,
+  - nombre de requêtes par route,
+  - durée moyenne des appels,
+  - part des réponses mises en cache (304/local).
+- ✅ Risques :
+  - confusion si le debug est lu sans fenêtre temporelle;
+  - biais si plusieurs appareils chargent la même vue en même temps.
+
+#### ✅ Implémentation livrée sans toucher aux flux métiers
+- ✅ Ajout de trace réseau front (console) pour vérifier la dérive egress en temps réel.
+- ✅ Export du rapport via :
+  - `window.dotationsGetNetworkDebug()`
+  - `window.dotationsResetNetworkDebug()`
+- ✅ Les traces restent locales au navigateur (pas d'exposition de nouveaux endpoints).
+
 ---
 
 ### 🔹 4.3 Axe C - Politique 0.5 GB stockage Supabase

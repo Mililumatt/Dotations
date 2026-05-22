@@ -75,6 +75,13 @@ const state = {
   documentRenderCache: { arrival: "", exit: "" },
   documentCostRenderCache: { arrival: "", exit: "", mobile: "" },
   documentViewRenderCache: { arrival: "", exit: "" },
+  networkDebug: {
+    samples: [],
+    routeStats: {},
+    requestCount: 0,
+    totalBytes: 0,
+    startedAt: Date.now(),
+  },
   listRenderCache: {
     overview: "",
     global: "",
@@ -95,6 +102,9 @@ const BROWSER_STORAGE_WARNING_RATIO = 0.8;
 const BROWSER_STORAGE_ALERT_RATIO = 0.9;
 const DATA_FETCH_DEBOUNCE_MS = 1200;
 const FILTER_INPUT_DEBOUNCE_MS = 140;
+const NETWORK_DEBUG_SAMPLE_LIMIT = 80;
+const NETWORK_DEBUG_STORAGE_KEY = "dotations-network-debug-v1";
+const NETWORK_DEBUG_WINDOW_MS = 10 * 60 * 1000;
 
 const WORKING_DATA_KEY = "dashboard-working-data";
 const LEGACY_CONTRACT_TYPES = ["CDI", "CDD", "INTERIMAIRE"];
@@ -2187,21 +2197,56 @@ async function callEdgeApi(pathname, options = {}, retryOnAuthFailure = true) {
   }
   const normalizedPath = String(pathname || "").trim().replace(/^\/+/, "");
   const endpoint = `${baseUrl}/${normalizedPath}`;
-  const response = await fetch(endpoint, {
-    method: options.method || "GET",
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${userToken}`,
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    body: options.body || undefined,
-    cache: "no-store",
-  });
+  const method = String(options.method || "GET").toUpperCase();
+  const start = performance.now();
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method,
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${userToken}`,
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+      body: options.body || undefined,
+      cache: "no-store",
+    });
+  } catch (error) {
+    const durationMs = Math.round(performance.now() - start);
+    if (options.trackDebug !== false) {
+      recordNetworkDebugSample({
+        route: normalizedPath,
+        method,
+        status: 0,
+        durationMs,
+        responseBytes: 0,
+        source: "edge",
+        note: "edge_api_network_error",
+      });
+    }
+    throw error;
+  }
+
+  const durationMs = Math.round(performance.now() - start);
   const acceptedStatuses = Array.isArray(options?.acceptedStatuses)
     ? options.acceptedStatuses.map((code) => Number(code)).filter((code) => Number.isFinite(code))
     : [];
   const isExplicitlyAccepted = acceptedStatuses.includes(Number(response.status));
+  const responseBytes = response.ok || isExplicitlyAccepted
+    ? Number.parseInt(String(response.headers.get("content-length") || ""), 10) || 0
+    : 0;
+  if (options.trackDebug !== false) {
+    recordNetworkDebugSample({
+      route: normalizedPath,
+      method,
+      status: response.status,
+      durationMs,
+      responseBytes,
+      source: "edge",
+      note: response.ok ? (options.trackDebugNote || "edge_api_ok") : "edge_api_error",
+    });
+  }
   if (!response.ok && !isExplicitlyAccepted) {
     const detail = await response.text().catch(() => "");
     const detailUpper = String(detail || "").toUpperCase();
@@ -2514,6 +2559,7 @@ async function uploadSignatureImageToSupabaseStorage(docType, person, signer, si
 }
 
 async function fetchSupabaseStateData() {
+  const start = performance.now();
   const endpoint = `${getSupabaseRestEndpoint()}?id=eq.${encodeURIComponent(
     SUPABASE_APP_STATE_ID
   )}&select=payload,revision&limit=1`;
@@ -2522,14 +2568,43 @@ async function fetchSupabaseStateData() {
     cache: "no-store",
   });
   if (!response.ok) {
+    const durationMs = Math.round(performance.now() - start);
+    const responseBodyForDebug = await response.text().catch(() => "");
+    recordNetworkDebugSample({
+      route: endpoint,
+      method: "GET",
+      status: response.status,
+      durationMs,
+      responseBytes: estimateByteLength(responseBodyForDebug),
+      source: "supabase-rest-state",
+      note: "app_state fetch failed",
+    });
     throw new Error("SUPABASE LOAD FAILED");
   }
   const rows = await response.json();
   if (!Array.isArray(rows) || !rows.length || !rows[0]?.payload) {
+    const durationMs = Math.round(performance.now() - start);
+    recordNetworkDebugSample({
+      route: endpoint,
+      method: "GET",
+      status: 204,
+      durationMs,
+      source: "supabase-rest-state",
+      note: "app_state payload empty",
+    });
     throw new Error("SUPABASE EMPTY PAYLOAD");
   }
   const revision = Number(rows[0]?.revision);
   state.supabaseRevision = Number.isFinite(revision) ? revision : 0;
+  const durationMs = Math.round(performance.now() - start);
+  recordNetworkDebugSample({
+    route: endpoint,
+    method: "GET",
+    status: response.status,
+    durationMs,
+    responseBytes: estimateByteLength(rows[0]?.payload),
+    source: "supabase-rest-state",
+  });
   return rows[0].payload;
 }
 
@@ -2541,6 +2616,128 @@ function buildSaveConflictError() {
 
 function isSaveConflictError(error) {
   return String(error?.code || "") === "APP_STATE_CONFLICT";
+}
+
+function estimateByteLength(value) {
+  if (!value) {
+    return 0;
+  }
+  if (typeof value === "string") {
+    return new TextEncoder().encode(value).length;
+  }
+  if (value instanceof Blob) {
+    return Number.isFinite(value.size) ? value.size : 0;
+  }
+  if (value instanceof ArrayBuffer) {
+    return Number.isFinite(value.byteLength) ? value.byteLength : 0;
+  }
+  try {
+    return new TextEncoder().encode(JSON.stringify(value)).length;
+  } catch (error) {
+    return 0;
+  }
+}
+
+function getNetworkDebugRoute(pathname) {
+  try {
+    if (!pathname) return "unknown";
+    const url = new URL(String(pathname), "https://example.local");
+    return String(url.pathname || "unknown").replace(/\/+/g, "/");
+  } catch (error) {
+    return String(pathname || "unknown");
+  }
+}
+
+function recordNetworkDebugSample(sample = {}) {
+  const route = getNetworkDebugRoute(sample.route);
+  const method = String(sample.method || "GET").toUpperCase();
+  const status = Number.isFinite(Number(sample.status)) ? Number(sample.status) : 0;
+  const durationMs = Number.isFinite(Number(sample.durationMs)) ? Math.max(0, Number(sample.durationMs)) : 0;
+  const responseBytes = Math.max(0, Number(sample.responseBytes) || 0);
+  const requestBytes = Math.max(0, Number(sample.requestBytes) || 0);
+  const cached = Boolean(sample.cached);
+
+  if (!state.networkDebug) {
+    state.networkDebug = {
+      samples: [],
+      routeStats: {},
+      requestCount: 0,
+      totalBytes: 0,
+      startedAt: Date.now(),
+    };
+  }
+
+  const key = `${method} ${route}`;
+  const stat = state.networkDebug.routeStats[key] || {
+    route,
+    method,
+    count: 0,
+    bytes: 0,
+    avgMs: 0,
+    lastStatus: 0,
+  };
+  const nextCount = stat.count + 1;
+  stat.count = nextCount;
+  stat.bytes += requestBytes + responseBytes;
+  stat.avgMs = ((stat.avgMs * (nextCount - 1)) + durationMs) / nextCount;
+  stat.lastStatus = status;
+  state.networkDebug.routeStats[key] = stat;
+
+  state.networkDebug.samples.push({
+    at: Date.now(),
+    route,
+    method,
+    status,
+    durationMs,
+    requestBytes,
+    responseBytes,
+    cached,
+    source: String(sample.source || "network"),
+    note: String(sample.note || ""),
+  });
+  if (state.networkDebug.samples.length > NETWORK_DEBUG_SAMPLE_LIMIT) {
+    state.networkDebug.samples.shift();
+  }
+  state.networkDebug.requestCount += 1;
+  state.networkDebug.totalBytes += requestBytes + responseBytes;
+
+  try {
+    window.localStorage.setItem(
+      NETWORK_DEBUG_STORAGE_KEY,
+      JSON.stringify({
+        at: Date.now(),
+        route,
+        method,
+        status,
+        durationMs,
+        requestBytes,
+        responseBytes,
+        cached,
+      }),
+    );
+  } catch (error) {
+    // ignore storage write failures
+  }
+}
+
+function getNetworkDebugReport() {
+  const now = Date.now();
+  const samples = Array.isArray(state.networkDebug?.samples) ? state.networkDebug.samples : [];
+  const windowSamples = samples.filter((entry) => now - (entry?.at || 0) <= NETWORK_DEBUG_WINDOW_MS);
+  const windowBytes = windowSamples.reduce(
+    (sum, entry) => sum + Number(entry.requestBytes || 0) + Number(entry.responseBytes || 0),
+    0,
+  );
+  return {
+    requestCount: state.networkDebug?.requestCount || 0,
+    totalBytes: state.networkDebug?.totalBytes || 0,
+    routeStats: { ...(state.networkDebug?.routeStats || {}) },
+    samples,
+    windowMinutes: NETWORK_DEBUG_WINDOW_MS / (60 * 1000),
+    windowRequestCount: windowSamples.length,
+    windowBytes,
+    startedAt: state.networkDebug?.startedAt || now,
+  };
 }
 
 function isSoftDeletedEntity(entry) {
@@ -2749,6 +2946,7 @@ async function fetchLatestDataSnapshot({ forceFresh = false } = {}) {
   }
 
   const fetchPromise = (async () => {
+    const snapshotLoadStart = performance.now();
     const mode = getDataBackendMode();
     if (mode === "SUPABASE") {
       const etagKey = "__dotations_data_etag";
@@ -2768,21 +2966,48 @@ async function fetchLatestDataSnapshot({ forceFresh = false } = {}) {
       const headers = knownEtag ? { "If-None-Match": knownEtag } : {};
       const response = await callEdgeApi(
         "data",
-        { method: "GET", headers, acceptedStatuses: [304] }
+        {
+          method: "GET",
+          headers,
+          acceptedStatuses: [304],
+          trackDebug: false,
+        }
       );
       if (response.status === 304) {
+        const durationMs = Math.round(performance.now() - snapshotLoadStart);
         if (cachedSnapshot && typeof cachedSnapshot === "object") {
+          recordNetworkDebugSample({
+            route: "api/data",
+            method: "GET",
+            status: 304,
+            durationMs,
+            responseBytes: 0,
+            cached: true,
+            source: "edge",
+            note: "data_snapshot_cached",
+          });
           return cachedSnapshot;
         }
-        const fallbackResponse = await callEdgeApi("data", { method: "GET" });
+        const fallbackResponse = await callEdgeApi("data", { method: "GET", trackDebug: false });
         const fallbackSnapshot = await fallbackResponse.json();
         const fallbackEtag = String(fallbackResponse.headers.get("etag") || "").trim();
         if (fallbackEtag) {
           state.latestDataEtag = fallbackEtag;
         }
+        const fallbackDurationMs = Math.round(performance.now() - snapshotLoadStart);
+        recordNetworkDebugSample({
+          route: "api/data",
+          method: "GET",
+          status: fallbackResponse.status,
+          durationMs: fallbackDurationMs,
+          responseBytes: estimateByteLength(fallbackSnapshot),
+          source: "edge",
+          note: "data_snapshot_fallback",
+        });
         return fallbackSnapshot;
       }
       const nextSnapshot = await response.json();
+      const durationMs = Math.round(performance.now() - snapshotLoadStart);
       const responseEtag = String(response.headers.get("etag") || "").trim();
       if (responseEtag) {
         state.latestDataEtag = responseEtag;
@@ -2799,13 +3024,45 @@ async function fetchLatestDataSnapshot({ forceFresh = false } = {}) {
           // ignore storage cache failures
         }
       }
+      recordNetworkDebugSample({
+        route: "api/data",
+        method: "GET",
+        status: response.status,
+        durationMs,
+        responseBytes: estimateByteLength(nextSnapshot),
+        source: "edge",
+        note: "data_snapshot_loaded",
+      });
       return nextSnapshot;
     }
+    const start = performance.now();
     const response = await fetch(`/api/data?ts=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) {
+      const durationMs = Math.round(performance.now() - start);
+      const responseText = await response.text().catch(() => "");
+      recordNetworkDebugSample({
+        route: "/api/data",
+        method: "GET",
+        status: response.status,
+        durationMs,
+        responseBytes: estimateByteLength(responseText),
+        source: "local",
+        note: "api_data_failed",
+      });
       throw new Error("LOCAL LOAD FAILED");
     }
-    return response.json();
+    const responseData = await response.json();
+    const durationMs = Math.round(performance.now() - start);
+    recordNetworkDebugSample({
+      route: "/api/data",
+      method: "GET",
+      status: response.status,
+      durationMs,
+      responseBytes: estimateByteLength(responseData),
+      source: "local",
+      note: "api_data_loaded",
+    });
+    return responseData;
   })();
 
   state.latestDataFetchPromise = fetchPromise;
@@ -15878,6 +16135,17 @@ function renderDirtyState() {
     button.classList.toggle("button--secondary", !saveButtonActive);
   });
 }
+
+window.dotationsGetNetworkDebug = getNetworkDebugReport;
+window.dotationsResetNetworkDebug = () => {
+  state.networkDebug = {
+    samples: [],
+    routeStats: {},
+    requestCount: 0,
+    totalBytes: 0,
+    startedAt: Date.now(),
+  };
+};
 
 loadData();
     const renderEmailOptions = (emails = []) => {
