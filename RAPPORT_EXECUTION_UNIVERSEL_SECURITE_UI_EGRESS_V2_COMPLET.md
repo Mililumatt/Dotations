@@ -867,6 +867,25 @@ Pour chaque lot:
 - ✅ Contrôle
   - sans changement des listes de référence, les compteurs restent visuellement identiques sans ré-anim.
 
+## 🧪 LOT 1.21 - MAINTIEN DU CONTEXTE D'ÉDITION À L'OUVERTURE DE LA FICHE (P3, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - conserver le contexte de clic “Modifier” sur une ligne d’effet quand on bascule vers la fiche personne.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - `openPersonSheetEffectEditor(personId, effectId)` sauvegarde désormais `{ personId, effectId }` dans `sessionStorage` avant navigation.
+  - ajout de `getRequestedEditEffectContext()` pour reconstruire proprement le contexte depuis l’URL puis du fallback session.
+  - `renderPersonSheet(personId)` lit ce contexte et lance `startEditEffect(person.id, effectId)` seulement si la fiche cible correspond bien à la personne demandée.
+- ✅ Effet attendu
+  - clic sur “Modifier” remplit directement le formulaire de l’effet demandé dans la fiche, même après navigation/retour d’onglet.
+- ⚠️ Risque
+  - faible; aucune logique métier altérée, seule liaison navigation/édition renforcée.
+- ✅ Contrôle
+  - déclencher “Modifier” depuis la fiche/une ligne puis revenir sur la même fiche : le formulaire doit préremplir l’effet et activer le mode édition.
+
 ---
 
 ## 🧾 RESUME EXECUTIF

@@ -168,6 +168,7 @@ const PDF_FORMAT_LOCK = "v1";
 let pdfModalCleanupBound = false;
 let reminderSnoozeMap = {};
 const signatureCanvases = new WeakMap();
+const EFFECT_EDIT_CONTEXT_STORAGE_KEY = "dotations-pending-effect-edit-context-v1";
 const SAVE_AUDIT_LOG_KEY = "dotations-save-audit-log-v1";
 const MAX_SAVE_AUDIT_ENTRIES = 250;
 
@@ -3641,21 +3642,66 @@ function openPersonSheetEffectEditor(personId, effectId) {
   if (!normalizedPersonId || !normalizedEffectId) {
     return;
   }
+  try {
+    sessionStorage.setItem(
+      EFFECT_EDIT_CONTEXT_STORAGE_KEY,
+      JSON.stringify({
+        personId: normalizedPersonId,
+        effectId: normalizedEffectId,
+      })
+    );
+  } catch (error) {
+    // Ignore storage errors.
+  }
   setCurrentPersonId(normalizedPersonId, "replace");
   navigateWithAutoSave(
     `fiche-personne.html?personId=${encodeURIComponent(normalizedPersonId)}&editEffectId=${encodeURIComponent(normalizedEffectId)}`
   );
 }
 
-function consumeRequestedEditEffectId() {
+function getRequestedEditEffectContext() {
   const nextUrl = new URL(window.location.href);
-  const requestedId = String(nextUrl.searchParams.get("editEffectId") || "");
-  if (!requestedId) {
-    return "";
+  const urlPersonId = String(nextUrl.searchParams.get("personId") || nextUrl.searchParams.get("personld") || "");
+  const urlEffectId = String(nextUrl.searchParams.get("editEffectId") || "");
+  if (urlPersonId && urlEffectId) {
+    nextUrl.searchParams.delete("editEffectId");
+    window.history.replaceState({}, "", nextUrl);
+    return { personId: urlPersonId, effectId: urlEffectId };
   }
-  nextUrl.searchParams.delete("editEffectId");
-  window.history.replaceState({}, "", nextUrl);
-  return requestedId;
+
+  const fallback = getRequestedEditEffectContextFromStorage();
+  return fallback;
+}
+
+function getRequestedEditEffectContextFromStorage() {
+  try {
+    const raw = sessionStorage.getItem(EFFECT_EDIT_CONTEXT_STORAGE_KEY);
+    if (!raw) {
+      return { personId: "", effectId: "" };
+    }
+    const parsed = JSON.parse(raw);
+    const personId = String(parsed?.personId || "");
+    const effectId = String(parsed?.effectId || "");
+    return { personId, effectId };
+  } catch (error) {
+    return { personId: "", effectId: "" };
+  } finally {
+    try {
+      sessionStorage.removeItem(EFFECT_EDIT_CONTEXT_STORAGE_KEY);
+    } catch (error) {
+      // Ignore storage errors.
+    }
+  }
+}
+
+function consumeRequestedEditEffectId() {
+  const context = getRequestedEditEffectContext();
+  return context.effectId;
+}
+
+function getRequestedEditPersonId() {
+  const context = getRequestedEditEffectContext();
+  return context.personId;
 }
 
 function getCurrentMobileSignatureToken() {
@@ -12400,7 +12446,11 @@ function renderPersonSheet(personId) {
   const person = (state.data?.personnes || []).find(
     (entry) => String(entry?.id || "") === requestedPersonId
   );
-  const requestedEditEffectId = consumeRequestedEditEffectId();
+  const requestedEditContext = getRequestedEditEffectContext();
+  const requestedEditEffectId = String(requestedEditContext.effectId || "");
+  const requestedEditPersonId = String(requestedEditContext.personId || "");
+  const requestedEditPersonMatches = !requestedEditPersonId || requestedEditPersonId === requestedPersonId;
+
 
   if (!person) {
     const emptySheetSignature = "sheet|none";
@@ -12482,7 +12532,7 @@ function renderPersonSheet(personId) {
     .join("||")}`;
 
   if (state.listRenderCache.sheet === sheetRowsSignature) {
-    if (requestedEditEffectId && effects.some((effect) => String(effect.id || "") === requestedEditEffectId)) {
+    if (requestedEditPersonMatches && requestedEditEffectId && effects.some((effect) => String(effect.id || "") === requestedEditEffectId)) {
       startEditEffect(person.id, requestedEditEffectId);
     }
     return false;
@@ -12581,7 +12631,7 @@ function renderPersonSheet(personId) {
   bindEffectRowActions();
   updateSortableHeaders("sheetEffects");
 
-  if (requestedEditEffectId && effects.some((effect) => String(effect.id || "") === requestedEditEffectId)) {
+  if (requestedEditPersonMatches && requestedEditEffectId && effects.some((effect) => String(effect.id || "") === requestedEditEffectId)) {
     startEditEffect(person.id, requestedEditEffectId);
   }
   return true;
