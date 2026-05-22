@@ -3809,7 +3809,7 @@ async function loadData() {
     clearUndoStack();
     applyMeta();
     hydrateStaticLists();
-    renderPage();
+    schedulePageRender();
     clearSearchInputsOnInitialLoad();
     showDataStatus("DONNEES EN COURS REPRISES - SAUVEGARDER POUR LES RENDRE DEFINITIVES");
     void updateBrowserStorageAlert();
