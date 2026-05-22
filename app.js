@@ -87,6 +87,7 @@ const state = {
     global: "",
     overviewAlerts: "",
     mobileSignature: "",
+    documentsArchives: "",
   },
   pageRenderRafId: 0,
   filterInputDebounceTimerId: 0,
@@ -8988,9 +8989,11 @@ function renderPage() {
   }
 
   if (page === "documents-archives") {
-    renderDocumentsArchivePage();
-    bindEffectTableSorting("documentsArchives");
-    updateSortableHeaders("documentsArchives");
+    const didArchiveTableChange = renderDocumentsArchivePage();
+    if (didArchiveTableChange) {
+      bindEffectTableSorting("documentsArchives");
+      updateSortableHeaders("documentsArchives");
+    }
   }
 
   if (page === "person-sheet" || page === "arrival-document" || page === "exit-document") {
@@ -10072,7 +10075,7 @@ async function registerArchivedDocument(person, docType, pdfPath, metadataPath, 
 function renderDocumentsArchivePage() {
   const body = document.getElementById("documents-archives-body");
   if (!body) {
-    return;
+    return false;
   }
 
   const params = new URLSearchParams(window.location.search);
@@ -10341,26 +10344,48 @@ function renderDocumentsArchivePage() {
   }
 
   if (!groupedArchives.length) {
+    const documentsArchivesRenderSignature = [
+      "documentsArchives",
+      "empty",
+      String(state.supabaseRevision || ""),
+      String(state.latestDataEtag || ""),
+      String(state.urgentMode ? "1" : "0"),
+      String(personIdFromQuery || ""),
+      String(search || ""),
+      String(typeDocument || ""),
+      String(site || ""),
+      String(statutSignature || ""),
+      String(totalArchives || 0),
+      String(totalArrivalArchives || 0),
+      String(totalExitArchives || 0),
+      String(lockedPersonId || ""),
+      "0",
+    ].join("|");
+    if (state.listRenderCache.documentsArchives === documentsArchivesRenderSignature) {
+      return false;
+    }
     const peopleCount = Array.isArray(state.data?.personnes) ? state.data.personnes.length : 0;
     const emptyMessage = peopleCount === 0
       ? "AUCUNE DONNEE CHARGEE (VERIFIER CONNEXION/SESSION)"
       : "AUCUN DOCUMENT ARCHIVE";
+    state.listRenderCache.documentsArchives = documentsArchivesRenderSignature;
     body.innerHTML = buildEmptyTableRow(body, emptyMessage, 11);
-    return;
+    return true;
   }
 
   const rowsHtml = groupedArchives
     .map(
       (entry) => {
         const display = resolveArchiveDisplayData(entry);
+        const person = personsById.get(String(entry?.personId || ""));
+        const workflowStatus = String(
+          entry?.__workflowStatus || resolveWorkflowStatus(entry, person)
+        );
         const openPath = getDocumentArchiveOpenPath(entry);
+        const hasPdf = Boolean(openPath);
         const typeLabel = normalizeText(entry.typeDocument || "");
         const typeIcon = typeLabel === "SORTIE" ? "🔴" : typeLabel === "ARRIVEE" ? "🟢" : "⚪";
         const typeTitle = typeLabel || "TYPE INCONNU";
-        const workflowStatus = String(
-          entry?.__workflowStatus || resolveWorkflowStatus(entry, personsById.get(String(entry?.personId || "")))
-        );
-        const hasPdf = Boolean(openPath);
         const openInNewTab = hasPdf && !isHostedPdfDocumentPath(openPath);
         const targetAttributes = openInNewTab ? 'target="_blank" rel="noopener"' : "";
         const openButton = hasPdf
@@ -10383,10 +10408,51 @@ function renderDocumentsArchivePage() {
         <td class="archive-actions-cell">${openButton} ${deleteButton}</td>
       </tr>`;
       }
-    );
+    )
+    .map((rowHtml) => rowHtml.trim());
+
+  const documentsArchivesRenderSignature = [
+    "documentsArchives",
+    String(state.supabaseRevision || ""),
+    String(state.latestDataEtag || ""),
+    String(state.urgentMode ? "1" : "0"),
+    String(personIdFromQuery || ""),
+    String(search || ""),
+    String(typeDocument || ""),
+    String(site || ""),
+    String(statutSignature || ""),
+    String(totalArchives || 0),
+    String(totalArrivalArchives || 0),
+    String(totalExitArchives || 0),
+    String(lockedPersonId || ""),
+    String(groupedArchives.length || 0),
+    groupedArchives
+      .map((entry) => {
+        const display = resolveArchiveDisplayData(entry);
+        return [
+          String(entry.id || ""),
+          String(entry.personId || ""),
+          String(entry.typeDocument || ""),
+          String(formatDate(entry.dateDocument) || "-"),
+          String(formatTime(entry.dateArchivage) || "-"),
+          String(display.nom || ""),
+          String(display.prenom || ""),
+          String(display.sites || ""),
+          String(entry.totalFacturable || 0),
+          String(getDocumentArchiveWorkflowStatus(entry, personsById.get(String(entry?.personId || ""))) || ""),
+        ].join("|");
+      })
+      .join("||"),
+  ].join("|");
+
+  if (state.listRenderCache.documentsArchives === documentsArchivesRenderSignature) {
+    return false;
+  }
+  state.listRenderCache.documentsArchives = documentsArchivesRenderSignature;
 
   renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUN DOCUMENT ARCHIVE", 11), 24);
   bindArchiveRowActions();
+  return true;
 }
 
 function deleteDocumentArchiveEntry(archiveId) {

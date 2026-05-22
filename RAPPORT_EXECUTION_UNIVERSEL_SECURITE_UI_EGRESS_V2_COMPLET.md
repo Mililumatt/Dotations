@@ -746,6 +746,25 @@ Pour chaque lot:
 - ✅ Contrôle
   - re-sélection d’une même personne ne doit pas relancer un cycle mobile inutile, mais doit rester visuellement stable.
 
+## 🧪 LOT 1.15 - CACHE DE LA PAGE ARCHIVES POUR RENDU CONDITIONNEL (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - ne plus refaire le rendu de la table archive si les filtres/personne/état de données n’ont pas changé.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - ajout d’un cache `state.listRenderCache.documentsArchives`;
+  - `renderDocumentsArchivePage()` calcule une signature de vue et retourne `false` si aucun changement;
+  - `renderPage()` n’exécute les bindings tri/entêtes que quand le rendu archive a changé.
+- ✅ Effet attendu
+  - moins d’appels de reconstruction du tableau “Documents archivés” en navigation/rafraîchissement sans mutation.
+- ⚠️ Risque
+  - faible; métier inchangé.
+- ✅ Contrôle
+  - naviguer plusieurs fois sur Documents archive sans modifier filtres/données doit éviter un rerendu complet.
+
 ---
 
 ## 🧾 RESUME EXECUTIF
