@@ -98,6 +98,7 @@ const state = {
   pageRenderRafId: 0,
   filterInputDebounceTimerId: 0,
   referenceFilterDebounceTimerId: 0,
+  localMutationTick: 0,
   personPickerRenderCache: {
     "person-sheet": "",
     "arrival-document": "",
@@ -108,6 +109,7 @@ const state = {
     persons: [],
   },
   dirtyStateRenderSignature: "",
+  pageRenderSignature: "",
 };
 const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
@@ -8946,13 +8948,64 @@ function getDocumentViewStateSignature(docType, personId = "") {
 
 function renderPage() {
   const page = document.body.dataset.page || "";
+  const filters = state.filters || DEFAULT_FILTERS;
+  let currentPersonId = getCurrentPersonId();
+  const pageRenderSignatureParts = [
+    "page-render",
+    String(page),
+    String(state.localMutationTick || 0),
+    String(state.supabaseRevision || ""),
+    String(state.isDirty ? "1" : "0"),
+    String(state.saveButtonLatchedDirty ? "1" : "0"),
+    String(state.currentUserRoleLabel || ""),
+    String(state.currentSheetPersonId || ""),
+    String(state.editingEffectId || ""),
+    String(state.editingReferenceId || ""),
+    String(state.editingReplacementCostKey || ""),
+    String(state.editingRepresentativeId || ""),
+    String(state.editingSimpleReference ? `${state.editingSimpleReference.listName || ""}/${state.editingSimpleReference.originalValue || ""}` : ""),
+    String(currentPersonId || ""),
+  ];
+
+  if (page === "overview" || page === "global") {
+    pageRenderSignatureParts.push(
+      `filters|${String(filters.search || "")}|${String(filters.site || "")}|${String(filters.typePersonnel || "")}|${String(filters.typeContrat || "")}|${String(filters.statutDossier || "")}|${String(filters.statutObjet || "")}|${String(filters.typeEffet || "")}|${String(state.urgentMode ? "1" : "0")}`,
+      `sort|${String(state.tableSorts?.overviewPersons?.key || "")}|${String(state.tableSorts?.overviewPersons?.dir || "")}|${String(state.tableSorts?.global?.key || "")}|${String(state.tableSorts?.global?.dir || "")}`
+    );
+  } else if (page === "person-sheet") {
+    pageRenderSignatureParts.push(
+      `person-sheet|${String(state.effectRowFlash?.personId || "")}|${String(state.effectRowFlash?.effectId || "")}|${String(state.effectRowFlash?.kind || "")}|${String(state.effectTableFlash?.personId || "")}|${String(state.effectTableFlash?.kind || "")}`
+    );
+  } else if (page === "arrival-document" || page === "exit-document") {
+    const docType = page === "arrival-document" ? "arrival" : "exit";
+    pageRenderSignatureParts.push(getDocumentViewStateSignature(docType, currentPersonId));
+  } else if (page === "mobile-signature") {
+    const signer = getCurrentMobileSignatureSigner();
+    const docType = getCurrentMobileSignatureDocType();
+    const request = getCurrentMobileSignatureRequest();
+    pageRenderSignatureParts.push(`mobile|${signer}|${docType}|${String(request?.token || "")}|${String(request?.status || "")}|${String(request?.signer || "")}`);
+  } else if (page === "documents-archives") {
+    pageRenderSignatureParts.push(
+      `archive|${String(state.tableSorts?.documentsArchives?.key || "")}|${String(state.tableSorts?.documentsArchives?.dir || "")}`
+    );
+  } else if (page === "reference-bases") {
+    pageRenderSignatureParts.push(
+      `references|${String(state.editingSimpleReference ? state.editingSimpleReference.listName || "" : "")}|${String(state.editingReferenceId || "")}|${String(state.editingReplacementCostKey || "")}`
+    );
+  }
+
+  const nextPageRenderSignature = pageRenderSignatureParts.join("|");
+  if (state.pageRenderSignature === nextPageRenderSignature) {
+    return;
+  }
+  state.pageRenderSignature = nextPageRenderSignature;
+
   if (page !== "arrival-document" && page !== "exit-document") {
     stopMobileSignaturePolling();
   }
   const hasFilteredPersons = page === "overview" || page === "global";
   let persons = [];
   if (hasFilteredPersons) {
-    const filters = state.filters || DEFAULT_FILTERS;
     const filteredPersonsSignature = [
       "filtered-persons",
       String(state.supabaseRevision || ""),
@@ -8973,7 +9026,6 @@ function renderPage() {
     }
     persons = state.filteredPersonsCache.persons || [];
   }
-  let currentPersonId = getCurrentPersonId();
   const personExists = (state.data?.personnes || []).some(
     (entry) => String(entry?.id || "") === String(currentPersonId || "")
   );
@@ -16448,6 +16500,7 @@ function bindGlobalResetSelectionClear() {
 function markDirty() {
   state.isDirty = true;
   state.saveButtonLatchedDirty = true;
+  state.localMutationTick = Number(state.localMutationTick || 0) + 1;
   saveWorkingData();
   renderDirtyState();
   if ((document.body?.dataset?.page || "") !== "reference-bases") {
