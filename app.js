@@ -11014,7 +11014,7 @@ function renderPersonPicker() {
       updateSortableHeaders("exitEffects");
       scheduleMobileSignatureRenderSync();
     } else {
-      renderPage();
+      schedulePageRender();
     }
     renderDirtyState();
     picker.blur();
@@ -11029,7 +11029,7 @@ function renderPersonPicker() {
       return true;
     }
     setCurrentPersonId("", "replace");
-    renderPage();
+    schedulePageRender();
     return true;
   };
 
@@ -11061,7 +11061,7 @@ function renderPersonPicker() {
       return true;
     }
     setCurrentPersonId(matchedPerson.id, mode);
-    renderPage();
+    schedulePageRender();
     picker.blur();
     return true;
   };
@@ -15232,7 +15232,7 @@ function bindHistoryNavigation() {
     if (!state.data) {
       return;
     }
-    renderPage();
+    schedulePageRender();
   });
 
   window.__dashboardHistoryBound = true;
