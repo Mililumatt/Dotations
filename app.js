@@ -6087,19 +6087,6 @@ function sortArchivesForTable(entries, resolveArchiveDisplayData) {
   });
 }
 
-function bindDeletePersonButtons() {
-  document.querySelectorAll(".js-delete-person").forEach((button) => {
-    button.onclick = () => {
-      const personId = button.getAttribute("data-person-id") || getCurrentPersonId();
-      if (!personId) {
-        showDataStatus("AUCUNE PERSONNE SELECTIONNEE");
-        return;
-      }
-      deletePerson(personId);
-    };
-  });
-}
-
 function applyFiltersToForm(form) {
   if (!form) {
     return;
@@ -12167,20 +12154,6 @@ function bindOverviewAlertActions() {
   alertsList.dataset.bound = "true";
 }
 
-function bindOpenPersonLinks() {
-  document.querySelectorAll(".js-open-person-link").forEach((link) => {
-    if (link.dataset.bound === "true") {
-      return;
-    }
-    link.addEventListener("click", () => {
-      const personId = link.getAttribute("data-person-id") || "";
-      if (personId) {
-        setCurrentPersonId(personId, "replace");
-      }
-    });
-    link.dataset.bound = "true";
-  });
-}
 function getSheetEffectTypeIconVariant(typeEffet) {
   const normalizedType = normalizeText(typeEffet);
   if (normalizedType === "CLE CES") {

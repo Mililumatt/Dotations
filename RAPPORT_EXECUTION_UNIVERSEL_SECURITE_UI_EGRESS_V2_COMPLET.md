@@ -587,10 +587,28 @@ Pour chaque lot:
 - ✅ Effet attendu
   - moins de travaux d’attachement d’événements lors des rafraîchissements;
   - comportement clic identique: ouvrir la fiche personne ciblée.
-- ⚠️ Risque
+ - ⚠️ Risque
   - faible, logique métier inchangée (`openPersonSheet(personId)`).
-- ✅ Contrôle
+ - ✅ Contrôle
   - vérifier visuellement qu’un clic alerte ouvre bien la fiche associée.
+
+## 🧪 LOT 1.7 - SUPPRESSION DE BINDS RÉDONDANTS (P3, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - supprimer du code de binding jamais appelé pour éviter du travail inutile au chargement.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - suppression de `bindDeletePersonButtons()` devenu redondant (suppression déclenchée déjà via délégation dans `bindPersonRowActions`);
+  - suppression de `bindOpenPersonLinks()` devenu inutilisé.
+- ✅ Effet attendu
+  - moins de code exécuté au chargement et zéro comportement utilisateur modifié.
+- ⚠️ Risque
+  - très faible, fonctions orphelines retirées uniquement.
+- ✅ Contrôle
+  - vérifier visuellement suppression via bouton et navigation fiche toujours opérationnelles depuis la vue.
 
 ---
 
