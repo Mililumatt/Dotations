@@ -4752,10 +4752,32 @@ function getActiveDocumentMobileSignatureRequest() {
     return null;
   }
   const docType = page === "exit-document" ? "exit" : "arrival";
-  return (
-    getActiveMobileSignatureRequest(personId, docType, "personnel") ||
-    getActiveMobileSignatureRequest(personId, docType, "representant")
-  );
+  cleanupExpiredMobileSignatureRequests();
+  const normalizedPersonId = String(personId);
+  const normalizedDocType = normalizeText(docType);
+  const now = Date.now();
+  let representativeRequest = null;
+  for (const entry of state.data.demandesSignatureMobile || []) {
+    if (
+      String(entry?.personId || "") !== normalizedPersonId ||
+      normalizeText(entry?.docType || "") !== normalizedDocType ||
+      entry?.status !== "EN ATTENTE" ||
+      Date.parse(entry?.expiresAt || "") <= now
+    ) {
+      continue;
+    }
+    const signer = normalizeMobileSignatureSigner(entry?.signer || "");
+    if (!signer) {
+      continue;
+    }
+    if (signer === "personnel") {
+      return entry;
+    }
+    if (signer === "representant" && !representativeRequest) {
+      representativeRequest = entry;
+    }
+  }
+  return representativeRequest;
 }
 
 function setMobileSignaturePollStatus(message, tone = "normal") {
