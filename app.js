@@ -7822,10 +7822,10 @@ function bindReplacementCostForm() {
       state.data.listes.coutsRemplacement.push({ typeEffet, cause, montant });
     }
 
-    state.editingReplacementCostKey = "";
-    markDirty();
-    renderPage();
-    form.reset();
+  state.editingReplacementCostKey = "";
+  markDirty();
+  schedulePageRender();
+  form.reset();
     const submitButton = form.querySelector('button[type="submit"]');
     if (submitButton) {
       submitButton.textContent = "ENREGISTRER LE COUT";
