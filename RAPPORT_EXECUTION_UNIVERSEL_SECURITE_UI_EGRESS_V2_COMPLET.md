@@ -70,6 +70,14 @@
 - ❌ Refonte globale non demandee.
 - ❌ Multiples changements non lies dans un meme lot.
 - ❌ Action destructive sans accord explicite.
+- ❌ Suppression massive de CSS sans preuve d'inutilisation réelle.
+- ❌ Pas d'ajout de librairie/package sans bénéfice clair.
+- ✅ Préférer les capacités natives déjà présentes dans le projet.
+
+### 🛑 Règle d'incertitude
+- ✅ En cas de doute sur un impact métier, arrêter l'exécution et demander confirmation.
+- ❌ Ne jamais deviner une logique métier ou une dépendance critique.
+  - Exemples sensibles : `state_json`, synchronisation mobile, realtime, calculs KPI, Gantt.
 
 ---
 
@@ -97,6 +105,15 @@
 #### 🎯 Objectif
 - ✅ Reduire appels reseau inutiles sans casser la synchro.
 
+### 👀 Mode observation obligatoire
+- ✅ Avant toute optimisation importante, observer le comportement réel :
+  - fréquence d'utilisation,
+  - volume de données,
+  - nombre d'appels réseau,
+  - temps de rendu,
+  - impact utilisateur réel.
+- ❌ Ne pas optimiser une zone peu utilisée sans preuve d'impact.
+
 #### 🛠️ Actions prudentes
 - ✅ Allonger cache TTL en lecture sur donnees stables.
 - ✅ Eviter relances en boucle apres 401/403/erreur reseau.
@@ -104,6 +121,17 @@
 - ✅ Grouper synchronisations utiles.
 - ✅ Ralentir/retirer refresh auto trop frequents.
 - ✅ Eviter relecture uniquement pour rafraichir visuel.
+- ✅ Réduire les re-renders inutiles et recalculs front coûteux.
+- ✅ Préférer les optimisations simples, lisibles et maintenables.
+- ❌ Pas d'optimisation complexe sans bénéfice mesurable.
+
+#### 📈 Budget performance
+- ✅ Toute optimisation doit maintenir ou améliorer :
+  - temps de chargement,
+  - fluidité UI,
+  - poids JS chargé,
+  - nombre de requêtes réseau.
+- ❌ Refuser une optimisation egress qui dégrade fortement l'UX ou les performances front.
 
 #### 📏 Controle
 - ✅ Suivre logs egress mensuels Supabase.
@@ -209,6 +237,7 @@
 - ❌ Pas de changement Supabase.
 - ❌ Pas de modification massive du CSS.
 - ❌ Pas de modification des composants fonctionnels sans raison claire.
+- ✅ Préserver l'identité visuelle et les habitudes utilisateur existantes, sauf demande explicite.
 
 #### 🗂️ Méthode
 - ✅ Faire un audit visuel global sans modifier.
@@ -220,6 +249,10 @@
 - ✅ Attendre GO avant correction.
 - ✅ Corriger un lot à la fois.
 - ✅ Tester visuellement après chaque lot.
+
+#### 👤 Validation utilisateur réelle
+- ✅ Toute amélioration UX doit rester cohérente avec les usages réels métier.
+- ❌ Ne pas optimiser uniquement selon critères techniques ou théoriques.
 
 #### 📤 Sortie attendue (par point)
 - ✅ Zone concernée.
@@ -242,6 +275,12 @@
 - 🟠 Risque moyen : logique front locale.
 - 🔴 Risque haut : donnees/synchro/etat global.
 - ⛔ Lots risque haut sans GO explicite : interdits.
+
+### 📌 Priorisation obligatoire
+- P1 = egress / stabilité / bugs critiques
+- P2 = UX gênante
+- P3 = optimisation légère
+- P4 = cosmétique mineure
 
 ### ✅ 5.3 Verification anti-regression (5 points)
 - ✅ Auth / ouverture.
@@ -281,6 +320,7 @@ Pour chaque lot:
 5. ✅ Commit + push.
 6. ✅ Retour statut `fait / non fait`.
 7. ✅ Prochaine action proposee.
+8. ✅ Vérification visuelle desktop + mobile obligatoire pour chaque lot UI.
 
 ### ✍️ Format commit francais (obligatoire)
 - `feat: optimiser les lectures Supabase et reduire les appels`
@@ -339,6 +379,51 @@ Pour chaque lot:
 - ✅ Strategie UI/UX + saisie heures integree.
 - ⚠️ Execution pratique conditionnee par GO lot par lot.
 - ✅ Applicabilite universelle confirmee.
+
+## 🧪 LOT 0 - MESURE EGRESS SANS RISQUE (EXÉCUTÉ)
+
+- 🎯 Objectif
+  - mesurer egress et charges réseau sans changer le comportement métier.
+- ✅ Statut
+  - FAIT.
+- ✅ Contraintes respectees
+  - pas de changement `reloadAfter`,
+  - pas de changement polling mobile,
+  - pas de changement de sauvegardes,
+  - pas de changement Supabase,
+  - pas de changement UI,
+  - pas de nouveau endpoint,
+  - pas de changement fonctionnel.
+- ✅ Fichiers modifies
+  - `app.js` (ajout d’indicateurs locaux debug).
+- ✅ Ajouts fait dans le navigateur
+  - `window.getNetworkDebug()` -> lit et affiche les compteurs réseau locaux,
+  - `window.resetNetworkDebug()` -> remet à zero les compteurs.
+- ✅ Compatibilite historique (alias deja present)
+  - `window.dotationsGetNetworkDebug()`,
+  - `window.dotationsResetNetworkDebug()`.
+- ✅ Validation metier
+  - aucune modif de flux de donnees Supabase,
+  - aucune modif de l'UI visible attendue.
+- ✅ Verification technique
+  - `node --check app.js` OK.
+- ✅ Methode 10 min (avant toute optimisation)
+  - 1) ouvrir l’UI (desktop + mobile si possible),
+  - 2) lancer `window.resetNetworkDebug()`,
+  - 3) utiliser les cas normaux pendant 10 min,
+  - 4) lancer `window.getNetworkDebug()`,
+  - 5) comparer l’evolution sur la periode (ex: 13.1 stable vs 13.2 en 10 min = alerte).
+- ✅ Suivi des KPIs
+  - nb requetes,
+  - volume total octets (egress),
+  - repartition par route/fonction,
+  - temps moyen de rendu associes.
+- 🧭 Prochaine etape recommandee
+  - passer en audit de causes :
+    - boucle realtime non unsubscribee,
+    - reload complet de `state_json`,
+    - polling trop frequent,
+    - payload JSON géant.
 
 ---
 
