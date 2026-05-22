@@ -4100,6 +4100,19 @@ async function syncDocumentMobileSignatureLink(docType, personId, signer = "pers
   renderMobileSignatureLink(docType, normalizedSigner, absoluteUrl);
 }
 
+async function syncDocumentMobileSignatureLinks(docType, personId) {
+  if (!personId || !state.data) {
+    renderMobileSignatureLink(docType, "personnel", "");
+    renderMobileSignatureLink(docType, "representant", "");
+    return;
+  }
+  const { personnel, representant } = getActiveMobileSignatureRequestContext(personId, docType);
+  const personnelUrl = personnel ? await getAbsoluteMobileSignatureUrl(personnel) : "";
+  const representantUrl = representant ? await getAbsoluteMobileSignatureUrl(representant) : "";
+  renderMobileSignatureLink(docType, "personnel", personnelUrl);
+  renderMobileSignatureLink(docType, "representant", representantUrl);
+}
+
 async function openMobileSignatureRequest(docType, personId, signer = "personnel") {
   if (!state.data) {
     showDataStatus("DONNEES NON CHARGEES");
@@ -12911,8 +12924,7 @@ function renderArrivalDocument(personId) {
     representantNameNode.textContent = "-";
     representantFunctionNode.textContent = "-";
     updateRepresentativeSignatureActionState("arrival");
-    syncDocumentMobileSignatureLink("arrival", "", "personnel");
-    syncDocumentMobileSignatureLink("arrival", "", "representant");
+      syncDocumentMobileSignatureLinks("arrival", "");
     return;
   }
 
@@ -13061,8 +13073,7 @@ function renderArrivalDocument(personId) {
   totalValueNode.textContent = formatAmountWithEuro(totalValue);
   bindDocumentEffectActions();
   updateSortableHeaders("arrivalEffects");
-  syncDocumentMobileSignatureLink("arrival", person.id, "personnel");
-  syncDocumentMobileSignatureLink("arrival", person.id, "representant");
+  syncDocumentMobileSignatureLinks("arrival", person.id);
   applyRequestedPdfFocus();
   return true;
 }
@@ -13243,8 +13254,7 @@ function renderExitDocument(personId) {
     representantFunctionNode.textContent = "-";
     renderDocumentCostsTable("arrival", costsHead, costsBody);
     updateRepresentativeSignatureActionState("exit");
-    syncDocumentMobileSignatureLink("exit", "", "personnel");
-    syncDocumentMobileSignatureLink("exit", "", "representant");
+    syncDocumentMobileSignatureLinks("exit", "");
     return;
   }
 
@@ -13458,8 +13468,7 @@ function renderExitDocument(personId) {
   bindExitBillingToggles();
   bindDocumentEffectActions();
   updateSortableHeaders("exitEffects");
-  syncDocumentMobileSignatureLink("exit", person.id, "personnel");
-  syncDocumentMobileSignatureLink("exit", person.id, "representant");
+  syncDocumentMobileSignatureLinks("exit", person.id);
   applyRequestedPdfFocus();
   return true;
 }
