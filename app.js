@@ -4807,7 +4807,7 @@ async function pollMobileSignatureRequest() {
     getActiveMobileSignatureRequest(personId, docType, "representant"),
   ].filter(Boolean);
   try {
-    const json = await fetchLatestDataSnapshot({ forceFresh: true });
+    const json = await fetchLatestDataSnapshot();
 
     state.mobileSignaturePollErrorCount = 0;
     state.mobileSignaturePollBackoffUntil = 0;
