@@ -4152,7 +4152,7 @@ async function reloadData(statusText = "RECHARGEMENT DES DONNEES...") {
     clearUndoStack();
     applyMeta();
     hydrateStaticLists();
-    renderPage();
+    schedulePageRender();
     refreshCurrentUserRoleLabel();
     clearSearchInputsOnInitialLoad();
     showDataStatus(
@@ -6376,7 +6376,7 @@ function bindAddPersonForm() {
     markDirty();
     form.reset();
     renderSiteSelector("add-site-selector", "add", []);
-    renderPage();
+    schedulePageRender();
     showActionStatus("create", `PERSONNE AJOUTEE : ${person.nom} ${person.prenom}`);
     setCurrentPersonId(person.id);
     openPersonSheet(person.id);
@@ -7990,7 +7990,7 @@ function bindReferenceEffectForm() {
     state.editingReferenceId = "";
     markDirty();
     hydrateStaticLists();
-    renderPage();
+    schedulePageRender();
     form.reset();
     renderReferenceSitesSelector([]);
     updateReferenceEffectFormMode("");
@@ -15137,7 +15137,7 @@ function deleteRepresentativeSignatory(representativeId) {
     }
   }
   markDirty();
-  renderPage();
+  schedulePageRender();
   showActionStatus("delete", `REPRESENTANT SUPPRIME : ${representative.nom || representative.fonction}`);
 }
 
@@ -15308,7 +15308,7 @@ function deleteReplacementCost(costKey) {
     }
   }
   markDirty();
-  renderPage();
+  schedulePageRender();
   showActionStatus("delete", `COUT SUPPRIME : ${entry.typeEffet} / ${entry.cause}`);
 }
 
@@ -15380,7 +15380,7 @@ function deleteSimpleReference(listName, value) {
   }
   markDirty();
   hydrateStaticLists();
-  renderPage();
+  schedulePageRender();
   showActionStatus("delete", `BASE SUPPRIMEE : ${value}`);
 }
 
@@ -15422,7 +15422,7 @@ function deleteReferenceEffect(referenceId) {
     resetReferenceEffectForm();
   }
   markDirty();
-  renderPage();
+  schedulePageRender();
   showActionStatus("update", `REFERENCE ${nextActive ? "REACTIVEE" : "DESACTIVEE"} : ${reference.designation || referenceId}`);
 }
 
@@ -15460,7 +15460,7 @@ function hardDeleteReferenceEffect(referenceId) {
     resetReferenceEffectForm();
   }
   markDirty();
-  renderPage();
+  schedulePageRender();
   showActionStatus("delete", `REFERENCE SUPPRIMEE DEFINITIVEMENT : ${reference.designation || referenceId}`);
 }
 
@@ -16293,7 +16293,7 @@ function undoLastChange() {
   migrateDataModel();
   state.isDirty = true;
   saveWorkingData();
-  renderPage();
+  schedulePageRender();
   showDataStatus(`ANNULATION : ${lastSnapshot.label}`);
 }
 
@@ -16574,4 +16574,5 @@ loadData();
         })
         .catch(() => null);
     }
+
 
