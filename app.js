@@ -72,6 +72,7 @@ const state = {
   latestDataFetchPromise: null,
   latestDataFetchAt: 0,
   latestDataSnapshotCache: null,
+  documentRenderCache: { arrival: "", exit: "" },
   pageRenderRafId: 0,
   filterInputDebounceTimerId: 0,
   referenceFilterDebounceTimerId: 0,
@@ -11898,8 +11899,21 @@ function renderArrivalDocument(personId) {
     return;
   }
   const isPdfMode = isPdfRenderMode();
+  const sortConfig = state.tableSorts?.arrivalEffects || {};
+  const noPersonRenderKey = [
+    "arrival",
+    "no-person",
+    String(explicitMode || ""),
+    isPdfMode ? "pdf" : "ui",
+    String(sortConfig.key || ""),
+    String(sortConfig.dir || ""),
+  ].join("|");
 
   if (!person) {
+    if (state.documentRenderCache.arrival === noPersonRenderKey) {
+      return;
+    }
+    state.documentRenderCache.arrival = noPersonRenderKey;
     titleNode.textContent = isComplement
       ? "AVENANT DE REMISE DES EFFETS CONFIES"
       : "ATTESTATION DE REMISE DES EFFETS CONFIES A L'ARRIVEE";
@@ -11946,8 +11960,93 @@ function renderArrivalDocument(personId) {
     : allEffects.filter((effect) => Boolean(effect.dateRemise));
   const deletedEffects = isComplement ? getArrivalDeletedEffects(person, allEffects) : [];
   const effectsForDisplay = [...activeEffects, ...deletedEffects];
-  const sortedEffects = sortEffectsForTable(person, effectsForDisplay, "arrivalEffects");
+  const complementMovements = isComplement ? fallbackMovements : new Map();
+  const arrivalRowsSignature = effectsForDisplay
+    .map((effect) => {
+      const movement = getEffectMovementLabel(person, effect, isComplement ? complementMovements : null);
+      return `${String(effect.id || "")}|${String(effect.typeEffet || "")}|${String(getEffectDisplayDesignation(effect) || "")}|${String(
+        effect.numeroIdentification || ""
+      )}|${String(effect.dateRemise || "")}|${getEffectUnitValue(effect)}|${movement || ""}`;
+    })
+    .join("||");
   const totalValue = activeEffects.reduce((sum, effect) => sum + getEffectUnitValue(effect), 0);
+  const arrivalPersonnelSignature = String(getSignatureValidationDate(person, "arrival", "personnel") || "");
+  const arrivalRepresentantSignature = String(getSignatureValidationDate(person, "arrival", "representant") || "");
+  const arrivalRepresentative = getRepresentativeInfo(person, "arrival");
+  const personSummaryFingerprint = [
+    "arrival",
+    String(person.id || ""),
+    String(mode || ""),
+    isPdfMode ? "pdf" : "ui",
+    String(sortConfig.key || ""),
+    String(sortConfig.dir || ""),
+    String(person.nom || ""),
+    String(person.prenom || ""),
+    String(person.fonction || ""),
+    String(person.typePersonnel || ""),
+    String(person.typeContrat || ""),
+    String(person.dateEntree || ""),
+    String(person.dateSortiePrevue || ""),
+    String(arrivalRepresentative.id || ""),
+    String(arrivalRepresentative.nom || ""),
+    String(arrivalRepresentative.fonction || ""),
+    String(arrivalPersonnelSignature),
+    String(arrivalRepresentantSignature),
+    String(effectsForDisplay.length),
+    String(activeEffects.length),
+    String(totalValue),
+    String(totalValueNode?.textContent || ""),
+    String(arrivalRowsSignature || ""),
+  ].join("|");
+
+  if (state.documentRenderCache.arrival === personSummaryFingerprint) {
+    return;
+  }
+  state.documentRenderCache.arrival = personSummaryFingerprint;
+  const sortedEffects = sortEffectsForTable(person, effectsForDisplay, "arrivalEffects");
+  const arrivalRowsMarkup = sortedEffects
+    .map((effect) => {
+      const movement = getEffectMovementLabel(person, effect, isComplement ? complementMovements : null);
+      const movementBadge = movement
+        ? `<span class="movement-badge movement-badge--${getMovementBadgeVariant(movement)}">${movement}</span>`
+        : "";
+      const rowClass = movement
+        ? ` class="arrival-effect-row arrival-effect-row--${getMovementRowVariant(movement)}"`
+        : "";
+      const designation = getEffectDisplayDesignation(effect);
+      const unitValue = getEffectUnitValue(effect);
+      const actionCell = !isPdfMode
+        ? `<span class="document-effect-actions">
+                  <button type="button" class="table-link js-doc-edit-effect" data-person-id="${escapeHtml(person.id || "")}" data-effect-id="${escapeHtml(effect.id || "")}">MODIFIER</button>
+                  <button type="button" class="table-link js-doc-delete-effect" data-person-id="${escapeHtml(person.id || "")}" data-effect-id="${escapeHtml(effect.id || "")}">SUPPRIMER</button>
+                </span>`
+        : "-";
+      return {
+        id: String(effect.id || ""),
+        typeEffet: String(effect.typeEffet || ""),
+        designation: String(designation || "-"),
+        numeroIdentification: String(effect.numeroIdentification || ""),
+        dateRemise: String(effect.dateRemise || ""),
+        unitValue,
+        movementBadge,
+        rowClass,
+        actionCell,
+      };
+    })
+    .map(
+      ({ id, typeEffet, designation, numeroIdentification, dateRemise, unitValue, movementBadge, rowClass, actionCell }) => `
+        <tr${rowClass}>
+          <td>${typeEffet || ""}</td>
+          <td>${designation || "-"}</td>
+          <td class="movement-cell">${movementBadge}</td>
+          <td>${numeroIdentification || "-"}</td>
+          <td>${formatDate(dateRemise) || "-"}</td>
+          <td>${formatAmountWithEuro(unitValue)}</td>
+          <td class="document-effects-action-col">${actionCell}</td>
+        </tr>
+      `
+    )
+    .join("");
 
   titleNode.textContent = isComplement
     ? "AVENANT DE REMISE DES EFFETS CONFIES"
@@ -11966,52 +12065,22 @@ function renderArrivalDocument(personId) {
   dateEntreeNode.textContent = formatDate(person.dateEntree) || "-";
   dateSortiePrevueNode.textContent = formatDate(person.dateSortiePrevue) || "-";
   signatureNameNode.textContent = `${person.nom || ""} ${person.prenom || ""}`.trim() || "-";
-  const arrivalRepresentative = getRepresentativeInfo(person, "arrival");
   populateRepresentativeSelect(representantNameInput, resolveRepresentativeSelectedId(person, "arrival"));
   representantFunctionInput.value = arrivalRepresentative.fonction;
   representantNameNode.textContent = arrivalRepresentative.nom || "-";
   representantFunctionNode.textContent = arrivalRepresentative.fonction || "-";
   updateRepresentativeSignatureActionState("arrival");
+  const arrivalPersonnelValidation = arrivalPersonnelSignature ? formatSignatureTimestamp(arrivalPersonnelSignature) : "";
+  const arrivalRepresentantValidation = arrivalRepresentantSignature
+    ? formatSignatureTimestamp(arrivalRepresentantSignature)
+    : "";
   signaturePersonDateNode.textContent =
-    formatSignatureTimestamp(getSignatureValidationDate(person, "arrival", "personnel")) || formatCurrentUiTimestamp();
+    arrivalPersonnelValidation || formatCurrentUiTimestamp();
   signatureRepresentantDateNode.textContent =
-    formatSignatureTimestamp(getSignatureValidationDate(person, "arrival", "representant")) || formatCurrentUiTimestamp();
-
-  const complementMovements = isComplement ? fallbackMovements : new Map();
+    arrivalRepresentantValidation || formatCurrentUiTimestamp();
 
   body.innerHTML = sortedEffects.length
-    ? `${sortedEffects
-        .map(
-          (effect) => {
-            const movement = getEffectMovementLabel(
-              person,
-              effect,
-              isComplement ? complementMovements : null
-            );
-            const movementBadge = movement
-              ? `<span class="movement-badge movement-badge--${getMovementBadgeVariant(movement)}">${movement}</span>`
-              : "";
-            const rowClass = movement
-              ? ` class="arrival-effect-row arrival-effect-row--${getMovementRowVariant(movement)}"`
-              : "";
-            const actionCell = !isPdfMode
-              ? `<span class="document-effect-actions">
-                  <button type="button" class="table-link js-doc-edit-effect" data-person-id="${escapeHtml(person.id || "")}" data-effect-id="${escapeHtml(effect.id || "")}">MODIFIER</button>
-                  <button type="button" class="table-link js-doc-delete-effect" data-person-id="${escapeHtml(person.id || "")}" data-effect-id="${escapeHtml(effect.id || "")}">SUPPRIMER</button>
-                </span>`
-              : "-";
-            return `<tr${rowClass}>
-            <td>${effect.typeEffet || ""}</td>
-            <td>${getEffectDisplayDesignation(effect) || "-"}</td>
-            <td class="movement-cell">${movementBadge}</td>
-            <td>${effect.numeroIdentification || "-"}</td>
-            <td>${formatDate(effect.dateRemise) || "-"}</td>
-            <td>${formatAmountWithEuro(getEffectUnitValue(effect))}</td>
-            <td class="document-effects-action-col">${actionCell}</td>
-          </tr>`;
-          }
-        )
-        .join("")}
+    ? `${arrivalRowsMarkup}
         <tr class="table-total-row">
           <td colspan="${isPdfMode ? "5" : "6"}">TOTAL DES EFFETS REMIS</td>
           <td>${formatAmountWithEuro(totalValue)}</td>
@@ -12141,8 +12210,21 @@ function renderExitDocument(personId) {
   ) {
     return;
   }
+  const isPdfMode = isPdfRenderMode();
+  const sortConfig = state.tableSorts?.exitEffects || {};
+  const noPersonRenderKey = [
+    "exit",
+    "no-person",
+    isPdfMode ? "pdf" : "ui",
+    String(sortConfig.key || ""),
+    String(sortConfig.dir || ""),
+  ].join("|");
 
   if (!person) {
+    if (state.documentRenderCache.exit === noPersonRenderKey) {
+      return;
+    }
+    state.documentRenderCache.exit = noPersonRenderKey;
     dateNode.textContent = formatDateTimeForDocument("");
     referenceNode.textContent = "-";
     nomNode.textContent = "-";
@@ -12188,8 +12270,16 @@ function renderExitDocument(personId) {
     const hasAmount = getEffectReplacementCost(person, effect) > 0;
     return hasType || hasDesignation || hasId || hasDateRemise || hasDateRetour || hasStatus || hasAmount;
   });
-  const isPdfMode = isPdfRenderMode();
-  const sortedEffects = sortEffectsForTable(person, effects, "exitEffects");
+  const exitRowsSignature = effects
+    .map((effect) => {
+      const movement = getEffectMovementLabel(person, effect);
+      const replacementCost = getEffectReplacementCost(person, effect);
+      const rawStatus = getEffectStatus(person, effect);
+      const currentStatus = normalizeText(rawStatus);
+      const billingStatus = getEffectBillingStatus(effect, replacementCost > 0);
+      return `${String(effect.id || "")}|${String(effect.typeEffet || "")}|${String(getEffectDisplayDesignation(effect) || "")}|${String(effect.numeroIdentification || "")}|${String(effect.dateRemise || "")}|${String(effect.dateRetour || "")}|${currentStatus}|${replacementCost}|${billingStatus}|${movement || ""}`;
+    })
+    .join("||");
   const totalReturned = effects.filter((effect) => getEffectStatus(person, effect) === "RESTITUE").length;
   const chargeableEffects = effects.filter((effect) => isEffectChargeable(person, effect));
   const totalValue = chargeableEffects.reduce((sum, effect) => sum + getEffectReplacementCost(person, effect), 0);
@@ -12215,7 +12305,127 @@ function renderExitDocument(personId) {
     .filter((effect) => getEffectBillingStatus(effect, true) === "A FACTURER")
     .reduce((sum, effect) => sum + getEffectReplacementCost(person, effect), 0);
   const todayIso = getTodayIsoDate();
-
+  const exitPersonnelSignature = String(getSignatureValidationDate(person, "exit", "personnel") || "");
+  const exitRepresentantSignature = String(getSignatureValidationDate(person, "exit", "representant") || "");
+  const exitRepresentative = getRepresentativeInfo(person, "exit");
+  const personSummaryFingerprint = [
+    "exit",
+    String(person.id || ""),
+    isPdfMode ? "pdf" : "ui",
+    String(sortConfig.key || ""),
+    String(sortConfig.dir || ""),
+    String(person.nom || ""),
+    String(person.prenom || ""),
+    String(person.fonction || ""),
+    String(person.typePersonnel || ""),
+    String(person.typeContrat || ""),
+    String(person.dateEntree || ""),
+    String(person.dateSortiePrevue || ""),
+    String(person.dateSortieReelle || ""),
+    String(exitRepresentative.id || ""),
+    String(exitRepresentative.nom || ""),
+    String(exitRepresentative.fonction || ""),
+    String(exitPersonnelSignature),
+    String(exitRepresentantSignature),
+    String(todayIso),
+    String(effects.length),
+    String(totalReturned),
+    String(totalChargeableNode ? chargeableEffects.length : 0),
+    String(totalValue),
+    String(totalPendingValue),
+    String(totalBilledValue),
+    String(totalClosedValue),
+    String(totalRemainingValue),
+    String(exitRowsSignature || ""),
+  ].join("|");
+  if (state.documentRenderCache.exit === personSummaryFingerprint) {
+    return;
+  }
+  state.documentRenderCache.exit = personSummaryFingerprint;
+  const sortedEffects = sortEffectsForTable(person, effects, "exitEffects");
+  const exitRowsMarkup = sortedEffects
+    .map((effect) => {
+      const movement = getEffectMovementLabel(person, effect);
+      const movementBadge = movement
+        ? `<span class="movement-badge movement-badge--${getMovementBadgeVariant(movement)}">${movement}</span>`
+        : "";
+      const rawStatus = getEffectStatus(person, effect);
+      const currentStatus = normalizeText(rawStatus);
+      const statusLabel = currentStatus === "RESTITUE" ? "RENDU" : rawStatus;
+      const replacementCost = getEffectReplacementCost(person, effect);
+      const billingStatus = getEffectBillingStatus(effect, replacementCost > 0);
+      const billingControls = !isPdfMode && replacementCost > 0
+        ? `<label class="return-today-toggle"><input type="checkbox" class="js-exit-billed" data-effect-id="${escapeHtml(effect.id || "")}" ${billingStatus === "FACTURE" ? "checked" : ""} /><span>FACTURE</span></label>
+                 <label class="return-today-toggle"><input type="checkbox" class="js-exit-closed" data-effect-id="${escapeHtml(effect.id || "")}" ${billingStatus === "CLOTURE" ? "checked" : ""} /><span>CLOTURE</span></label>`
+        : "";
+      const billingCell =
+        billingStatus === "-"
+          ? "-"
+          : `<span class="${getStatusClass(billingStatus)}">${billingStatus}</span>${billingControls ? `<div class="exit-billing-toggles">${billingControls}</div>` : ""}`;
+      const retourDateIso = normalizeDateString(effect.dateRetour || "");
+      const isLockedStatusForReturn = ["PERDU", "HS", "VOL", "DETRUIT", "NON RENDU"].includes(currentStatus);
+      const canToggleReturnToday =
+        !isLockedStatusForReturn &&
+        (!retourDateIso || retourDateIso === todayIso);
+      const actionCell = !isPdfMode
+        ? `<span class="document-effect-actions">
+                  <button type="button" class="table-link js-doc-edit-effect" data-person-id="${escapeHtml(person.id || "")}" data-effect-id="${escapeHtml(effect.id || "")}">MODIFIER</button>
+                  <button type="button" class="table-link js-doc-delete-effect" data-person-id="${escapeHtml(person.id || "")}" data-effect-id="${escapeHtml(effect.id || "")}">SUPPRIMER</button>
+                </span>`
+        : "-";
+      return {
+        id: String(effect.id || ""),
+        typeEffet: String(effect.typeEffet || ""),
+        designation: String(getEffectDisplayDesignation(effect) || ""),
+        numeroIdentification: String(effect.numeroIdentification || ""),
+        dateRemise: String(effect.dateRemise || ""),
+        dateRetour: String(effect.dateRetour || ""),
+        statusLabel: String(statusLabel || ""),
+        movement,
+        movementBadge,
+        billingCell,
+        canToggleReturnToday,
+        retourDateIso,
+        replacementCost,
+        actionCell,
+      };
+    })
+    .map(
+      ({
+        id,
+        typeEffet,
+        designation,
+        numeroIdentification,
+        dateRemise,
+        dateRetour,
+        statusLabel,
+        movementBadge,
+        billingCell,
+        canToggleReturnToday,
+        retourDateIso,
+        replacementCost,
+        actionCell,
+      }) => `
+        <tr>
+          <td>${typeEffet || ""}</td>
+          <td>${designation}</td>
+          <td>${numeroIdentification}</td>
+          <td>${formatDate(dateRemise)}</td>
+          <td>${formatDate(dateRetour)}</td>
+          <td>${statusLabel}</td>
+          <td class="movement-cell">${movementBadge}</td>
+          <td class="movement-cell">${
+            !isPdfMode && canToggleReturnToday
+              ? `<label class="return-today-toggle"><input type="checkbox" class="js-exit-return-today" data-effect-id="${escapeHtml(id || "")}" ${String(retourDateIso) === todayIso ? "checked" : ""} /><span>RENDU</span></label>`
+              : "-"
+          }</td>
+          <td>${formatAmountWithEuro(replacementCost)}</td>
+          <td>${billingCell}</td>
+          <td class="document-effects-action-col">${actionCell}</td>
+        </tr>
+      `
+    )
+    .join("");
   dateNode.textContent = formatDateTimeForDocument(new Date().toISOString());
   referenceNode.textContent = `SOR-${person.id || "-"}`;
   nomNode.textContent = person.nom || "-";
@@ -12228,69 +12438,18 @@ function renderExitDocument(personId) {
   dateSortiePrevueNode.textContent = formatDate(person.dateSortiePrevue) || "-";
   dateSortieReelleNode.textContent = formatDate(person.dateSortieReelle) || "-";
   signatureNameNode.textContent = `${person.nom || ""} ${person.prenom || ""}`.trim() || "-";
-  const exitRepresentative = getRepresentativeInfo(person, "exit");
   populateRepresentativeSelect(representantNameInput, resolveRepresentativeSelectedId(person, "exit"));
   representantFunctionInput.value = exitRepresentative.fonction;
   representantNameNode.textContent = exitRepresentative.nom || "-";
   representantFunctionNode.textContent = exitRepresentative.fonction || "-";
   updateRepresentativeSignatureActionState("exit");
   signaturePersonDateNode.textContent =
-    formatSignatureTimestamp(getSignatureValidationDate(person, "exit", "personnel")) || formatCurrentUiTimestamp();
+    formatSignatureTimestamp(exitPersonnelSignature) || formatCurrentUiTimestamp();
   signatureRepresentantDateNode.textContent =
-    formatSignatureTimestamp(getSignatureValidationDate(person, "exit", "representant")) || formatCurrentUiTimestamp();
+    formatSignatureTimestamp(exitRepresentantSignature) || formatCurrentUiTimestamp();
 
   body.innerHTML = sortedEffects.length
-    ? `${sortedEffects
-        .map(
-          (effect) => {
-            const movement = getEffectMovementLabel(person, effect);
-            const movementBadge = movement
-              ? `<span class="movement-badge movement-badge--${getMovementBadgeVariant(movement)}">${movement}</span>`
-              : "";
-            const rawStatus = getEffectStatus(person, effect);
-            const currentStatus = normalizeText(rawStatus);
-            const statusLabel = currentStatus === "RESTITUE" ? "RENDU" : rawStatus;
-            const replacementCost = getEffectReplacementCost(person, effect);
-            const billingStatus = getEffectBillingStatus(effect, replacementCost > 0);
-            const billingControls = !isPdfMode && replacementCost > 0
-              ? `<label class="return-today-toggle"><input type="checkbox" class="js-exit-billed" data-effect-id="${escapeHtml(effect.id || "")}" ${billingStatus === "FACTURE" ? "checked" : ""} /><span>FACTURE</span></label>
-                 <label class="return-today-toggle"><input type="checkbox" class="js-exit-closed" data-effect-id="${escapeHtml(effect.id || "")}" ${billingStatus === "CLOTURE" ? "checked" : ""} /><span>CLOTURE</span></label>`
-              : "";
-            const billingCell =
-              billingStatus === "-"
-                ? "-"
-                : `<span class="${getStatusClass(billingStatus)}">${billingStatus}</span>${billingControls ? `<div class="exit-billing-toggles">${billingControls}</div>` : ""}`;
-            const retourDateIso = normalizeDateString(effect.dateRetour || "");
-            const isLockedStatusForReturn = ["PERDU", "HS", "VOL", "DETRUIT", "NON RENDU"].includes(currentStatus);
-            const canToggleReturnToday =
-              !isLockedStatusForReturn &&
-              (!retourDateIso || retourDateIso === todayIso);
-            const actionCell = !isPdfMode
-              ? `<span class="document-effect-actions">
-                  <button type="button" class="table-link js-doc-edit-effect" data-person-id="${escapeHtml(person.id || "")}" data-effect-id="${escapeHtml(effect.id || "")}">MODIFIER</button>
-                  <button type="button" class="table-link js-doc-delete-effect" data-person-id="${escapeHtml(person.id || "")}" data-effect-id="${escapeHtml(effect.id || "")}">SUPPRIMER</button>
-                </span>`
-              : "-";
-            return `<tr>
-            <td>${effect.typeEffet || ""}</td>
-            <td>${getEffectDisplayDesignation(effect)}</td>
-            <td>${effect.numeroIdentification || ""}</td>
-            <td>${formatDate(effect.dateRemise)}</td>
-            <td>${formatDate(effect.dateRetour)}</td>
-            <td>${statusLabel}</td>
-            <td class="movement-cell">${movementBadge}</td>
-            <td class="movement-cell">${
-              !isPdfMode && canToggleReturnToday
-                ? `<label class="return-today-toggle"><input type="checkbox" class="js-exit-return-today" data-effect-id="${escapeHtml(effect.id || "")}" ${retourDateIso === todayIso ? "checked" : ""} /><span>RENDU</span></label>`
-                : "-"
-            }</td>
-            <td>${formatAmountWithEuro(replacementCost)}</td>
-            <td>${billingCell}</td>
-            <td class="document-effects-action-col">${actionCell}</td>
-          </tr>`;
-          }
-        )
-        .join("")}
+    ? `${exitRowsMarkup}
         <tr class="table-total-row">
           <td colspan="${isPdfMode ? "7" : "10"}">TOTAL FACTURABLE DES EFFETS</td>
           <td>${formatAmountWithEuro(totalValue)}</td>
