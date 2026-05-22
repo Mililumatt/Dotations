@@ -8555,8 +8555,10 @@ function renderPage() {
   }
 
   if (page === "global") {
-    renderGlobalEffectsChart(persons);
-    renderGlobalTable(persons);
+    const didGlobalChange = renderGlobalTable(persons);
+    if (didGlobalChange) {
+      renderGlobalEffectsChart(persons);
+    }
   }
 
   if (page === "documents-archives") {
@@ -11234,36 +11236,14 @@ function renderOverview(persons) {
   const alertsSection = document.getElementById("overview-alerts-section");
   const alertsList = document.getElementById("overview-alerts-list");
 
-  let inPostCount = 0;
-  let totalEffectsCount = 0;
-  let missingEffectsCount = 0;
+  let hasOverviewRowsChanged = false;
+  if (!body) {
+    updateSortableHeaders("overviewPersons");
+  } else {
 
-  persons.forEach((person) => {
-    const allEffects = person.effetsConfies || [];
-    if (getDossierStatus(person) === "EN POSTE") {
-      inPostCount += 1;
-    }
-    allEffects.forEach((effect) => {
-      totalEffectsCount += 1;
-      if (getEffectStatus(person, effect) === "NON RENDU") {
-        missingEffectsCount += 1;
-      }
-    });
-  });
-
-  if (inPostNode) {
-    setKpiCountAnimated(inPostNode, inPostCount);
-  }
-  if (totalEffectsNode) {
-    setKpiCountAnimated(totalEffectsNode, totalEffectsCount);
-  }
-  if (missingEffectsNode) {
-    setKpiCountAnimated(missingEffectsNode, missingEffectsCount);
-  }
-
-  renderEffectsChart("overview-effects-chart", persons);
-
-  if (body) {
+    let inPostCount = 0;
+    let totalEffectsCount = 0;
+    let missingEffectsCount = 0;
     const sortedPersons = sortPersonsForOverview(persons);
     const overviewSortConfig = state.tableSorts?.overviewPersons || {};
     const overviewRowsSignature = `overview|${String(overviewSortConfig.key || "")}|${String(overviewSortConfig.dir || "")}|${sortedPersons
@@ -11290,6 +11270,15 @@ function renderOverview(persons) {
             movementCounts[normalized] += 1;
           }
         });
+        if (getDossierStatus(person) === "EN POSTE") {
+          inPostCount += 1;
+        }
+        allEffects.forEach((effect) => {
+          totalEffectsCount += 1;
+          if (getEffectStatus(person, effect) === "NON RENDU") {
+            missingEffectsCount += 1;
+          }
+        });
         return [
           person.id || "",
           String(person.nom || ""),
@@ -11313,17 +11302,27 @@ function renderOverview(persons) {
         ].join("|");
       })
       .join("||")}`;
-    const hasOverviewRowsChanged = state.listRenderCache.overview !== overviewRowsSignature;
+    hasOverviewRowsChanged = state.listRenderCache.overview !== overviewRowsSignature;
 
-    const rowsHtml = buildOverviewRows(sortedPersons);
     if (hasOverviewRowsChanged) {
       state.listRenderCache.overview = overviewRowsSignature;
+      if (inPostNode) {
+        setKpiCountAnimated(inPostNode, inPostCount);
+      }
+      if (totalEffectsNode) {
+        setKpiCountAnimated(totalEffectsNode, totalEffectsCount);
+      }
+      if (missingEffectsNode) {
+        setKpiCountAnimated(missingEffectsNode, missingEffectsCount);
+      }
+      renderEffectsChart("overview-effects-chart", persons);
+      const rowsHtml = buildOverviewRows(sortedPersons);
       renderTableRowsProgressively(body, [rowsHtml], buildEmptyTableRow("overview-table-body", "AUCUNE DONNEE A AFFICHER", 14), 1);
       bindPersonRowActions();
       bindDeletePersonButtons();
     }
-    updateSortableHeaders("overviewPersons");
   }
+  updateSortableHeaders("overviewPersons");
 
   if (alertsSection && alertsList) {
     const alerts = persons.flatMap((person) => getPersonAlerts(person));
@@ -11427,13 +11426,16 @@ function buildOverviewRows(persons) {
 function renderGlobalTable(persons) {
   const body = document.getElementById("global-table-body");
   if (!body) {
-    return;
+    return false;
   }
 
   if (!persons.length) {
+    const hasEmptyRowsChanged = state.listRenderCache.global !== "";
     state.listRenderCache.global = "";
-    body.innerHTML = buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 14);
-    return;
+    if (hasEmptyRowsChanged) {
+      body.innerHTML = buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 14);
+    }
+    return hasEmptyRowsChanged;
   }
 
   const globalRowsSignature = `global|${persons
@@ -11486,6 +11488,11 @@ function renderGlobalTable(persons) {
     })
     .join("||")}`;
   const hasGlobalRowsChanged = state.listRenderCache.global !== globalRowsSignature;
+  if (!hasGlobalRowsChanged) {
+    return false;
+  }
+  state.listRenderCache.global = globalRowsSignature;
+
   const rowsHtml = persons
     .map((person) => {
       const currentEffects = getCurrentAssignedEffects(person);
@@ -11544,12 +11551,11 @@ function renderGlobalTable(persons) {
     ;
 
   if (hasGlobalRowsChanged) {
-    state.listRenderCache.global = globalRowsSignature;
     renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 14), 24);
     bindPersonRowActions();
     bindDeletePersonButtons();
   }
-
+  return true;
 }
 
 function getDossierStatusCellMarkup(status) {
