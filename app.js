@@ -3772,6 +3772,23 @@ function getActiveMobileSignatureRequest(personId, docType, signer = "personnel"
   ) || null;
 }
 
+function hasActiveMobileSignatureRequest(personId, docType) {
+  cleanupExpiredMobileSignatureRequests();
+  const normalizedPersonId = String(personId || "");
+  const normalizedDocType = normalizeText(docType);
+  const now = Date.now();
+  return (state.data?.demandesSignatureMobile || []).some((entry) => {
+    const requestSigner = normalizeMobileSignatureSigner(entry?.signer || "");
+    return (
+      String(entry?.personId || "") === normalizedPersonId &&
+      normalizeText(entry?.docType || "") === normalizedDocType &&
+      requestSigner &&
+      entry?.status === "EN ATTENTE" &&
+      Date.parse(entry?.expiresAt || "") > now
+    );
+  });
+}
+
 function createMobileSignatureRequest(personId, docType, signer = "personnel") {
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + MOBILE_SIGNATURE_REQUEST_TTL_MS);
@@ -4955,9 +4972,7 @@ function syncMobileSignaturePolling() {
     return;
   }
   const docType = page === "exit-document" ? "exit" : "arrival";
-  const hasActiveRequest =
-    Boolean(getActiveMobileSignatureRequest(personId, docType, "personnel")) ||
-    Boolean(getActiveMobileSignatureRequest(personId, docType, "representant"));
+  const hasActiveRequest = hasActiveMobileSignatureRequest(personId, docType);
   if (!hasActiveRequest) {
     stopMobileSignaturePolling();
     state.mobileSignaturePollSyncModeSignature = "";
