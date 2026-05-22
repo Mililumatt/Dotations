@@ -6335,8 +6335,7 @@ function bindPersonSheetForm() {
     person.dateSortieReelle = String(formData.get("sheetDateSortieReelle") || "");
 
     markDirty();
-    renderPage();
-    renderPersonSheet(person.id);
+    schedulePageRender();
     showActionStatus("update", `FICHE MISE A JOUR : ${person.nom} ${person.prenom}`);
     await autoSaveAfterPersonChange("FICHE MISE A JOUR - SAUVEGARDE AUTOMATIQUE");
   };
@@ -6368,8 +6367,7 @@ function bindPersonSheetForm() {
       state.data.personnes.push(person);
       setCurrentPersonId(person.id);
       markDirty();
-      renderPage();
-      renderPersonSheet(person.id);
+      schedulePageRender();
       showActionStatus("create", `PERSONNE AJOUTEE : ${person.nom} ${person.prenom}`);
       await autoSaveAfterPersonChange("PERSONNE AJOUTEE - SAUVEGARDE AUTOMATIQUE");
     };
@@ -6655,8 +6653,7 @@ function bindEffectForm() {
     hydrateEffectReferenceSiteSelect(person, "", "");
     hydrateReferenceSelect(person, "", "", "");
     updateEffectFormMode("");
-    renderPage();
-    renderPersonSheet(person.id);
+    schedulePageRender();
     const effectLabel = effect.designation || effect.numeroIdentification || effect.id;
     showActionStatus(
       mode === "edit" ? "update" : "create",
@@ -6747,8 +6744,7 @@ async function deleteEffect(personId, effectId) {
     resetEffectForm();
   }
   markDirty();
-  renderPage();
-  renderPersonSheet(personId);
+  schedulePageRender();
   showActionStatus("delete", `EFFET ARCHIVE : ${effectId}`);
   await saveAfterEffectChangeWithAvenantAlert(person.id);
 }
@@ -12387,12 +12383,10 @@ function bindExitReturnTodayToggles() {
     effect.dateRetour = target.checked ? getTodayIsoDate() : "";
     const isReturned = Boolean(String(effect.dateRetour || "").trim());
     if (isReturned !== wasReturned) {
-      addAutoStockMovement(person, effect, isReturned ? "ENTREE" : "SORTIE", isReturned ? "RETOUR" : "ANNULATION_RETOUR");
+    addAutoStockMovement(person, effect, isReturned ? "ENTREE" : "SORTIE", isReturned ? "RETOUR" : "ANNULATION_RETOUR");
     }
     markDirty();
-    renderPage();
-    renderExitDocument(person.id);
-    renderPersonSheet(person.id);
+    schedulePageRender();
     showActionStatus("update", target.checked ? "EFFET MARQUE RENDU CE JOUR" : "RETOUR DU JOUR ANNULE");
   });
   body.dataset.returnBound = "true";
@@ -15350,3 +15344,4 @@ loadData();
         })
         .catch(() => null);
     }
+
