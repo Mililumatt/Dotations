@@ -425,6 +425,72 @@ Pour chaque lot:
     - polling trop frequent,
     - payload JSON géant.
 
+## 🧪 LOT 1 - AUDIT EGRESS (NON-EXÉCUTION)
+
+- 🎯 Objectif
+  - identifier précisément les appels répétés et les points susceptibles d’augmenter l’egress.
+- ✅ Statut
+  - FAIT (audit uniquement).
+- ✅ Fichiers audités
+  - `app.js`
+
+### 1) Causes probables (probabilité + risque)
+
+- 🟥 Risque haut – Rechargements complets trop fréquents pour signature mobile
+  - Fonctions : `pollMobileSignatureRequest` → `fetchSupabaseStateData` / `fetchLatestDataSnapshot`.
+  - Lignes : `app.js:4710-4756`, `app.js:4825-4899`, `app.js:4939-4944`, `app.js:4953-4967`.
+  - Explication : `pollMobileSignatureRequest` télécharge le snapshot complet de l’état applicatif même si un seul document change, dès qu’un document mobile est en attente.
+
+- 🟠 Risque moyen – Rechargement complet de l’état au démarrage/chaque action métier
+  - Fonctions : `reloadData` → `fetchLatestDataSnapshot`, `loadData`.
+  - Lignes : `app.js:4125-4156`, `app.js:3990-4038`, `app.js:2940-3076`.
+  - Explication : la logique de chargement reste fonctionnelle mais potentiellement coûteuse si déclenchée trop souvent (chargement complet + migration + rendu global).
+
+- 🟠 Risque moyen – Mouvements `renderPage` en chaîne après interactions fréquentes
+  - Fonctions : `schedulePageRender`, événements de saisie/filtres, navigation fiche / documents.
+  - Lignes : `app.js:6254-6261`, `app.js:6188-6205`, `app.js:6138-6160`, `app.js:16075-16100`.
+  - Explication : les handlers appellent souvent des rendus complets de page ; le throttle via RAF limite déjà la fréquence, mais les recalculs internes peuvent rester coûteux.
+
+- 🟢 Risque faible – Polling mobile avec backoff déjà présent, pas de websocket non maîtrisée
+  - Pas de `supabase.channel()` ni de `subscription` détecté.
+  - Les recherches ont été faites sur `app.js`.
+
+- 🟢 Risque faible – Appels admin/role ponctuels
+  - Fonctions : endpoints admin et `refreshCurrentUserRoleLabel`.
+  - Lignes : `app.js:1670-1699`, `app.js:1899-1915`, `app.js:2150-2200`.
+  - Explication : appels rares liés à usages spécifiques, faible pression continue.
+
+### 2) Risques transverses identifiés
+
+- ⚠️ Taille possible du payload global
+  - `fetchSupabaseStateData` lit `app_state.payload` intégral dans Supabase (`app_states`).
+  - Lignes : `app.js:2570-2600`.
+
+- ⚠️ Redondance potentielle en polling signature
+  - En mode `arrival-document` / `exit-document`, le statut de signature peut déclencher des vérifications supplémentaires.
+  - Lignes : `app.js:4679-4720`, `app.js:4845-4918`.
+
+- ✅ Mécanisme anti-requêtes déjà utile
+  - ETag + cache session sur `/api/data`.
+  - Lignes : `app.js:2952-3015`.
+
+### 3) Priorisation recommandée
+
+- P1 : réduire la charge du polling mobile sans casser le flux de validation (impact direct sur egress).
+- P2 : stabiliser les changements d’onglets Entrée / Sortie via rendu conditionné et cache vue.
+- P2 : réduire les re-rendus inutiles en navigation interne quand l’état utile n’a pas changé.
+- P3 : micro-optimisations ciblées du rendu liste/table si validées par mesure.
+
+### 4) Lot prioritaire recommandé (prochain lot)
+
+- Lot 1.1 (P1) : audit terrain sur 10 min avec `window.resetNetworkDebug()` / `window.getNetworkDebug()`, puis réduction du polling mobile (ajustement interval + évitement de vérifications redondantes).
+
+### 5) Preuve “logique métier préservée” (audit lot)
+
+- Aucun changement dans les règles métier (`app_states`, signatures, navigation).
+- Aucune suppression/addition de flux Supabase.
+- Aucune modification UI/UX effectuée.
+
 ---
 
 ## 🧾 RESUME EXECUTIF
