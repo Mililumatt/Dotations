@@ -34,6 +34,7 @@ const state = {
   mobileSignaturePollHasPendingRequest: true,
   mobileSignaturePollIntervalMs: 0,
   mobileSignaturePollLastSyncAt: 0,
+  mobileSignaturePollStateSignature: "",
   mobileSignaturePollStatusSignature: "",
   mobileSignatureVisibilityBound: false,
   browserStorageQuotaLevel: 0,
@@ -4855,26 +4856,25 @@ async function pollMobileSignatureRequest() {
     state.mobileSignaturePollHasPendingRequest = Boolean(anyPending);
     ensureMobileSignaturePollingInterval();
 
-    const previousPerson = getCurrentPerson();
-    const previousSignaturePersonnel = getSignatureValue(previousPerson, docType, "personnel");
-    const previousValidatedAtPersonnel = getSignatureValidationDate(previousPerson, docType, "personnel");
-    const previousSignatureRepresentant = getSignatureValue(previousPerson, docType, "representant");
-    const previousValidatedAtRepresentant = getSignatureValidationDate(previousPerson, docType, "representant");
-
     const nextSignaturePersonnel = getSignatureValue(person, docType, "personnel");
     const nextValidatedAtPersonnel = getSignatureValidationDate(person, docType, "personnel");
     const nextSignatureRepresentant = getSignatureValue(person, docType, "representant");
     const nextValidatedAtRepresentant = getSignatureValidationDate(person, docType, "representant");
-    const signaturesChanged =
-      previousSignaturePersonnel !== nextSignaturePersonnel ||
-      previousValidatedAtPersonnel !== nextValidatedAtPersonnel ||
-      previousSignatureRepresentant !== nextSignatureRepresentant ||
-      previousValidatedAtRepresentant !== nextValidatedAtRepresentant;
-    const requestStatusChanged = trackedRequests.some((request) => {
-      const nextRequest = nextRequestsByToken.get(String(request?.token || ""));
-      return String(nextRequest?.status || "") !== String(request?.status || "");
-    });
-    if (!signaturesChanged && !requestStatusChanged) {
+    const requestStateSignature = Array.from(nextRequestsByToken.entries())
+      .map(([token, request]) => `${token}:${String(request?.status || "")}`)
+      .sort()
+      .join(";");
+    const pollStateSignature = [
+      personId,
+      docType,
+      nextSignaturePersonnel,
+      nextValidatedAtPersonnel,
+      nextSignatureRepresentant,
+      nextValidatedAtRepresentant,
+      requestStateSignature,
+    ].join("|");
+
+    if (state.mobileSignaturePollStateSignature === pollStateSignature) {
       if (!anyPending && trackedRequests.length === 0 && activeServerRequests.length === 0) {
         return;
       }
@@ -4884,7 +4884,7 @@ async function pollMobileSignatureRequest() {
       }
       return;
     }
-
+    state.mobileSignaturePollStateSignature = pollStateSignature;
     state.data = json;
     migrateDataModel({ suppressDirty: true });
 
@@ -4897,17 +4897,15 @@ async function pollMobileSignatureRequest() {
       renderMobileSignatureLink(docType, "representant", "");
     }
 
-    if (signaturesChanged || requestStatusChanged) {
-      schedulePageRender();
-      const signedRepresentative = Array.from(nextRequestsByToken.values()).some(
-        (request) => normalizeMobileSignatureSigner(request.signer || "") === "representant" && request.status === "SIGNEE"
-      );
-      const signedPersonnel = Array.from(nextRequestsByToken.values()).some(
-        (request) => normalizeMobileSignatureSigner(request.signer || "") === "personnel" && request.status === "SIGNEE"
-      );
-      if (signedRepresentative) showDataStatus("SIGNATURE MOBILE DU REPRESENTANT ENREGISTREE");
-      else if (signedPersonnel) showDataStatus("SIGNATURE MOBILE DU PERSONNEL ENREGISTREE");
-    }
+    schedulePageRender();
+    const signedRepresentative = Array.from(nextRequestsByToken.values()).some(
+      (request) => normalizeMobileSignatureSigner(request.signer || "") === "representant" && request.status === "SIGNEE"
+    );
+    const signedPersonnel = Array.from(nextRequestsByToken.values()).some(
+      (request) => normalizeMobileSignatureSigner(request.signer || "") === "personnel" && request.status === "SIGNEE"
+    );
+    if (signedRepresentative) showDataStatus("SIGNATURE MOBILE DU REPRESENTANT ENREGISTREE");
+    else if (signedPersonnel) showDataStatus("SIGNATURE MOBILE DU PERSONNEL ENREGISTREE");
   } catch (error) {
     const previousErrorCount = Math.min((state.mobileSignaturePollErrorCount || 0) + 1, 4);
     state.mobileSignaturePollErrorCount = previousErrorCount;
