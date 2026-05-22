@@ -5558,8 +5558,17 @@ function updateSortableHeaders(tableName) {
   });
 }
 
-function bindEffectTableSorting() {
-  document.querySelectorAll("[data-sort-table][data-sort-key]").forEach((header) => {
+function bindEffectTableSorting(tableName = "") {
+  const selector = tableName
+    ? `[data-sort-table="${String(tableName)}"][data-sort-key]`
+    : "[data-sort-table][data-sort-key]";
+
+  const headers = document.querySelectorAll(selector);
+  if (!headers.length) {
+    return;
+  }
+
+  headers.forEach((header) => {
     if (header.dataset.sortBound === "1") {
       return;
     }
@@ -8980,7 +8989,7 @@ function renderPage() {
 
   if (page === "documents-archives") {
     renderDocumentsArchivePage();
-    bindEffectTableSorting();
+    bindEffectTableSorting("documentsArchives");
     updateSortableHeaders("documentsArchives");
   }
 
@@ -9003,7 +9012,7 @@ function renderPage() {
   if (page === "person-sheet") {
     try {
       renderPersonSheet(currentPersonId);
-      bindEffectTableSorting();
+      bindEffectTableSorting("sheetEffects");
       updateSortableHeaders("sheetEffects");
     } catch (error) {
       console.error("Erreur affichage fiche personne", error);
@@ -9035,7 +9044,7 @@ function renderPage() {
 
   if (page === "reference-bases") {
     renderReferenceBases();
-    bindEffectTableSorting();
+    bindEffectTableSorting("referenceEffects");
     updateSortableHeaders("referenceEffects");
   }
 

@@ -625,8 +625,28 @@ Pour chaque lot:
   - navigation cohérente vers la personne visée avec moins de fonctions de binding autonomes.
 - ⚠️ Risque
   - faible, logique métier inchangée (navigation + identifiant courant uniquement).
-- ✅ Contrôle
+ - ✅ Contrôle
   - vérifier que le clic “VOIR” reste correct en overview/global.
+
+## 🧪 LOT 1.9 - TRI DES TABLEAUX PAR TÊTE BINDING PROPRE (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - éviter les doubles liaisons d’événements sur les en-têtes de tri.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - simplification de `bindEffectTableSorting()` en binding direct par en-tête via `data-sort-bound`;
+  - suppression du cache local de binding global qui pouvait empêcher un nouveau binding propre après reconstruction du tableau;
+  - maintien du comportement métier (`setEffectTableSort` + `schedulePageRender`) identique.
+- ✅ Effet attendu
+  - moins de traitements au rechargement de la page;
+  - moins de risques de doublons d’écouteurs quand les tableaux sont recréés.
+- ⚠️ Risque
+  - faible, uniquement lié à la mécanique d’attachement d’événements; la logique métier n’est pas modifiée.
+- ✅ Contrôle
+  - vérifier que cliquer sur les entêtes “Type / Désignation / ...” trie toujours immédiatement les tableaux.
 
 ---
 
