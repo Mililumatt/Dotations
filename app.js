@@ -4556,7 +4556,7 @@ async function pollMobileSignatureRequest() {
       return String(nextRequest?.status || "") !== String(request?.status || "");
     });
     if (signaturesChanged || requestStatusChanged) {
-      renderPage();
+      schedulePageRender();
       const signedRepresentative = Array.from(nextRequestsByToken.values()).some(
         (request) => normalizeMobileSignatureSigner(request.signer || "") === "representant" && request.status === "SIGNEE"
       );
