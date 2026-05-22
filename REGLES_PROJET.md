@@ -26,8 +26,8 @@ Date de mise a jour: 10/05/2026
 6. Verifier la syntaxe JS (`node --check app.js`) si `app.js` est touche.
 7. Donner le resultat simplement.
 8. Proposer une phrase de commit.
-9. Attendre `go commit` pour lancer le commit local.
-10. Repondre apres commit: `COMMIT TERMINE - TU PEUX PUSH`.
+9. Committer/pousser selon le lot en cours après GO.
+10. Repondre après action: statut `fait / non fait`.
 
 ## 4) Regles de securite fonctionnelle
 

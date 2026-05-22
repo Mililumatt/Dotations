@@ -320,10 +320,9 @@ Pour chaque lot:
 2. 🛑 Attente du `GO`.
 3. ✅ Modification ciblee.
 4. ✅ Commit + push.
-5. ✅ Commit + push.
-6. ✅ Retour statut `fait / non fait`.
-7. ✅ Prochaine action proposee.
-8. ✅ Vérification visuelle desktop + mobile obligatoire pour chaque lot UI.
+5. ✅ Retour statut `fait / non fait`.
+6. ✅ Prochaine action proposee.
+7. ✅ Vérification visuelle desktop + mobile obligatoire pour chaque lot UI.
 
 ### ✍️ Format commit francais (obligatoire)
 - `feat: optimiser les lectures Supabase et reduire les appels`
