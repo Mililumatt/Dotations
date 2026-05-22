@@ -4890,7 +4890,7 @@ async function pollMobileSignatureRequest() {
     const requests = Array.isArray(json?.demandesSignatureMobile) ? json.demandesSignatureMobile : [];
     const mobilePollRequestCache =
       state.mobileSignaturePollRequestCache || (state.mobileSignaturePollRequestCache = new Map());
-    const pollContextCacheKey = `${String(state.supabaseRevision || "")}|${String(state.localMutationTick || 0)}|${String(personId || "")}|${normalizedDocType}|${requests.length}`;
+    const pollContextCacheKey = `${String(state.supabaseRevision || "")}|${String(state.localMutationTick || 0)}|${String(state.latestDataEtag || "")}|${String(personId || "")}|${normalizedDocType}|${requests.length}`;
 
     const cachedPollContext = mobilePollRequestCache.get(pollContextCacheKey);
     let trackedPersonnelRequest = cachedPollContext?.trackedPersonnelRequest || null;
@@ -5007,7 +5007,7 @@ async function pollMobileSignatureRequest() {
     state.data = json;
     migrateDataModel({ suppressDirty: true });
 
-    if (!anyPending && trackedRequests.length === 0 && activeServerRequests.length === 0) {
+    if (!anyPending && trackedRequestsLength === 0 && activeServerRequests.length === 0) {
       return;
     }
 
