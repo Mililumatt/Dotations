@@ -184,6 +184,50 @@
 - ✅ Parcours jour par jour dans meme tache avant tache suivante.
 - ✅ Pas de saut intempestif.
 
+### 🔹 4.6 Axe F - Audit visuel, mini bugs UI et améliorations UX
+
+#### 🎯 Objectif
+- ✅ Identifier et corriger les petits défauts visuels ou ergonomiques non évidents, sans refonte globale.
+
+#### ⚙️ Périmètre autorisé
+- ✅ Alignements incohérents.
+- ✅ Espacements irréguliers.
+- ✅ Contrastes faibles.
+- ✅ Boutons trop proches ou mal hiérarchisés.
+- ✅ Libellés tronqués.
+- ✅ Débordements responsive.
+- ✅ Modales mal centrées.
+- ✅ États hover/focus absents ou incohérents.
+- ✅ Badges, KPI, tableaux, cartes ou Gantt visuellement déséquilibrés.
+- ✅ Micro-optimisations CSS simples.
+- ✅ Nettoyage de styles redondants uniquement si sans risque.
+
+#### 🚫 Interdictions
+- ❌ Pas de refonte graphique complète.
+- ❌ Pas de changement de structure métier.
+- ❌ Pas de changement des données.
+- ❌ Pas de changement Supabase.
+- ❌ Pas de modification massive du CSS.
+- ❌ Pas de modification des composants fonctionnels sans raison claire.
+
+#### 🗂️ Méthode
+- ✅ Faire un audit visuel global sans modifier.
+- ✅ Classer chaque point en :
+  - bug visuel,
+  - amélioration UX,
+  - optimisation CSS/performance.
+- ✅ Proposer des micro-lots.
+- ✅ Attendre GO avant correction.
+- ✅ Corriger un lot à la fois.
+- ✅ Tester visuellement après chaque lot.
+
+#### 📤 Sortie attendue (par point)
+- ✅ Zone concernée.
+- ✅ Problème constaté.
+- ✅ Impact utilisateur.
+- ✅ Risque de correction.
+- ✅ Micro-lot proposé.
+
 ---
 
 ## 🧪 5) AJOUTS DE ROBUSTESSE (VERSION ETENDUE)
