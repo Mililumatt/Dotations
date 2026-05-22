@@ -569,8 +569,28 @@ Pour chaque lot:
   - rendu plus fluide sur navigation rapide (Overview / Global).
 - ⚠️ Risque
   - faible, la logique métier de suppression reste inchangée (fonction `deletePerson` inchangée).
-- ✅ Contrôle
+ - ✅ Contrôle
   - vérifier que “SUPPRIMER” déclenche bien la suppression en mode Overview et Global.
+
+## 🧪 LOT 1.6 - ACTIONS ALERTES OVERVIEW EN DÉLÉGATION (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - supprimer les rebinds répétitifs sur les alertes d’overview quand la liste se reconstruit.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - ajout de `bindOverviewAlertActions()` avec un listener unique sur `#overview-alerts-list`;
+  - suppression du rebind des `.js-open-person-alert` dans `renderOverview`;
+  - appel du binding au démarrage.
+- ✅ Effet attendu
+  - moins de travaux d’attachement d’événements lors des rafraîchissements;
+  - comportement clic identique: ouvrir la fiche personne ciblée.
+- ⚠️ Risque
+  - faible, logique métier inchangée (`openPersonSheet(personId)`).
+- ✅ Contrôle
+  - vérifier visuellement qu’un clic alerte ouvre bien la fiche associée.
 
 ---
 

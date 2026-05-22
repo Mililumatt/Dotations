@@ -4070,6 +4070,7 @@ async function loadData() {
   bindMobileSignatureVisibilityPolling();
   bindRegisterButtonsAutoSave();
   bindReferenceFilters();
+  bindOverviewAlertActions();
   bindArchiveFilterForm();
   bindSignatureCanvases();
   bindRepresentativeFields();
@@ -11877,17 +11878,6 @@ function renderOverview(persons) {
         )
         .join("");
     }
-
-    if (hasAlertsChanged) {
-      alertsList.querySelectorAll(".js-open-person-alert").forEach((button) => {
-        button.onclick = () => {
-          const personId = button.getAttribute("data-person-id") || "";
-          if (personId) {
-            openPersonSheet(personId);
-          }
-        };
-      });
-    }
   }
 }
 
@@ -12151,6 +12141,30 @@ function bindPersonRowActions() {
 
     body.dataset.bound = "true";
   });
+}
+
+function bindOverviewAlertActions() {
+  const alertsList = document.getElementById("overview-alerts-list");
+  if (!alertsList || alertsList.dataset.bound === "true") {
+    return;
+  }
+
+  alertsList.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const button = target.closest(".js-open-person-alert");
+    if (!(button instanceof HTMLElement)) {
+      return;
+    }
+    const personId = button.getAttribute("data-person-id") || "";
+    if (personId) {
+      openPersonSheet(personId);
+    }
+  });
+
+  alertsList.dataset.bound = "true";
 }
 
 function bindOpenPersonLinks() {
