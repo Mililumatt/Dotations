@@ -73,6 +73,10 @@ const state = {
   latestDataFetchAt: 0,
   latestDataSnapshotCache: null,
   documentRenderCache: { arrival: "", exit: "" },
+  listRenderCache: {
+    overview: "",
+    global: "",
+  },
   pageRenderRafId: 0,
   filterInputDebounceTimerId: 0,
   referenceFilterDebounceTimerId: 0,
@@ -11260,10 +11264,63 @@ function renderOverview(persons) {
 
   if (body) {
     const sortedPersons = sortPersonsForOverview(persons);
+    const overviewSortConfig = state.tableSorts?.overviewPersons || {};
+    const overviewRowsSignature = `overview|${String(overviewSortConfig.key || "")}|${String(overviewSortConfig.dir || "")}|${sortedPersons
+      .map((person) => {
+        const allEffects = person?.effetsConfies || [];
+        const assignedEffects = allEffects.filter((effect) => isCurrentAssignedEffect(person, effect));
+        const totalCosts = assignedEffects.reduce(
+          (sum, effect) => sum + getEffectReplacementCost(person, effect),
+          0
+        );
+        const nonRendus = assignedEffects.filter((effect) => getEffectStatus(person, effect) === "NON RENDU").length;
+        const movementMap = getArrivalComplementMovementMap(person, allEffects);
+        const movementCounts = {
+          AJOUTE: 0,
+          MODIFIE: 0,
+          RENDU: 0,
+          PERDU: 0,
+          VOLE: 0,
+          HS: 0,
+        };
+        movementMap.forEach((movement) => {
+          const normalized = normalizeText(movement);
+          if (Object.prototype.hasOwnProperty.call(movementCounts, normalized)) {
+            movementCounts[normalized] += 1;
+          }
+        });
+        return [
+          person.id || "",
+          String(person.nom || ""),
+          String(person.prenom || ""),
+          String(person.typePersonnel || ""),
+          String(person.typeContrat || ""),
+          String(person.dateEntree || ""),
+          String(person.dateSortiePrevue || ""),
+          String(person.dateSortieReelle || ""),
+          String(getDossierStatus(person)),
+          String(allEffects.length || 0),
+          String(assignedEffects.length || 0),
+          String(nonRendus || 0),
+          String(totalCosts),
+          String(movementCounts.AJOUTE),
+          String(movementCounts.MODIFIE),
+          String(movementCounts.RENDU),
+          String(movementCounts.PERDU),
+          String(movementCounts.VOLE),
+          String(movementCounts.HS),
+        ].join("|");
+      })
+      .join("||")}`;
+    const hasOverviewRowsChanged = state.listRenderCache.overview !== overviewRowsSignature;
+
     const rowsHtml = buildOverviewRows(sortedPersons);
-    renderTableRowsProgressively(body, [rowsHtml], buildEmptyTableRow("overview-table-body", "AUCUNE DONNEE A AFFICHER", 14), 1);
-    bindPersonRowActions();
-    bindDeletePersonButtons();
+    if (hasOverviewRowsChanged) {
+      state.listRenderCache.overview = overviewRowsSignature;
+      renderTableRowsProgressively(body, [rowsHtml], buildEmptyTableRow("overview-table-body", "AUCUNE DONNEE A AFFICHER", 14), 1);
+      bindPersonRowActions();
+      bindDeletePersonButtons();
+    }
     updateSortableHeaders("overviewPersons");
   }
 
@@ -11363,10 +11420,61 @@ function renderGlobalTable(persons) {
   }
 
   if (!persons.length) {
+    state.listRenderCache.global = "";
     body.innerHTML = buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 14);
     return;
   }
 
+  const globalRowsSignature = `global|${persons
+    .map((person) => {
+      const currentEffects = getCurrentAssignedEffects(person);
+      const totalEffects = currentEffects.length;
+      const totalCosts = currentEffects.reduce(
+        (sum, effect) => sum + getEffectReplacementCost(person, effect),
+        0
+      );
+      const nonRendus = currentEffects.filter(
+        (effect) => getEffectStatus(person, effect) === "NON RENDU"
+      ).length;
+      const movementMap = getArrivalComplementMovementMap(person, person.effetsConfies || []);
+      const movementCounts = {
+        AJOUTE: 0,
+        MODIFIE: 0,
+        RENDU: 0,
+        PERDU: 0,
+        VOLE: 0,
+        HS: 0,
+      };
+      movementMap.forEach((movement) => {
+        const normalized = normalizeText(movement);
+        if (Object.prototype.hasOwnProperty.call(movementCounts, normalized)) {
+          movementCounts[normalized] += 1;
+        }
+      });
+      return [
+        person.id || "",
+        String(person.nom || ""),
+        String(person.prenom || ""),
+        String(getPersonSiteMarkup(person)),
+        String(person.typePersonnel || ""),
+        String(person.typeContrat || ""),
+        String(person.dateEntree || ""),
+        String(person.dateSortiePrevue || ""),
+        String(person.dateSortieReelle || ""),
+        String(getDossierStatus(person)),
+        String(totalEffects || 0),
+        String(nonRendus || 0),
+        String(totalCosts || 0),
+        String(movementCounts.AJOUTE),
+        String(movementCounts.MODIFIE),
+        String(movementCounts.RENDU),
+        String(movementCounts.PERDU),
+        String(movementCounts.VOLE),
+        String(movementCounts.HS),
+      ].join("|");
+    })
+    .join("||")}`;
+  const hasGlobalRowsChanged = state.listRenderCache.global !== globalRowsSignature;
   const rowsHtml = persons
     .map((person) => {
       const currentEffects = getCurrentAssignedEffects(person);
@@ -11424,10 +11532,13 @@ function renderGlobalTable(persons) {
     })
     ;
 
-  renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 14), 24);
+  if (hasGlobalRowsChanged) {
+    state.listRenderCache.global = globalRowsSignature;
+    renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 14), 24);
+    bindPersonRowActions();
+    bindDeletePersonButtons();
+  }
 
-  bindPersonRowActions();
-  bindDeletePersonButtons();
 }
 
 function getDossierStatusCellMarkup(status) {
