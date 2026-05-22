@@ -4821,15 +4821,6 @@ async function pollMobileSignatureRequest() {
       return;
     }
 
-    const previousPerson = getCurrentPerson();
-    const previousSignaturePersonnel = getSignatureValue(previousPerson, docType, "personnel");
-    const previousValidatedAtPersonnel = getSignatureValidationDate(previousPerson, docType, "personnel");
-    const previousSignatureRepresentant = getSignatureValue(previousPerson, docType, "representant");
-    const previousValidatedAtRepresentant = getSignatureValidationDate(previousPerson, docType, "representant");
-
-    state.data = json;
-    migrateDataModel({ suppressDirty: true });
-
     const activeServerRequests = requests.filter((entry) => {
       return (
         entry &&
@@ -4861,19 +4852,16 @@ async function pollMobileSignatureRequest() {
     state.mobileSignaturePollHasPendingRequest = Boolean(anyPending);
     ensureMobileSignaturePollingInterval();
 
-    if (!anyPending && trackedRequests.length === 0 && activeServerRequests.length === 0) {
-      return;
-    }
-    if (!anyPending) {
-      renderMobileSignatureLink(docType, "personnel", "");
-      renderMobileSignatureLink(docType, "representant", "");
-    }
+    const previousPerson = getCurrentPerson();
+    const previousSignaturePersonnel = getSignatureValue(previousPerson, docType, "personnel");
+    const previousValidatedAtPersonnel = getSignatureValidationDate(previousPerson, docType, "personnel");
+    const previousSignatureRepresentant = getSignatureValue(previousPerson, docType, "representant");
+    const previousValidatedAtRepresentant = getSignatureValidationDate(previousPerson, docType, "representant");
 
-    const updatedPerson = getCurrentPerson();
-    const nextSignaturePersonnel = getSignatureValue(updatedPerson, docType, "personnel");
-    const nextValidatedAtPersonnel = getSignatureValidationDate(updatedPerson, docType, "personnel");
-    const nextSignatureRepresentant = getSignatureValue(updatedPerson, docType, "representant");
-    const nextValidatedAtRepresentant = getSignatureValidationDate(updatedPerson, docType, "representant");
+    const nextSignaturePersonnel = getSignatureValue(person, docType, "personnel");
+    const nextValidatedAtPersonnel = getSignatureValidationDate(person, docType, "personnel");
+    const nextSignatureRepresentant = getSignatureValue(person, docType, "representant");
+    const nextValidatedAtRepresentant = getSignatureValidationDate(person, docType, "representant");
     const signaturesChanged =
       previousSignaturePersonnel !== nextSignaturePersonnel ||
       previousValidatedAtPersonnel !== nextValidatedAtPersonnel ||
@@ -4883,6 +4871,29 @@ async function pollMobileSignatureRequest() {
       const nextRequest = nextRequestsByToken.get(String(request?.token || ""));
       return String(nextRequest?.status || "") !== String(request?.status || "");
     });
+    if (!signaturesChanged && !requestStatusChanged) {
+      if (!anyPending && trackedRequests.length === 0 && activeServerRequests.length === 0) {
+        return;
+      }
+      if (!anyPending) {
+        renderMobileSignatureLink(docType, "personnel", "");
+        renderMobileSignatureLink(docType, "representant", "");
+      }
+      return;
+    }
+
+    state.data = json;
+    migrateDataModel({ suppressDirty: true });
+
+    if (!anyPending && trackedRequests.length === 0 && activeServerRequests.length === 0) {
+      return;
+    }
+
+    if (!anyPending) {
+      renderMobileSignatureLink(docType, "personnel", "");
+      renderMobileSignatureLink(docType, "representant", "");
+    }
+
     if (signaturesChanged || requestStatusChanged) {
       schedulePageRender();
       const signedRepresentative = Array.from(nextRequestsByToken.values()).some(
