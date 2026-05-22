@@ -35,6 +35,7 @@ const state = {
   mobileSignaturePollIntervalMs: 0,
   mobileSignaturePollLastSyncAt: 0,
   mobileSignaturePollStateSignature: "",
+  mobileSignaturePollSyncModeSignature: "",
   mobileSignaturePollStatusSignature: "",
   mobileSignatureVisibilityBound: false,
   browserStorageQuotaLevel: 0,
@@ -4747,6 +4748,7 @@ function setMobileSignaturePollStatus(message, tone = "normal") {
     if (existingNode) {
       existingNode.hidden = true;
     }
+    state.mobileSignaturePollSyncModeSignature = "";
     state.mobileSignaturePollStatusSignature = "";
     return;
   }
@@ -4766,6 +4768,7 @@ function setMobileSignaturePollStatus(message, tone = "normal") {
   }
 
   if (!message) {
+    state.mobileSignaturePollSyncModeSignature = "";
     state.mobileSignaturePollStatusSignature = "";
     node.hidden = true;
     return;
@@ -4948,6 +4951,7 @@ function syncMobileSignaturePolling() {
     Boolean(getActiveMobileSignatureRequest(personId, docType, "representant"));
   if (!hasActiveRequest) {
     stopMobileSignaturePolling();
+    state.mobileSignaturePollSyncModeSignature = "";
     setMobileSignaturePollStatus("Aucune signature mobile en attente sur ce document", "normal");
     return;
   }
@@ -4959,16 +4963,14 @@ function syncMobileSignaturePolling() {
   const desiredInterval = state.mobileSignaturePollHasPendingRequest
     ? MOBILE_SIGNATURE_POLL_INTERVAL_MS
     : MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS;
-  const nextCheckAt = new Date(now + desiredInterval);
-  const nextCheckTime = `${String(nextCheckAt.getHours()).padStart(2, "0")}:${String(nextCheckAt.getMinutes()).padStart(2, "0")}:${String(nextCheckAt.getSeconds()).padStart(2, "0")}`;
   const intervalSeconds = Math.max(1, Math.round(desiredInterval / 1000));
   const isWaiting = !state.mobileSignaturePollHasPendingRequest;
   const modeText = isWaiting
     ? "Aucune signature en attente: vérification de fond"
     : "Signature en attente: vérification active";
-  const statusSignature = `${modeText}|${intervalSeconds}`;
-  if (state.mobileSignaturePollStatusSignature !== statusSignature) {
-    state.mobileSignaturePollStatusSignature = statusSignature;
+  const syncModeSignature = `${docType}|${state.mobileSignaturePollHasPendingRequest ? "1" : "0"}|${intervalSeconds}`;
+  if (state.mobileSignaturePollSyncModeSignature !== syncModeSignature) {
+    state.mobileSignaturePollSyncModeSignature = syncModeSignature;
     setMobileSignaturePollStatus(
       `${modeText} · prochaine vérification toutes les ${intervalSeconds}s`,
       state.mobileSignaturePollHasPendingRequest ? "normal" : "warning"
