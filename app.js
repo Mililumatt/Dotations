@@ -34,6 +34,7 @@ const state = {
   mobileSignaturePollHasPendingRequest: true,
   mobileSignaturePollIntervalMs: 0,
   mobileSignaturePollLastSyncAt: 0,
+  mobileSignaturePollRequestCache: new Map(),
   mobileSignaturePollStateSignature: "",
   mobileSignaturePollSyncModeSignature: "",
   mobileSignaturePollStatusSignature: "",
@@ -4886,29 +4887,84 @@ async function pollMobileSignatureRequest() {
     const json = await fetchLatestDataSnapshot();
     const normalizedDocType = normalizeText(docType);
     const pollNow = Date.now();
-    let trackedPersonnelRequest = null;
-    let trackedRepresentativeRequest = null;
     const requests = Array.isArray(json?.demandesSignatureMobile) ? json.demandesSignatureMobile : [];
-    const activeServerRequests = [];
+    const mobilePollRequestCache =
+      state.mobileSignaturePollRequestCache || (state.mobileSignaturePollRequestCache = new Map());
+    const pollContextCacheKey = `${String(state.supabaseRevision || "")}|${String(state.localMutationTick || 0)}|${String(personId || "")}|${normalizedDocType}|${requests.length}`;
 
-    for (const entry of requests) {
-      const isSamePerson = String(entry?.personId || "") === String(personId || "");
-      const isSameDocType = normalizeText(entry?.docType || "") === normalizedDocType;
-      const signer = normalizeMobileSignatureSigner(entry?.signer || "");
-      if (!isSamePerson || !isSameDocType || !signer || !entry) {
-        continue;
-      }
-      if (entry?.status === "EN ATTENTE" && Date.parse(entry?.expiresAt || "") > pollNow) {
-        activeServerRequests.push(entry);
-        if (signer === "personnel" && !trackedPersonnelRequest) {
-          trackedPersonnelRequest = entry;
-        } else if (signer === "representant" && !trackedRepresentativeRequest) {
-          trackedRepresentativeRequest = entry;
+    const cachedPollContext = mobilePollRequestCache.get(pollContextCacheKey);
+    let trackedPersonnelRequest = cachedPollContext?.trackedPersonnelRequest || null;
+    let trackedRepresentativeRequest = cachedPollContext?.trackedRepresentativeRequest || null;
+    let activeServerRequests = cachedPollContext?.activeServerRequests || [];
+    let trackedRequestsLength = cachedPollContext?.trackedRequestsLength || 0;
+    let nextRequestsByToken = cachedPollContext?.nextRequestsByToken || new Map();
+    let requestStateSignature = cachedPollContext?.requestStateSignature || "";
+    let anyPending = cachedPollContext?.anyPending || false;
+
+    if (!cachedPollContext) {
+      activeServerRequests = [];
+      for (const entry of requests) {
+        const isSamePerson = String(entry?.personId || "") === String(personId || "");
+        const isSameDocType = normalizeText(entry?.docType || "") === normalizedDocType;
+        const signer = normalizeMobileSignatureSigner(entry?.signer || "");
+        if (!isSamePerson || !isSameDocType || !signer || !entry) {
+          continue;
+        }
+        if (entry?.status === "EN ATTENTE" && Date.parse(entry?.expiresAt || "") > pollNow) {
+          activeServerRequests.push(entry);
+          if (signer === "personnel" && !trackedPersonnelRequest) {
+            trackedPersonnelRequest = entry;
+          } else if (signer === "representant" && !trackedRepresentativeRequest) {
+            trackedRepresentativeRequest = entry;
+          }
         }
       }
-    }
 
-    const trackedRequests = [trackedPersonnelRequest, trackedRepresentativeRequest].filter(Boolean);
+      const trackedRequests = [trackedPersonnelRequest, trackedRepresentativeRequest].filter(Boolean);
+      const allTrackedRequests = new Map();
+      trackedRequests.forEach((request) => {
+        const token = String(request?.token || "").trim();
+        if (token) {
+          allTrackedRequests.set(token, request);
+        }
+      });
+      activeServerRequests.forEach((request) => {
+        const token = String(request?.token || "").trim();
+        if (token) {
+          allTrackedRequests.set(token, request);
+        }
+      });
+
+      nextRequestsByToken = new Map(
+        Array.from(allTrackedRequests.values()).map((request) => [String(request?.token || ""), request])
+      );
+      anyPending = Array.from(nextRequestsByToken.values()).some((request) => request?.status === "EN ATTENTE");
+      requestStateSignature = Array.from(nextRequestsByToken.entries())
+        .map(([token, request]) => `${token}:${String(request?.status || "")}`)
+        .sort()
+        .join(";");
+      trackedRequestsLength = trackedRequests.length;
+
+      if (mobilePollRequestCache.size > 40) {
+        const oldestKeys = Array.from(mobilePollRequestCache.entries())
+          .sort((left, right) => (left[1].createdAt || 0) - (right[1].createdAt || 0))
+          .slice(0, Math.max(1, mobilePollRequestCache.size - 40));
+        oldestKeys.forEach(([cacheKeyToDelete]) => {
+          mobilePollRequestCache.delete(cacheKeyToDelete);
+        });
+      }
+
+      mobilePollRequestCache.set(pollContextCacheKey, {
+        trackedPersonnelRequest,
+        trackedRepresentativeRequest,
+        activeServerRequests,
+        nextRequestsByToken,
+        requestStateSignature,
+        anyPending,
+        trackedRequestsLength,
+        createdAt: pollNow,
+      });
+    }
 
     state.mobileSignaturePollErrorCount = 0;
     state.mobileSignaturePollBackoffUntil = 0;
@@ -4920,24 +4976,6 @@ async function pollMobileSignatureRequest() {
       stopMobileSignaturePolling();
       return;
     }
-    const allTrackedRequests = new Map();
-    trackedRequests.forEach((request) => {
-      const token = String(request?.token || "").trim();
-      if (token) {
-        allTrackedRequests.set(token, request);
-      }
-    });
-    activeServerRequests.forEach((request) => {
-      const token = String(request?.token || "").trim();
-      if (token) {
-        allTrackedRequests.set(token, request);
-      }
-    });
-
-    const nextRequestsByToken = new Map(
-      Array.from(allTrackedRequests.values()).map((request) => [String(request?.token || ""), request])
-    );
-    const anyPending = Array.from(nextRequestsByToken.values()).some((request) => request?.status === "EN ATTENTE");
     state.mobileSignaturePollHasPendingRequest = Boolean(anyPending);
     ensureMobileSignaturePollingInterval();
 
@@ -4945,10 +4983,6 @@ async function pollMobileSignatureRequest() {
     const nextValidatedAtPersonnel = getSignatureValidationDate(person, docType, "personnel");
     const nextSignatureRepresentant = getSignatureValue(person, docType, "representant");
     const nextValidatedAtRepresentant = getSignatureValidationDate(person, docType, "representant");
-    const requestStateSignature = Array.from(nextRequestsByToken.entries())
-      .map(([token, request]) => `${token}:${String(request?.status || "")}`)
-      .sort()
-      .join(";");
     const pollStateSignature = [
       personId,
       docType,
@@ -4960,7 +4994,7 @@ async function pollMobileSignatureRequest() {
     ].join("|");
 
     if (state.mobileSignaturePollStateSignature === pollStateSignature) {
-      if (!anyPending && trackedRequests.length === 0 && activeServerRequests.length === 0) {
+      if (!anyPending && trackedRequestsLength === 0 && activeServerRequests.length === 0) {
         return;
       }
       if (!anyPending) {
