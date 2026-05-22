@@ -848,6 +848,25 @@ Pour chaque lot:
 - ✅ Contrôle
   - en changeant d’onglet sans modifier stock/filtre, le bloc stock doit garder son affichage sans reconstruction.
 
+## 🧪 LOT 1.20 - ÉVITER LES RAFRAÎCHISSEMENTS REDONDANTS SUR LES COMPTEURS RÉFÉRENCES (P3, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - éviter de recalculer/rejouer les compteurs de références quand leur valeur n’a pas changé.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - ajout de `state.listRenderCache.referenceCounts`;
+  - `renderReferenceCounts()` calcule une signature des neuf compteurs de référence et retourne `false` si identique ;
+  - évite donc les appels répétés à `setKpiCountAnimated` sans changement de valeur.
+- ✅ Effet attendu
+  - moins d’animations/re-rendus inutiles sur l’onglet Références quand l’état utile n’a pas bougé.
+- ⚠️ Risque
+  - faible; logique métier inchangée.
+- ✅ Contrôle
+  - sans changement des listes de référence, les compteurs restent visuellement identiques sans ré-anim.
+
 ---
 
 ## 🧾 RESUME EXECUTIF

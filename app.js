@@ -93,6 +93,7 @@ const state = {
     stockSummary: "",
     stockKpis: "",
     stockInstantKpi: "",
+    referenceCounts: "",
   },
   pageRenderRafId: 0,
   filterInputDebounceTimerId: 0,
@@ -15033,6 +15034,11 @@ function renderReferenceCounts() {
     "reference-count-coutsRemplacement": state.data?.listes?.coutsRemplacement?.length || 0,
     "reference-count-representantsSignataires": state.data?.listes?.representantsSignataires?.length || 0,
   };
+  const nextReferenceCountsSignature = `reference-counts|${JSON.stringify(mapping)}`;
+  if (state.listRenderCache.referenceCounts === nextReferenceCountsSignature) {
+    return false;
+  }
+  state.listRenderCache.referenceCounts = nextReferenceCountsSignature;
 
   Object.entries(mapping).forEach(([id, value]) => {
     const node = document.getElementById(id);
@@ -15040,6 +15046,7 @@ function renderReferenceCounts() {
       setKpiCountAnimated(node, Number(value) || 0);
     }
   });
+  return true;
 }
 
 function bindRepresentativeActions() {
