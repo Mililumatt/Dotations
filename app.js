@@ -11719,7 +11719,7 @@ function renderPersonSheet(personId) {
   updateSortableHeaders("sheetEffects");
 
   const requestedEditEffectId = consumeRequestedEditEffectId();
-  if (requestedEditEffectId && currentEffects.some((effect) => String(effect.id || "") === requestedEditEffectId)) {
+  if (requestedEditEffectId && effects.some((effect) => String(effect.id || "") === requestedEditEffectId)) {
     startEditEffect(person.id, requestedEditEffectId);
   }
 }
@@ -15314,6 +15314,23 @@ function bindAutoSaveOnNavigation() {
     return;
   }
 
+  const preservePersonForInternalNav = (nextUrl) => {
+    if (!(nextUrl instanceof URL)) {
+      return;
+    }
+
+    const targetFile = nextUrl.pathname.split("/").pop() || "";
+    const needsPerson = ["fiche-personne.html", "document-arrivee.html", "document-sortie.html"].includes(targetFile);
+    if (!needsPerson || nextUrl.searchParams.get("personId")) {
+      return;
+    }
+
+    const currentPersonId = getCurrentPersonId();
+    if (currentPersonId) {
+      nextUrl.searchParams.set("personId", currentPersonId);
+    }
+  };
+
   document.addEventListener(
     "click",
     (event) => {
@@ -15341,6 +15358,7 @@ function bindAutoSaveOnNavigation() {
       if (samePage) {
         return;
       }
+      preservePersonForInternalNav(nextUrl);
       capturePendingEditsBeforeNavigation();
       if (!state.isDirty) {
         return;
