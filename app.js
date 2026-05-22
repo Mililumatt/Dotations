@@ -77,6 +77,7 @@ const state = {
     overview: "",
     global: "",
     overviewAlerts: "",
+    mobileSignature: "",
   },
   pageRenderRafId: 0,
   filterInputDebounceTimerId: 0,
@@ -8577,8 +8578,10 @@ function renderPage() {
   }
 
   if (page === "mobile-signature") {
-    renderMobileSignaturePage();
-    refreshDocumentSignatureCanvases(getCurrentMobileSignatureDocType(), getMobileSignatureTargetPerson());
+    const didMobileSignatureChange = renderMobileSignaturePage();
+    if (didMobileSignatureChange) {
+      refreshDocumentSignatureCanvases(getCurrentMobileSignatureDocType(), getMobileSignatureTargetPerson());
+    }
   }
 
   if (page === "person-sheet") {
@@ -10814,6 +10817,61 @@ function renderMobileSignaturePage() {
   const signerFromUrl = getCurrentMobileSignatureSigner();
   const signerFromRequest = normalizeMobileSignatureSigner(request?.signer || "");
   const signer = request ? signerFromRequest : signerFromUrl;
+  const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
+  const docLabel = normalizedDocType === "exit" ? "DOCUMENT DE SORTIE" : "DOCUMENT D'ARRIVEE";
+  const representative = person ? getRepresentativeInfo(person, normalizedDocType) : null;
+  const representativeReady =
+    signer !== "representant" || Boolean(normalizeText(representative?.nom) && normalizeText(representative?.fonction));
+  const signatureValidationDate = String(getSignatureValidationDate(person, normalizedDocType, signer) || "");
+  const signatureValue = String(person?.signatures?.[normalizedDocType]?.[signer]?.image || "");
+  const signatureValidatedAt = String(person?.signatures?.[normalizedDocType]?.[signer]?.validatedAt || "");
+  const signatureStorageRef = String(person?.signatures?.[normalizedDocType]?.[signer]?.storageRef || "");
+  const signatureStoragePublicUrl = String(person?.signatures?.[normalizedDocType]?.[signer]?.storagePublicUrl || "");
+  const isAlreadySigned = Boolean(request && normalizeText(request.status) === "SIGNEE");
+  const isRequestUsable = Boolean(
+    request &&
+      isMobileSignatureRequestValid(request) &&
+      normalizeText(request.docType) === normalizeText(docType) &&
+      signerFromRequest === signer &&
+      person
+  );
+  const requestStatus = String(request?.status || "");
+  const requestSigner = normalizeMobileSignatureSigner(request?.signer || "");
+  const requestExpiresAt = String(request?.expiresAt || "");
+  const requestDocType = String(request?.docType || "");
+  const requestToken = String(request?.token || "");
+  const requestExpiresStamp = formatSignatureTimestamp(request?.expiresAt || "");
+  const personKey = `${String(person?.id || "")}|${String(person?.nom || "")}|${String(person?.prenom || "")}`;
+  const representativeKey = `${normalizeText(representative?.nom || "")}|${normalizeText(representative?.fonction || "")}`;
+  const cacheSignature = [
+    "mobileSignaturePage",
+    requestToken,
+    String(requestStatus),
+    String(requestDocType),
+    requestSigner,
+    requestExpiresAt,
+    requestExpiresStamp,
+    String(isAlreadySigned),
+    String(isRequestUsable),
+    String(representativeReady),
+    String(!request),
+    personKey,
+    representativeKey,
+    signatureValidationDate,
+    signatureValidatedAt,
+    signatureValue,
+    signatureStorageRef,
+    signatureStoragePublicUrl,
+    normalizedDocType,
+    signer,
+    docLabel,
+  ].join("|||");
+
+  if (state.listRenderCache.mobileSignature === cacheSignature) {
+    return false;
+  }
+  state.listRenderCache.mobileSignature = cacheSignature;
+
   const titleNode = document.getElementById("mobile-signature-title");
   const subtitleNode = document.getElementById("mobile-signature-subtitle");
   const identityLabelNode = document.getElementById("mobile-signature-identity-label");
@@ -10826,18 +10884,17 @@ function renderMobileSignaturePage() {
   const saveButton = document.querySelector(".js-signature-save");
   const clearButton = document.querySelector(".js-signature-clear");
   const canvas = document.querySelector(".js-signature-canvas");
-  const docLabel = normalizeText(docType) === "EXIT" ? "DOCUMENT DE SORTIE" : "DOCUMENT D'ARRIVEE";
 
   if (canvas) {
-    canvas.setAttribute("data-doc-type", normalizeText(docType) === "EXIT" ? "exit" : "arrival");
+    canvas.setAttribute("data-doc-type", normalizedDocType);
     canvas.setAttribute("data-signer", signer);
   }
   if (saveButton) {
-    saveButton.setAttribute("data-doc-type", normalizeText(docType) === "EXIT" ? "exit" : "arrival");
+    saveButton.setAttribute("data-doc-type", normalizedDocType);
     saveButton.setAttribute("data-signer", signer);
   }
   if (clearButton) {
-    clearButton.setAttribute("data-doc-type", normalizeText(docType) === "EXIT" ? "exit" : "arrival");
+    clearButton.setAttribute("data-doc-type", normalizedDocType);
     clearButton.setAttribute("data-signer", signer);
   }
 
@@ -10854,7 +10911,6 @@ function renderMobileSignaturePage() {
     identityLabelNode.textContent = signer === "representant" ? "REPRESENTANT" : "PERSONNEL";
   }
   if (personNode) {
-    const representative = person ? getRepresentativeInfo(person, normalizeText(docType) === "EXIT" ? "exit" : "arrival") : null;
     personNode.textContent =
       signer === "representant"
         ? representative?.nom || "-"
@@ -10863,23 +10919,10 @@ function renderMobileSignaturePage() {
         : "-";
   }
   if (dateNode) {
-    const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
-    const signatureDate =
-      formatSignatureTimestamp(getSignatureValidationDate(person, normalizedDocType, signer)) || formatCurrentUiTimestamp();
+    const signatureDate = formatSignatureTimestamp(signatureValidationDate) || formatCurrentUiTimestamp();
     dateNode.textContent = signatureDate;
   }
 
-  const representative = person ? getRepresentativeInfo(person, normalizeText(docType) === "EXIT" ? "exit" : "arrival") : null;
-  const representativeReady =
-    signer !== "representant" || Boolean(normalizeText(representative?.nom) && normalizeText(representative?.fonction));
-  const isAlreadySigned = Boolean(request && normalizeText(request.status) === "SIGNEE");
-  const isRequestUsable = Boolean(
-    request &&
-      isMobileSignatureRequestValid(request) &&
-      normalizeText(request.docType) === normalizeText(docType) &&
-      signerFromRequest === signer &&
-      person
-  );
   if (panelNode) {
     panelNode.hidden = !request;
   }
@@ -10927,6 +10970,7 @@ function renderMobileSignaturePage() {
   }
 
   fillMobileSignatureShareLink(request && isRequestUsable ? request : null);
+  return true;
 }
 
 function renderPersonPicker() {
