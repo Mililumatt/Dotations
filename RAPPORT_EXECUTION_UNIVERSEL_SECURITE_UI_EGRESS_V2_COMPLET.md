@@ -505,10 +505,33 @@ Pour chaque lot:
 - ✅ Effet attendu
   - bascule d’onglets Entrée/Sortie plus fluide quand rien n’a changé côté données utiles ;
   - moins de re-render DOM sur des données identiques.
-- ⚠️ Risque
+ - ⚠️ Risque
   - faible, contrôlé : risque d’affichage obsolète uniquement si la source de données externe change sans mettre à jour la revision/compte.
-- ✅ Contrôle
+ - ✅ Contrôle
   - validation visuelle : changement de personne, changement d’onglet, signature mobile entrante.
+
+## 🧪 LOT 1.3 - RÉDUCTION DU COÛT DE RENDU (P2, GO À EXÉCUTER)
+
+- 🎯 Objectif
+  - réduire le recalcul de la liste filtrée lorsque la page active n’a pas besoin de cette donnée.
+  - garder la même logique métier et la même UI, uniquement le chemin de calcul.
+- ✅ Statut
+  - À EXÉCUTER (lancement suite au GO).
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions prévues
+  - ajout d’un cache local `state.filteredPersonsCache` (clé + résultat),
+  - calcul de `getFilteredPersons()` uniquement pour les pages qui en ont besoin (`overview`, `global`),
+  - réutilisation du cache tant que `filters`, `urgentMode`, `supabaseRevision` ne changent pas.
+- ✅ Effet attendu
+  - passage moins coûteux entre pages quand aucun changement métier n’a eu lieu,
+  - moins de recalcul JS en arrière-plan sur les rendus redondants,
+  - amélioration de la fluidité perçue au clic d’onglets.
+- ⚠️ Risque
+  - très faible,
+  - le filtre affiché reste identique car le cache dépend explicitement de la revision + de tous les critères métier de filtre.
+- ✅ Contrôle
+  - vérifier en pratique : changement filtre, changement d’onglet, changement de personne, changement de statut urgent.
 
 ---
 

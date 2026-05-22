@@ -96,6 +96,10 @@ const state = {
     "arrival-document": "",
     "exit-document": "",
   },
+  filteredPersonsCache: {
+    key: "",
+    persons: [],
+  },
 };
 const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
@@ -8941,7 +8945,30 @@ function renderPage() {
   if (page !== "arrival-document" && page !== "exit-document") {
     stopMobileSignaturePolling();
   }
-  const persons = getFilteredPersons();
+  const hasFilteredPersons = page === "overview" || page === "global";
+  let persons = [];
+  if (hasFilteredPersons) {
+    const filters = state.filters || DEFAULT_FILTERS;
+    const filteredPersonsSignature = [
+      "filtered-persons",
+      String(state.supabaseRevision || ""),
+      String(state.urgentMode ? "1" : "0"),
+      String(filters.search || ""),
+      String(filters.site || ""),
+      String(filters.typePersonnel || ""),
+      String(filters.typeContrat || ""),
+      String(filters.statutDossier || ""),
+      String(filters.statutObjet || ""),
+      String(filters.typeEffet || ""),
+    ].join("|");
+    if (state.filteredPersonsCache.key !== filteredPersonsSignature) {
+      state.filteredPersonsCache = {
+        key: filteredPersonsSignature,
+        persons: getFilteredPersons(),
+      };
+    }
+    persons = state.filteredPersonsCache.persons || [];
+  }
   let currentPersonId = getCurrentPersonId();
   const personExists = (state.data?.personnes || []).some(
     (entry) => String(entry?.id || "") === String(currentPersonId || "")
