@@ -89,6 +89,10 @@ const state = {
     mobileSignature: "",
     documentsArchives: "",
     referenceBases: "",
+    stockMovements: "",
+    stockSummary: "",
+    stockKpis: "",
+    stockInstantKpi: "",
   },
   pageRenderRafId: 0,
   filterInputDebounceTimerId: 0,
@@ -14060,6 +14064,29 @@ function renderReferenceBases() {
 
 function renderStockTypeKpis() {
   const summaryRows = getFilteredStockSummaryRows();
+  const nextStockKpisSignature = (() => {
+    const knownTypes = Array.from(
+      new Set(((state.data?.listes?.typesEffets || []).map(normalizeText).filter(Boolean)))
+    ).sort((a, b) => a.localeCompare(b, "fr"));
+    const rowTypes = Array.from(new Set(summaryRows.map((row) => normalizeText(row.typeEffet)).filter(Boolean))).sort(
+      (a, b) => a.localeCompare(b, "fr")
+    );
+    const mergedTypes = Array.from(new Set([...knownTypes, ...rowTypes])).slice(0, 5);
+    const valuesSignature = mergedTypes
+      .map((typeEffet) => {
+        const totalStock = summaryRows
+          .filter((row) => normalizeText(row.typeEffet) === typeEffet)
+          .reduce((sum, row) => sum + Number(row.stockCourant || 0), 0);
+        return `${typeEffet || "EMPTY"}:${String(totalStock)}`;
+      })
+      .join("|");
+    return `stock-kpis|${knownTypes.join("|")}|${mergedTypes.join("|")}|${valuesSignature}`;
+  })();
+  if (state.listRenderCache.stockKpis === nextStockKpisSignature) {
+    return false;
+  }
+  state.listRenderCache.stockKpis = nextStockKpisSignature;
+
   const knownTypes = Array.from(
     new Set(((state.data?.listes?.typesEffets || []).map(normalizeText).filter(Boolean)))
   ).sort((a, b) => a.localeCompare(b, "fr"));
@@ -14087,6 +14114,7 @@ function renderStockTypeKpis() {
       .reduce((sum, row) => sum + Number(row.stockCourant || 0), 0);
     setKpiCountAnimated(valueNode, totalStock);
   }
+  return true;
 }
 
 function getFilteredStockSummaryRows() {
@@ -14135,11 +14163,19 @@ function getStockInstantSelectionValue(filters = state.stockTableFilters || {}) 
 function renderStockInstantKpi() {
   const valueNode = document.getElementById("stock-instant-value");
   if (!valueNode) {
-    return;
+    return false;
   }
   const selection = getStockInstantSelectionValue(state.stockTableFilters || {});
+  const nextStockInstantSignature = `instant|${String(state.stockTableFilters?.site || "")}|${String(
+    state.stockTableFilters?.typeEffet || ""
+  )}|${String(state.stockTableFilters?.referenceEffetId || "")}|${String(selection.stockCourant)}|${selection.label}`;
+  if (state.listRenderCache.stockInstantKpi === nextStockInstantSignature) {
+    return false;
+  }
+  state.listRenderCache.stockInstantKpi = nextStockInstantSignature;
   valueNode.textContent = String(selection.stockCourant);
   valueNode.title = selection.label || "Aucune ligne de stock concernee.";
+  return true;
 }
 
 function renderStockFormOptions() {
@@ -14737,7 +14773,7 @@ function getStockSummaryRows() {
 function renderStockMovementsTable() {
   const body = document.getElementById("stock-movements-table-body");
   if (!body) {
-    return;
+    return false;
   }
   const filters = state.stockTableFilters || { site: "", typeEffet: "", referenceEffetId: "" };
   const entries = (state.data?.stocksEffetsManuels || [])
@@ -14771,9 +14807,25 @@ function renderStockMovementsTable() {
     })
     .slice()
     .sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""), "fr"));
+  const entriesSignature = entries
+    .map((entry) => {
+      const source = entry || {};
+      return `${String(source.id || "")}|${normalizeText(source.site || "")}|${normalizeText(source.typeEffet || "")}|${normalizeText(
+        source.designation || ""
+      )}|${normalizeText(source.action || "")}|${String(source.quantite || 0)}|${normalizeText(source.referenceEffetId || "")}|${normalizeText(source.motif || "")}|${normalizeText(source.source || "")}|${String(source.date || "")}`;
+    })
+    .join("||");
+  const nextStockMovementsSignature = `movements|${normalizeText(filters.site || "")}|${normalizeText(filters.typeEffet || "")}|${String(
+    filters.referenceEffetId || ""
+  )}|${String(entries.length)}|${entriesSignature}`;
+  if (state.listRenderCache.stockMovements === nextStockMovementsSignature) {
+    return false;
+  }
+  state.listRenderCache.stockMovements = nextStockMovementsSignature;
+
   if (!entries.length) {
     body.innerHTML = buildEmptyTableRow(body, "AUCUN MOUVEMENT", 9);
-    return;
+    return true;
   }
   const rowsHtml = entries.map((entry) => {
     const signedQty = getStockMovementSignedQuantity(entry);
@@ -14794,17 +14846,70 @@ function renderStockMovementsTable() {
   });
   renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUN MOUVEMENT", 9), 24);
   bindStockMovementActions();
+  return true;
 }
 
 function renderStockSummaryTable() {
   const body = document.getElementById("stock-summary-table-body");
   if (!body) {
-    return;
+    return false;
   }
   const rows = getFilteredStockSummaryRows();
+  const rowsSignature = rows
+    .map((row) =>
+      [
+        normalizeText(row.site || ""),
+        normalizeText(row.typeEffet || ""),
+        normalizeText(row.designation || ""),
+        String(Number(row.dotes || 0)),
+        String(Number(row.rendus || 0)),
+        String(Number(row.nonRendus || 0)),
+        String(Number(row.perdus || 0)),
+        String(Number(row.voles || 0)),
+        String(Number(row.hs || 0)),
+        String(Number(row.detruits || 0)),
+        String(Number(row.manuelDelta || 0)),
+        String(Number(row.stockCourant || 0)),
+      ].join("|")
+    )
+    .sort()
+    .join("||");
+  const totals = rows.reduce(
+    (accumulator, row) => {
+      accumulator.dotes += Number(row.dotes || 0);
+      accumulator.rendus += Number(row.rendus || 0);
+      accumulator.nonRendus += Number(row.nonRendus || 0);
+      accumulator.perdus += Number(row.perdus || 0);
+      accumulator.voles += Number(row.voles || 0);
+      accumulator.hs += Number(row.hs || 0);
+      accumulator.detruits += Number(row.detruits || 0);
+      accumulator.manuelDelta += Number(row.manuelDelta || 0);
+      accumulator.stockCourant += Number(row.stockCourant || 0);
+      return accumulator;
+    },
+    { dotes: 0, rendus: 0, nonRendus: 0, perdus: 0, voles: 0, hs: 0, detruits: 0, manuelDelta: 0, stockCourant: 0 }
+  );
+  const nextStockSummarySignature = `summary|${normalizeText(state.stockTableFilters?.site || "")}|${normalizeText(
+    state.stockTableFilters?.typeEffet || ""
+  )}|${String(state.stockTableFilters?.referenceEffetId || "")}|${rows.length}|${rowsSignature}|${[
+    totals.dotes,
+    totals.rendus,
+    totals.nonRendus,
+    totals.perdus,
+    totals.voles,
+    totals.hs,
+    totals.detruits,
+    totals.manuelDelta,
+    totals.stockCourant,
+  ].join("|")}|${String(state.stockHighlightKey || "")}`;
+  if (state.listRenderCache.stockSummary === nextStockSummarySignature) {
+    return false;
+  }
+  state.listRenderCache.stockSummary = nextStockSummarySignature;
+
   if (!rows.length) {
     body.innerHTML = buildEmptyTableRow(body, "AUCUN STOCK CALCULE", 12);
-    return;
+    return true;
   }
   const formatSignedStockValue = (value) => {
     const numericValue = Number(value || 0);
@@ -14834,21 +14939,6 @@ function renderStockSummaryTable() {
       <td>${formatSignedStockValue(row.stockCourant)}</td>
     </tr>`;
   });
-  const totals = rows.reduce(
-    (accumulator, row) => {
-      accumulator.dotes += Number(row.dotes || 0);
-      accumulator.rendus += Number(row.rendus || 0);
-      accumulator.nonRendus += Number(row.nonRendus || 0);
-      accumulator.perdus += Number(row.perdus || 0);
-      accumulator.voles += Number(row.voles || 0);
-      accumulator.hs += Number(row.hs || 0);
-      accumulator.detruits += Number(row.detruits || 0);
-      accumulator.manuelDelta += Number(row.manuelDelta || 0);
-      accumulator.stockCourant += Number(row.stockCourant || 0);
-      return accumulator;
-    },
-    { dotes: 0, rendus: 0, nonRendus: 0, perdus: 0, voles: 0, hs: 0, detruits: 0, manuelDelta: 0, stockCourant: 0 }
-  );
   const totalManualDeltaLabel = totals.manuelDelta > 0 ? `+${totals.manuelDelta}` : String(totals.manuelDelta);
   rowsHtml.push(`<tr class="table-total-row table-total-row--stock-summary">
     <td colspan="3">TOTAL</td>
@@ -14869,6 +14959,7 @@ function renderStockSummaryTable() {
       state.stockHighlightKey = "";
     }, 1200);
   }
+  return true;
 }
 
 function renderTableRowsProgressively(body, rowsHtml, emptyMarkup = "", batchSize = 40) {

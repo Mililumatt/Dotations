@@ -823,6 +823,31 @@ Pour chaque lot:
 - ✅ Contrôle
   - en restant sur Références avec données/filtre/sort stable, la table ne doit plus se reconstruire à chaque rerender.
 
+## 🧪 LOT 1.19 - ÉVITER LES RAFRAÎCHISSEMENTS REDONDANTS DANS LES BLOCS STOCK (P3, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - éviter le re-rendu répétitif des tableaux/indicateurs stock quand aucun changement réel n’est détecté.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - ajout de caches dans `state.listRenderCache` :
+    - `stockMovements`
+    - `stockSummary`
+    - `stockKpis`
+    - `stockInstantKpi`
+  - `renderStockMovementsTable()`, `renderStockSummaryTable()`, `renderStockTypeKpis()`, `renderStockInstantKpi()` :
+    - calculent une signature de contenu/filtre,
+    - retournent `false` si aucune donnée utile n’a changé,
+    - évitent le DOM update/rebind quand la vue stock est inchangée.
+- ✅ Effet attendu
+  - moins de reconstruction DOM sur la page Références (mouvements et synthèses stock), surtout lors des changements d’onglets/refresh sans mutation.
+- ⚠️ Risque
+  - faible; logique métier inchangée.
+- ✅ Contrôle
+  - en changeant d’onglet sans modifier stock/filtre, le bloc stock doit garder son affichage sans reconstruction.
+
 ---
 
 ## 🧾 RESUME EXECUTIF
