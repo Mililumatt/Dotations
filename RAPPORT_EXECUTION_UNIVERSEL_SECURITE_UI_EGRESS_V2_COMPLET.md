@@ -726,6 +726,26 @@ Pour chaque lot:
 - ✅ Contrôle
   - revenir sur une même personne/page sans modification de données ne déclenche plus de rafraîchissement signature duplicate.
 
+## 🧪 LOT 1.14 - ÉVITER LE SYNC MOBILE SIGNATURE REDONDANT AU CHOIX DE PERSONNE (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - ne pas relancer la synchronisation mobile quand la sélection de la même personne ne change pas le rendu.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - dans `applyDocumentNavigation()` (picker document) :
+    - on ne lance `scheduleMobileSignatureRenderSync()` que si le rendu document retourne un vrai changement.
+  - on garde le rafraîchissement canvas aligné sur ce même conditionnel.
+- ✅ Effet attendu
+  - encore moins d'appels de synchronisation mobile inutiles;
+  - comportement inchangé en cas de sélection réelle différente.
+- ⚠️ Risque
+  - faible; aucune logique métier déplacée.
+- ✅ Contrôle
+  - re-sélection d’une même personne ne doit pas relancer un cycle mobile inutile, mais doit rester visuellement stable.
+
 ---
 
 ## 🧾 RESUME EXECUTIF

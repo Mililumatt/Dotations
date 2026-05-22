@@ -11549,15 +11549,15 @@ function renderPersonPicker() {
       const arrivalRendered = renderArrivalDocument(personId);
       if (arrivalRendered) {
         refreshDocumentSignatureCanvases("arrival");
+        scheduleMobileSignatureRenderSync();
       }
-      scheduleMobileSignatureRenderSync();
     } else if (page === "exit-document") {
       state.mobileSignaturePollLastSyncAt = 0;
       const exitRendered = renderExitDocument(personId);
       if (exitRendered) {
         refreshDocumentSignatureCanvases("exit");
+        scheduleMobileSignatureRenderSync();
       }
-      scheduleMobileSignatureRenderSync();
     } else {
       schedulePageRender();
     }
