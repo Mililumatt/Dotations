@@ -2023,8 +2023,8 @@ async function openAdminUsersModal() {
         return;
       }
       if (changed) {
-        markDirty();
-        renderPage();
+      markDirty();
+      schedulePageRender();
         await saveDataToFile({
           silent: true,
           reloadAfter: true,
@@ -6850,7 +6850,7 @@ async function deletePerson(personId) {
   }
   state.editingEffectId = "";
   markDirty();
-  renderPage();
+  schedulePageRender();
   showActionStatus("delete", `PERSONNE ARCHIVEE : ${person.nom} ${person.prenom}`);
   await saveDataToFile({
     silent: true,
