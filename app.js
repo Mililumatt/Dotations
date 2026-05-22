@@ -101,8 +101,9 @@ const state = {
   pageRenderRafId: 0,
   filterInputDebounceTimerId: 0,
   referenceFilterDebounceTimerId: 0,
-  localMutationTick: 0,
-  personPickerRenderCache: {
+    localMutationTick: 0,
+    mobileSignatureRequestContextCache: new Map(),
+    personPickerRenderCache: {
     "person-sheet": "",
     "arrival-document": "",
     "exit-document": "",
@@ -3760,25 +3761,38 @@ function buildFallbackMobileSignatureRequestFromUrl(token) {
 }
 
 function getActiveMobileSignatureRequestContext(personId, docType) {
-  cleanupExpiredMobileSignatureRequests();
   const normalizedPersonId = String(personId || "");
   const normalizedDocType = normalizeText(docType);
+  const cacheKey = `${String(state.supabaseRevision || "r0")}|${String(state.localMutationTick || 0)}|${normalizedPersonId}|${normalizedDocType}`;
+  const cacheState = state.mobileSignatureRequestContextCache || (state.mobileSignatureRequestContextCache = new Map());
   const now = Date.now();
+  const cachedEntry = cacheState.get(cacheKey);
+  if (cachedEntry && cachedEntry.expiresAt > now && cachedEntry.context) {
+    return cachedEntry.context;
+  }
+
+  cleanupExpiredMobileSignatureRequests();
   const requestContext = {
     personnel: null,
     representant: null,
     hasAny: false,
   };
+  let nearestExpiration = now + 1000;
   for (const entry of state.data?.demandesSignatureMobile || []) {
     const signer = normalizeMobileSignatureSigner(entry?.signer || "");
+    const entryExpiresAt = Date.parse(entry?.expiresAt || "");
     if (
       String(entry?.personId || "") !== normalizedPersonId ||
       normalizeText(entry?.docType || "") !== normalizedDocType ||
       !signer ||
       entry?.status !== "EN ATTENTE" ||
-      Date.parse(entry?.expiresAt || "") <= now
+      !Number.isFinite(entryExpiresAt) ||
+      entryExpiresAt <= now
     ) {
       continue;
+    }
+    if (entryExpiresAt > now) {
+      nearestExpiration = Math.min(nearestExpiration, entryExpiresAt);
     }
     requestContext.hasAny = true;
     if (signer === "personnel" && !requestContext.personnel) {
@@ -3789,6 +3803,21 @@ function getActiveMobileSignatureRequestContext(personId, docType) {
       requestContext.representant = entry;
     }
   }
+
+  cacheState.set(cacheKey, {
+    context: requestContext,
+    expiresAt: Math.min(now + 5000, nearestExpiration),
+    createdAt: now,
+  });
+
+  if (cacheState.size > 40) {
+    const oldestKeys = Array.from(cacheState.entries())
+      .sort((left, right) => left[1].createdAt - right[1].createdAt)
+      .slice(0, Math.max(0, cacheState.size - 40))
+      .map((entry) => entry[0]);
+    oldestKeys.forEach((key) => cacheState.delete(key));
+  }
+
   return requestContext;
 }
 
