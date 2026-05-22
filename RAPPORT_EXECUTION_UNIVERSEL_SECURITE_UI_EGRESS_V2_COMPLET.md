@@ -530,8 +530,27 @@ Pour chaque lot:
 - ⚠️ Risque
   - très faible,
   - le filtre affiché reste identique car le cache dépend explicitement de la revision + de tous les critères métier de filtre.
-- ✅ Contrôle
+ - ✅ Contrôle
   - vérifier en pratique : changement filtre, changement d’onglet, changement de personne, changement de statut urgent.
+
+## 🧪 LOT 1.4 - OPTIMISATION DU LABEL DE SAUVEGARDE (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - éviter de relancer le rendu du bandeau/labels de sauvegarde quand son état n’a pas bougé.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - ajout d’une signature de cache `state.dirtyStateRenderSignature`,
+  - `renderDirtyState()` compare l’état courant (`isDirty`, `saveButtonLatchedDirty`, nombre et classes des boutons `.js-save-data`) avant de refaire le DOM.
+- ✅ Effet attendu
+  - rendu plus léger sur navigation/rafraîchissements fréquents,
+  - baisse des recalculs visuels du bloc “modifications” sans impact métier.
+- ⚠️ Risque
+  - faible, limité au gain de rendu; garde-fou métier inchangé.
+- ✅ Contrôle
+  - valider visuellement : passage d’état sale/net, clic “enregistrer”, changement page.
 
 ---
 

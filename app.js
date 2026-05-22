@@ -100,6 +100,7 @@ const state = {
     key: "",
     persons: [],
   },
+  dirtyStateRenderSignature: "",
 };
 const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
@@ -16173,6 +16174,21 @@ function markDirty() {
 
 function renderDirtyState() {
   const node = document.getElementById("dirty-status");
+  const saveButtons = document.querySelectorAll(".js-save-data");
+  const saveButtonSignature = Array.from(saveButtons)
+    .map((button) => `${button.className}`)
+    .join("|");
+  const nextDirtyStateSignature = [
+    String(state.isDirty ? "1" : "0"),
+    String(state.saveButtonLatchedDirty ? "1" : "0"),
+    String(saveButtons.length),
+    String(saveButtonSignature),
+  ].join("|");
+  if (state.dirtyStateRenderSignature === nextDirtyStateSignature) {
+    return;
+  }
+  state.dirtyStateRenderSignature = nextDirtyStateSignature;
+
   if (node) {
     node.hidden = false;
     node.textContent = state.isDirty ? "MODIFICATIONS NON SAUVEGARDEES" : "DONNEES SAUVEGARDEES";
