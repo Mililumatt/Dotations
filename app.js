@@ -12091,6 +12091,15 @@ function bindPersonRowActions() {
       if (!(target instanceof HTMLElement)) {
         return;
       }
+      const link = target.closest("a.js-open-person-link") || target.closest("button.js-delete-person");
+      if (link instanceof HTMLElement) {
+        const personId = link.getAttribute("data-person-id") || getCurrentPersonId();
+        if (link.classList.contains("js-open-person-link") && personId) {
+          setCurrentPersonId(personId, "replace");
+        }
+        return;
+      }
+
       if (target.closest("a, button")) {
         return;
       }

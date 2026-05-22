@@ -610,6 +610,24 @@ Pour chaque lot:
 - ✅ Contrôle
   - vérifier visuellement suppression via bouton et navigation fiche toujours opérationnelles depuis la vue.
 
+## 🧪 LOT 1.8 - CONTEXTE FICHE PERSONNE SUR LIEN DE LIGNE (P3, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - conserver le comportement de transition vers fiche personne sur les liens “VOIR” sans binding dédié.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - dans `bindPersonRowActions()`, ajout de la prise en charge des liens `.js-open-person-link` en délégation;
+  - appel de `setCurrentPersonId(personId, "replace")` lors du clic “VOIR”.
+- ✅ Effet attendu
+  - navigation cohérente vers la personne visée avec moins de fonctions de binding autonomes.
+- ⚠️ Risque
+  - faible, logique métier inchangée (navigation + identifiant courant uniquement).
+- ✅ Contrôle
+  - vérifier que le clic “VOIR” reste correct en overview/global.
+
 ---
 
 ## 🧾 RESUME EXECUTIF
