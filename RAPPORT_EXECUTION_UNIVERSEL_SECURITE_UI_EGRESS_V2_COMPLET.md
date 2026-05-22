@@ -19,6 +19,7 @@
 - ❌ Aucun changement des flux entrants/sortants Supabase.
 - ❌ Aucune modification des tables Supabase.`r`n- ❌ Aucune modification des formats JSON stockes dans Supabase.
 - ❌ Aucune modification RLS / GRANT.
+- ❌ Ne jamais toucher aux authentifications (providers, sessions, tokens, configuration auth).
 - ❌ Aucune casse de la liaison PC / mobile / Supabase.
 - ❌ Aucune regression visuelle ou fonctionnelle.
 - ✅ Modifications reversibles lot par lot.
@@ -59,6 +60,7 @@
 - ❌ Modifier les GRANT.`r`n- ❌ Modifier les politiques RLS.
 - ❌ Changer les endpoints/API existants sans demande explicite.
 - ❌ Modifier l'authentification.
+- ❌ Ne jamais toucher aux mécanismes d'authentification (connexion, sessions, tokens, providers, règles auth).
 - ❌ Changer la structure metier globale sans validation.
 
 ### 🚫 Interdictions produit
