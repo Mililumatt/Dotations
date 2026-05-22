@@ -11542,13 +11542,17 @@ function renderPersonPicker() {
     renderPersonPicker();
     if (page === "arrival-document") {
       state.mobileSignaturePollLastSyncAt = 0;
-      renderArrivalDocument(personId);
-      refreshDocumentSignatureCanvases("arrival");
+      const arrivalRendered = renderArrivalDocument(personId);
+      if (arrivalRendered) {
+        refreshDocumentSignatureCanvases("arrival");
+      }
       scheduleMobileSignatureRenderSync();
     } else if (page === "exit-document") {
       state.mobileSignaturePollLastSyncAt = 0;
-      renderExitDocument(personId);
-      refreshDocumentSignatureCanvases("exit");
+      const exitRendered = renderExitDocument(personId);
+      if (exitRendered) {
+        refreshDocumentSignatureCanvases("exit");
+      }
       scheduleMobileSignatureRenderSync();
     } else {
       schedulePageRender();
@@ -12633,7 +12637,7 @@ function renderArrivalDocument(personId) {
 
   if (!person) {
     if (state.documentRenderCache.arrival === noPersonRenderKey) {
-      return;
+      return false;
     }
     state.documentRenderCache.arrival = noPersonRenderKey;
     titleNode.textContent = isComplement
@@ -12722,7 +12726,7 @@ function renderArrivalDocument(personId) {
   ].join("|");
 
   if (state.documentRenderCache.arrival === personSummaryFingerprint) {
-    return;
+    return false;
   }
   state.documentRenderCache.arrival = personSummaryFingerprint;
   const sortedEffects = sortEffectsForTable(person, effectsForDisplay, "arrivalEffects");
@@ -12817,6 +12821,7 @@ function renderArrivalDocument(personId) {
   syncDocumentMobileSignatureLink("arrival", person.id, "personnel");
   syncDocumentMobileSignatureLink("arrival", person.id, "representant");
   applyRequestedPdfFocus();
+  return true;
 }
 
 function renderArrivalCostsTable(headNode, bodyNode) {
@@ -12962,7 +12967,7 @@ function renderExitDocument(personId) {
 
   if (!person) {
     if (state.documentRenderCache.exit === noPersonRenderKey) {
-      return;
+      return false;
     }
     state.documentRenderCache.exit = noPersonRenderKey;
     dateNode.textContent = formatDateTimeForDocument("");
@@ -13079,7 +13084,7 @@ function renderExitDocument(personId) {
     String(exitRowsSignature || ""),
   ].join("|");
   if (state.documentRenderCache.exit === personSummaryFingerprint) {
-    return;
+    return false;
   }
   state.documentRenderCache.exit = personSummaryFingerprint;
   const sortedEffects = sortEffectsForTable(person, effects, "exitEffects");
@@ -13213,6 +13218,7 @@ function renderExitDocument(personId) {
   syncDocumentMobileSignatureLink("exit", person.id, "personnel");
   syncDocumentMobileSignatureLink("exit", person.id, "representant");
   applyRequestedPdfFocus();
+  return true;
 }
 
 function bindDocumentEffectActions() {

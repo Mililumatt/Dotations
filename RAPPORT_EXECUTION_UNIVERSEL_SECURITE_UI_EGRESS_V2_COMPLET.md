@@ -686,6 +686,27 @@ Pour chaque lot:
 - ✅ Contrôle
   - vérifier qu’un clic sur une personne réaffiche bien les effets, puis tri et flèches restent cohérents.
 
+## 🧪 LOT 1.12 - ÉVITER LE RAFRAÎCHISSEMENT DES CANEVAS LORS D'UNE RE-SELECTION IDENTIQUE (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - éviter les redessins de canvas de signature et certains recalculs quand la même personne est re-sélectionnée.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - `renderArrivalDocument()` et `renderExitDocument()` renvoient maintenant un booléen :
+    - `true` si un vrai rendu a été exécuté,
+    - `false` si le cache indique qu’aucun changement utile n’existe.
+  - `applyDocumentNavigation()` n’appelle `refreshDocumentSignatureCanvases()` que quand le rendu indique un changement.
+- ✅ Effet attendu
+  - moins de travail inutile au ré-choix de la même personne dans une vue document;
+  - meilleure fluidité perçue, mêmes données affichées.
+- ⚠️ Risque
+  - faible, logique métier inchangée.
+- ✅ Contrôle
+  - re-sélectionner la même personne plusieurs fois dans Entrée ou Sortie ne doit pas changer visuellement la page (pas de blocage), mais doit quand même afficher correctement les signatures/canaux déjà visibles.
+
 ---
 
 ## 🧾 RESUME EXECUTIF
