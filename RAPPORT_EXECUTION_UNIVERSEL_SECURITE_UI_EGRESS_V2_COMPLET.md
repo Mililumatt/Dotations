@@ -786,6 +786,24 @@ Pour chaque lot:
 - ✅ Contrôle
   - vérifier que le tri/sortage Overview reste visible/correct après tri ou changement de filtre.
 
+## 🧪 LOT 1.17 - ÉVITER LES RAFRAÎCHISSEMENTS REDONDANTS SUR LA FICHE PERSONNE (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - éviter `bind/updateSortableHeaders("sheetEffects")` quand la fiche personne n’a pas changé.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - `renderPersonSheet()` retourne désormais un booléen de changement réel (`true`/`false`) basé sur le cache existant.
+  - `renderPage()` appelle les bindings/tris feuille de personne seulement si un vrai rendu a eu lieu.
+- ✅ Effet attendu
+  - suppression de traitements DOM inutiles à chaque navigation/repaint de la fiche.
+- ⚠️ Risque
+  - faible; comportement métier conservé (les changements de personnes et de filtres gardent le même rendu).
+- ✅ Contrôle
+  - naviguer/recharger la fiche sans modification réelle ne doit pas re-faire `sheetEffects` de façon systématique.
+
 ---
 
 ## 🧾 RESUME EXECUTIF

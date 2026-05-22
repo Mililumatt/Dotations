@@ -9017,9 +9017,11 @@ function renderPage() {
 
   if (page === "person-sheet") {
     try {
-      renderPersonSheet(currentPersonId);
-      bindEffectTableSorting("sheetEffects");
-      updateSortableHeaders("sheetEffects");
+      const didPersonSheetChange = renderPersonSheet(currentPersonId);
+      if (didPersonSheetChange) {
+        bindEffectTableSorting("sheetEffects");
+        updateSortableHeaders("sheetEffects");
+      }
     } catch (error) {
       console.error("Erreur affichage fiche personne", error);
       showDataStatus("ERREUR AFFICHAGE FICHE PERSONNE - VOIR CONSOLE");
@@ -12364,11 +12366,12 @@ function renderPersonSheet(personId) {
       hydrateReferenceSelect("", "", "");
       updateEffectFormMode("");
       updateManualStatusCriticalState(document.getElementById("effect-form"));
+      return true;
     }
     if (requestedEditEffectId) {
-      return;
+      return false;
     }
-    return;
+    return false;
   }
 
   const effects = person.effetsConfies || [];
@@ -12422,7 +12425,7 @@ function renderPersonSheet(personId) {
     if (requestedEditEffectId && effects.some((effect) => String(effect.id || "") === requestedEditEffectId)) {
       startEditEffect(person.id, requestedEditEffectId);
     }
-    return;
+    return false;
   }
 
   state.listRenderCache.sheet = sheetRowsSignature;
@@ -12521,6 +12524,7 @@ function renderPersonSheet(personId) {
   if (requestedEditEffectId && effects.some((effect) => String(effect.id || "") === requestedEditEffectId)) {
     startEditEffect(person.id, requestedEditEffectId);
   }
+  return true;
 }
 
 function getSheetPersonStatusClass(status) {
