@@ -73,6 +73,7 @@ const state = {
   latestDataFetchAt: 0,
   latestDataSnapshotCache: null,
   documentRenderCache: { arrival: "", exit: "" },
+  documentViewRenderCache: { arrival: "", exit: "" },
   listRenderCache: {
     overview: "",
     global: "",
@@ -8535,6 +8536,146 @@ function populateSelect(selector, values) {
   });
 }
 
+function getDocumentViewStateSignature(docType, personId = "") {
+  const isPdfMode = isPdfRenderMode() ? "pdf" : "ui";
+  const normalizedType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
+  const activePerson = (state.data?.personnes || []).find(
+    (entry) => String(entry?.id || "") === String(personId || "")
+  );
+  const sortConfig = state.tableSorts?.[`${normalizedType}Effects`] || {};
+  const noPersonKey = [
+    normalizedType,
+    "no-person",
+    isPdfMode,
+    String(sortConfig.key || ""),
+    String(sortConfig.dir || ""),
+    String(new URLSearchParams(window.location.search).get("mode") || ""),
+  ].join("|");
+
+  if (!activePerson) {
+    return noPersonKey;
+  }
+
+  if (normalizedType === "arrival") {
+    const explicitMode = normalizeText(new URLSearchParams(window.location.search).get("mode") || "");
+    const computedMode = getDocumentArchiveMode(activePerson, "arrival");
+    const mode = explicitMode || computedMode;
+    const isComplement = mode === "COMPLEMENTAIRE";
+    const representative = getRepresentativeInfo(activePerson, "arrival");
+    const allEffects = Array.isArray(activePerson.effetsConfies) ? activePerson.effetsConfies : [];
+    const fallbackMovements = isComplement ? getArrivalComplementMovementMap(activePerson, allEffects) : null;
+    const activeEffects = isComplement
+      ? allEffects
+      : allEffects.filter((effect) => Boolean(effect.dateRemise));
+    const deletedEffects = isComplement ? getArrivalDeletedEffects(activePerson, allEffects) : [];
+    const effectsForSignature = [...activeEffects, ...deletedEffects];
+    const effectsSignature = effectsForSignature
+      .map((effect) => {
+        const movement = getEffectMovementLabel(activePerson, effect, isComplement ? fallbackMovements : null);
+        const replacementValue = getEffectUnitValue(effect);
+        return [
+          String(effect.id || ""),
+          String(effect.typeEffet || ""),
+          String(getEffectDisplayDesignation(effect) || ""),
+          String(effect.numeroIdentification || ""),
+          String(effect.dateRemise || ""),
+          String(replacementValue || ""),
+          String(movement || ""),
+        ].join("|");
+      })
+      .join("||");
+
+    return [
+      "arrival",
+      String(activePerson.id || ""),
+      String(mode),
+      String(isComplement),
+      String(activePerson.nom || ""),
+      String(activePerson.prenom || ""),
+      String(activePerson.fonction || ""),
+      String(activePerson.typePersonnel || ""),
+      String(activePerson.typeContrat || ""),
+      String(activePerson.dateEntree || ""),
+      String(activePerson.dateSortiePrevue || ""),
+      String(representative?.id || ""),
+      String(representative?.nom || ""),
+      String(representative?.fonction || ""),
+      String(getSignatureValidationDate(activePerson, "arrival", "personnel") || ""),
+      String(getSignatureValidationDate(activePerson, "arrival", "representant") || ""),
+      String(activeEffects.length),
+      String(deletedEffects.length),
+      String(effectsForSignature.length),
+      String(getPersonSiteLabel(activePerson) || ""),
+      String(sortConfig.key || ""),
+      String(sortConfig.dir || ""),
+      String(isPdfMode),
+      String(effectsSignature),
+    ].join("|");
+  }
+
+  const representative = getRepresentativeInfo(activePerson, "exit");
+  const effects = (activePerson.effetsConfies || []).filter((effect) => {
+    const hasType = Boolean(normalizeText(effect?.typeEffet));
+    const hasDesignation = Boolean(normalizeText(getEffectDisplayDesignation(effect)));
+    const hasId = Boolean(normalizeText(effect?.numeroIdentification));
+    const hasDateRemise = Boolean(String(effect?.dateRemise || "").trim());
+    const hasDateRetour = Boolean(String(effect?.dateRetour || "").trim());
+    const hasStatus = Boolean(normalizeText(getEffectStatus(activePerson, effect)));
+    const hasAmount = getEffectReplacementCost(activePerson, effect) > 0;
+    return hasType || hasDesignation || hasId || hasDateRemise || hasDateRetour || hasStatus || hasAmount;
+  });
+  const effectsSignature = effects
+    .map((effect) => {
+      const movement = getEffectMovementLabel(activePerson, effect);
+      const replacementCost = getEffectReplacementCost(activePerson, effect);
+      const billingStatus = getEffectBillingStatus(effect, replacementCost > 0);
+      const status = String(getEffectStatus(activePerson, effect));
+      return [
+        String(effect.id || ""),
+        String(effect.typeEffet || ""),
+        String(getEffectDisplayDesignation(effect) || ""),
+        String(effect.numeroIdentification || ""),
+        String(effect.dateRemise || ""),
+        String(effect.dateRetour || ""),
+        String(status || ""),
+        String(replacementCost || 0),
+        String(billingStatus || ""),
+        String(movement || ""),
+      ].join("|");
+    })
+    .join("||");
+
+  const chargeableEffects = effects.filter((effect) => isEffectChargeable(activePerson, effect));
+  const chargeableValue = chargeableEffects.reduce((sum, effect) => sum + getEffectReplacementCost(activePerson, effect), 0);
+
+  return [
+    "exit",
+    String(activePerson.id || ""),
+    String(activePerson.nom || ""),
+    String(activePerson.prenom || ""),
+    String(activePerson.fonction || ""),
+    String(activePerson.typePersonnel || ""),
+    String(activePerson.typeContrat || ""),
+    String(activePerson.dateEntree || ""),
+    String(activePerson.dateSortiePrevue || ""),
+    String(activePerson.dateSortieReelle || ""),
+    String(representative?.id || ""),
+    String(representative?.nom || ""),
+    String(representative?.fonction || ""),
+    String(getSignatureValidationDate(activePerson, "exit", "personnel") || ""),
+    String(getSignatureValidationDate(activePerson, "exit", "representant") || ""),
+    String(effects.length),
+    String(effects.filter((effect) => getEffectStatus(activePerson, effect) === "RESTITUE").length),
+    String(chargeableEffects.length),
+    String(getPersonSiteLabel(activePerson) || ""),
+    String(sortConfig.key || ""),
+    String(sortConfig.dir || ""),
+    String(isPdfMode),
+    String(effectsSignature),
+    String(chargeableValue || 0),
+  ].join("|");
+}
+
 function renderPage() {
   const page = document.body.dataset.page || "";
   if (page !== "arrival-document" && page !== "exit-document") {
@@ -8596,14 +8737,22 @@ function renderPage() {
   }
 
   if (page === "arrival-document") {
-    renderArrivalDocument(currentPersonId);
+    const nextArrivalViewSignature = getDocumentViewStateSignature("arrival", currentPersonId);
+    if (state.documentViewRenderCache.arrival !== nextArrivalViewSignature) {
+      state.documentViewRenderCache.arrival = nextArrivalViewSignature;
+      renderArrivalDocument(currentPersonId);
+    }
     refreshDocumentSignatureCanvases("arrival");
     updateSortableHeaders("arrivalEffects");
     scheduleMobileSignatureRenderSync();
   }
 
   if (page === "exit-document") {
-    renderExitDocument(currentPersonId);
+    const nextExitViewSignature = getDocumentViewStateSignature("exit", currentPersonId);
+    if (state.documentViewRenderCache.exit !== nextExitViewSignature) {
+      state.documentViewRenderCache.exit = nextExitViewSignature;
+      renderExitDocument(currentPersonId);
+    }
     refreshDocumentSignatureCanvases("exit");
     updateSortableHeaders("exitEffects");
     scheduleMobileSignatureRenderSync();
