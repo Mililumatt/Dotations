@@ -319,7 +319,7 @@ Pour chaque lot:
 1. ✅ Reformulation simple de la prochaine action.
 2. 🛑 Attente du `GO`.
 3. ✅ Modification ciblee.
-4. ⏱️ Attente 30 secondes.
+4. ✅ Commit + push.
 5. ✅ Commit + push.
 6. ✅ Retour statut `fait / non fait`.
 7. ✅ Prochaine action proposee.
@@ -895,7 +895,7 @@ Pour chaque lot:
 - 🔒 Avant action: backup GitHub + backup Supabase obligatoires.
 - 🚫 Interdits absolus: tables, RLS, GRANT, auth, flux Supabase.
 - 🚀 Priorites: reduction egress, maitrise stockage 0.5 GB, UI/UX stable.
-- 🧱 Methode: micro-lots, GO obligatoire, attente 30s, commit/push trace.
+- 🧱 Methode: micro-lots, GO obligatoire, commit/push trace.
 - ♻️ Securite d'exploitation: reversibilite, anti-regression, journal par lot.
 - 🌍 Usage: document directement reutilisable sur n'importe quel projet.
 
