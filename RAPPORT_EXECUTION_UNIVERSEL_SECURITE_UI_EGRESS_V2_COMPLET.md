@@ -707,6 +707,25 @@ Pour chaque lot:
 - ✅ Contrôle
   - re-sélectionner la même personne plusieurs fois dans Entrée ou Sortie ne doit pas changer visuellement la page (pas de blocage), mais doit quand même afficher correctement les signatures/canaux déjà visibles.
 
+## 🧪 LOT 1.13 - ÉVITER LES RAFRAÎCHISSEMENTS LORS DE RENDER SANS CHANGEMENT DE VUE (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - éviter les synchronisations mobile et rafraîchissements canvas quand la vue Arrivée / Sortie n’a pas changé.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - dans `renderPage()`, on ne met à jour le rendu signature/état mobile que si la signature de vue (`documentViewRenderCache`) change;
+  - si la signature ne change pas, plus de `refreshDocumentSignatureCanvases()` ni de `scheduleMobileSignatureRenderSync()` inutiles.
+- ✅ Effet attendu
+  - moins de travaux CPU/UI au passage/rechargement de page sans mutation de données;
+  - meilleure fluidité et moins de surcharge perçue.
+- ⚠️ Risque
+  - faible; logique métier inchangée, conditionnelle appliquée uniquement à des appels déjà redondants.
+- ✅ Contrôle
+  - revenir sur une même personne/page sans modification de données ne déclenche plus de rafraîchissement signature duplicate.
+
 ---
 
 ## 🧾 RESUME EXECUTIF

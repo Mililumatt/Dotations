@@ -9024,20 +9024,24 @@ function renderPage() {
     const nextArrivalViewSignature = getDocumentViewStateSignature("arrival", currentPersonId);
     if (state.documentViewRenderCache.arrival !== nextArrivalViewSignature) {
       state.documentViewRenderCache.arrival = nextArrivalViewSignature;
-      renderArrivalDocument(currentPersonId);
+      const didRenderArrivalDocument = renderArrivalDocument(currentPersonId);
+      if (didRenderArrivalDocument) {
+        refreshDocumentSignatureCanvases("arrival");
+        scheduleMobileSignatureRenderSync();
+      }
     }
-    refreshDocumentSignatureCanvases("arrival");
-    scheduleMobileSignatureRenderSync();
   }
 
   if (page === "exit-document") {
     const nextExitViewSignature = getDocumentViewStateSignature("exit", currentPersonId);
     if (state.documentViewRenderCache.exit !== nextExitViewSignature) {
       state.documentViewRenderCache.exit = nextExitViewSignature;
-      renderExitDocument(currentPersonId);
+      const didRenderExitDocument = renderExitDocument(currentPersonId);
+      if (didRenderExitDocument) {
+        refreshDocumentSignatureCanvases("exit");
+        scheduleMobileSignatureRenderSync();
+      }
     }
-    refreshDocumentSignatureCanvases("exit");
-    scheduleMobileSignatureRenderSync();
   }
 
   if (page === "reference-bases") {
