@@ -6617,9 +6617,10 @@ function bindEffectForm() {
       coutRemplacement,
       commentaire: normalizeText(formData.get("commentaire")),
     };
+    const normalizedEffectId = String(effectId || "");
     const existingEffect =
       mode === "edit"
-        ? (person.effetsConfies || []).find((entry) => String(entry?.id || "") === String(effectId))
+        ? (person.effetsConfies || []).find((entry) => String(entry?.id || "") === normalizedEffectId)
         : null;
     const previousStatus = normalizeText(getEffectStatus(person, existingEffect || {}));
     const nextStatus = normalizeText(getEffectStatus(person, effect));
@@ -6635,7 +6636,9 @@ function bindEffectForm() {
     }
     pushUndoSnapshot(mode === "edit" ? "MODIFICATION EFFET" : "AJOUT EFFET");
     const existingIndex =
-      mode === "edit" ? person.effetsConfies.findIndex((entry) => entry.id === effect.id) : -1;
+      mode === "edit"
+        ? person.effetsConfies.findIndex((entry) => String(entry?.id || "") === String(effect.id || ""))
+        : -1;
     if (mode === "edit" && existingIndex >= 0) {
       person.effetsConfies[existingIndex] = effect;
     } else {
