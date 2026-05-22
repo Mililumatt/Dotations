@@ -549,8 +549,28 @@ Pour chaque lot:
   - baisse des recalculs visuels du bloc “modifications” sans impact métier.
 - ⚠️ Risque
   - faible, limité au gain de rendu; garde-fou métier inchangé.
-- ✅ Contrôle
+ - ✅ Contrôle
   - valider visuellement : passage d’état sale/net, clic “enregistrer”, changement page.
+
+## 🧪 LOT 1.5 - LIEN D’EVITEMENT SUR LES RE-BINDS TABLEAU (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - supprimer les réattributions répétitives de clics “SUPPRIMER” sur les lignes overview / global quand la vue est déjà rendue.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - `bindPersonRowActions()` reçoit maintenant aussi la gestion du bouton `js-delete-person` en délégation;
+  - on conserve la protection de bind par `data-bound` sur chaque `tbody`;
+  - on supprime les rebonds d’appels `bindDeletePersonButtons()` en chargement/refresh de liste.
+- ✅ Effet attendu
+  - moins de recalcul JS à chaque rafraîchissement de tableau;
+  - rendu plus fluide sur navigation rapide (Overview / Global).
+- ⚠️ Risque
+  - faible, la logique métier de suppression reste inchangée (fonction `deletePerson` inchangée).
+- ✅ Contrôle
+  - vérifier que “SUPPRIMER” déclenche bien la suppression en mode Overview et Global.
 
 ---
 

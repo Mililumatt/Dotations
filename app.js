@@ -4057,7 +4057,6 @@ async function loadData() {
   bindMobileSignatureButtons();
   bindOverviewUrgencyActions();
   bindOverviewControlExport();
-  bindDeletePersonButtons();
   bindFilterForms();
   bindAddPersonForm();
   bindPersonSheetForm();
@@ -11851,7 +11850,6 @@ function renderOverview(persons) {
       const rowsHtml = buildOverviewRows(sortedPersons);
       renderTableRowsProgressively(body, [rowsHtml], buildEmptyTableRow("overview-table-body", "AUCUNE DONNEE A AFFICHER", 14), 1);
       bindPersonRowActions();
-      bindDeletePersonButtons();
     }
   }
   updateSortableHeaders("overviewPersons");
@@ -12085,7 +12083,6 @@ function renderGlobalTable(persons) {
   if (hasGlobalRowsChanged) {
     renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUNE DONNEE A AFFICHER", 14), 24);
     bindPersonRowActions();
-    bindDeletePersonButtons();
   }
   return true;
 }
@@ -12132,6 +12129,24 @@ function bindPersonRowActions() {
       }
 
       openPersonSheet(personId);
+    });
+    body.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const deleteButton = target.closest("button.js-delete-person");
+      if (!(deleteButton instanceof HTMLElement)) {
+        return;
+      }
+
+      const personId = deleteButton.getAttribute("data-person-id") || getCurrentPersonId();
+      if (!personId) {
+        showDataStatus("AUCUNE PERSONNE SELECTIONNEE");
+        return;
+      }
+
+      deletePerson(personId);
     });
 
     body.dataset.bound = "true";
