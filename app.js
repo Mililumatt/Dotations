@@ -5300,7 +5300,7 @@ function bindEffectTableSorting() {
         return;
       }
       setEffectTableSort(tableName, key);
-      renderPage();
+      schedulePageRender();
     };
     header.onclick = activate;
     header.onkeydown = (event) => {
