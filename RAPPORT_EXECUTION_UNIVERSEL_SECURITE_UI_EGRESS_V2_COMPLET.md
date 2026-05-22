@@ -61,6 +61,7 @@
 - ❌ Changer les endpoints/API existants sans demande explicite.
 - ❌ Modifier l'authentification.
 - ❌ Ne jamais toucher aux mécanismes d'authentification (connexion, sessions, tokens, providers, règles auth).
+- ❌ Ne jamais toucher aux systèmes d'authentification (providers, sessions, tokens, login/logout, règles auth, rôles, profils), sous aucun prétexte.
 - ❌ Changer la structure metier globale sans validation.
 
 ### 🚫 Interdictions produit
