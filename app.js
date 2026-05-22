@@ -7502,7 +7502,7 @@ function bindReferenceListForms() {
           state.editingSimpleReference = null;
           markDirty();
           hydrateStaticLists();
-          renderPage();
+          schedulePageRender();
           form.reset();
           const submitButton = form.querySelector('button[type="submit"]');
           if (submitButton) {
@@ -7570,7 +7570,7 @@ function bindRepresentativeSignatoryForm() {
         );
         state.editingRepresentativeId = "";
         markDirty();
-        renderPage();
+        schedulePageRender();
         form.reset();
         showActionStatus("update", "REPRESENTANT FUSIONNE");
         return;
@@ -7602,7 +7602,7 @@ function bindRepresentativeSignatoryForm() {
     });
     sortRepresentatives();
     markDirty();
-    renderPage();
+    schedulePageRender();
     form.reset();
     showActionStatus("create", "REPRESENTANT AJOUTE");
   };
