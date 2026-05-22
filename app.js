@@ -10474,9 +10474,36 @@ function refreshDocumentSignatureCanvases(docType, forcedPerson = null) {
     const person = forcedPerson || getSignatureContextPerson(isMobileSignaturePage);
     const signer = String(canvas.getAttribute("data-signer") || "");
     const dataUrl = getSignatureValue(person, docType, signer);
+    const signatureValidatedAt = formatSignatureTimestamp(getSignatureValidationDate(person, docType, signer));
     const canvasState = signatureCanvases.get(canvas);
+    const hasSignature = Boolean(dataUrl);
+    const canvasStateSignature = [
+      String(person?.id || ""),
+      String(docType || ""),
+      signer,
+      String(dataUrl || ""),
+      String(signatureValidatedAt || ""),
+    ].join("|||");
+
+    if (canvasState?.lastRenderedSignature === canvasStateSignature) {
+      const statusNode = canvas
+        .closest(".signature-box")
+        ?.querySelector(".signature-box__status");
+      if (statusNode) {
+        const statusText = hasSignature
+          ? signatureValidatedAt
+            ? `SIGNATURE ENREGISTREE LE ${signatureValidatedAt}`
+            : "SIGNATURE ENREGISTREE"
+          : "AUCUNE SIGNATURE";
+        statusNode.textContent = statusText;
+        statusNode.classList.toggle("is-signed", hasSignature);
+      }
+      return;
+    }
+
     if (canvasState) {
       canvasState.pendingDataUrl = dataUrl;
+      canvasState.lastRenderedSignature = canvasStateSignature;
     }
     drawSignatureFromDataUrl(canvas, dataUrl);
 
@@ -10484,15 +10511,15 @@ function refreshDocumentSignatureCanvases(docType, forcedPerson = null) {
       .closest(".signature-box")
       ?.querySelector(".signature-box__status");
     if (statusNode) {
-      const hasSignature = Boolean(dataUrl);
-      const validatedAt = formatSignatureTimestamp(getSignatureValidationDate(person, docType, signer));
-      statusNode.textContent = hasSignature
-        ? validatedAt
-          ? `SIGNATURE ENREGISTREE LE ${validatedAt}`
+      const statusText = hasSignature
+        ? signatureValidatedAt
+          ? `SIGNATURE ENREGISTREE LE ${signatureValidatedAt}`
           : "SIGNATURE ENREGISTREE"
         : "AUCUNE SIGNATURE";
+      statusNode.textContent = statusText;
       statusNode.classList.toggle("is-signed", hasSignature);
     }
+    return;
   });
 }
 
