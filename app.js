@@ -88,6 +88,7 @@ const state = {
     overviewAlerts: "",
     mobileSignature: "",
     documentsArchives: "",
+    referenceBases: "",
   },
   pageRenderRafId: 0,
   filterInputDebounceTimerId: 0,
@@ -9053,9 +9054,11 @@ function renderPage() {
   }
 
   if (page === "reference-bases") {
-    renderReferenceBases();
-    bindEffectTableSorting("referenceEffects");
-    updateSortableHeaders("referenceEffects");
+    const didRenderReferenceBases = renderReferenceBases();
+    if (didRenderReferenceBases) {
+      bindEffectTableSorting("referenceEffects");
+      updateSortableHeaders("referenceEffects");
+    }
   }
 
   updateDocumentPdfButtonsState();
@@ -13952,7 +13955,89 @@ function formatDateTimeForDocument(value) {
 }
 
 function renderReferenceBases() {
-  state.referenceRenderContext = buildReferenceRenderContext();
+  const listSignature = (values) =>
+    Array.isArray(values)
+      ? values
+          .map((value) => {
+            const source = value || {};
+            const raw = `${String(source.id || "")}|${normalizeText(source.typePersonnel || source.nom || source.designation || source.cause || source.site || source.typeEffet || source.typeContrat || source.fonction || "")}|${String(
+              source.actif || source.montant || source.type || source.cause || ""
+            )}`;
+            return normalizeText(raw);
+          })
+          .sort()
+          .join("||")
+      : "";
+
+  const listMapSignature = (map) =>
+    map instanceof Map
+      ? Array.from(map.entries())
+          .map(([key, value]) => `${String(key || "")}:${String(value)}`)
+          .sort()
+          .join("||")
+      : "";
+
+  const filterForm = document.getElementById("reference-filter-form");
+  const filterSearch = normalizeText(filterForm?.elements?.filterReferenceSearch?.value);
+  const filterSite = normalizeText(filterForm?.elements?.filterReferenceSite?.value);
+  const filterTypeEffet = normalizeText(filterForm?.elements?.filterReferenceTypeEffet?.value);
+  const stockFilters = state.stockTableFilters || { site: "", typeEffet: "", referenceEffetId: "" };
+  const stockMovementsSignature = (state.data?.stocksEffetsManuels || [])
+    .map((movement) => {
+      const entry = movement || {};
+      return `${String(entry.id || "")}|${normalizeText(entry.typeEffet)}|${normalizeText(entry.site)}|${normalizeText(
+        entry.designation
+      )}|${normalizeText(entry.referenceEffetId)}|${String(entry.quantite || 0)}|${normalizeText(entry.action)}|${String(
+        entry.date || ""
+      )}`;
+    })
+    .sort()
+    .join("||");
+
+  const referenceRenderContext = buildReferenceRenderContext();
+  const referenceSort = getEffectTableSort("referenceEffects");
+  const nextReferenceBasesRenderSignature = JSON.stringify({
+    revision: String(state.supabaseRevision || ""),
+    lists: {
+      sites: listSignature(state.data?.listes?.sites),
+      typesPersonnel: listSignature(state.data?.listes?.typesPersonnel),
+      typesContrats: listSignature(state.data?.listes?.typesContrats),
+      fonctions: listSignature(state.data?.listes?.fonctions),
+      causesRemplacement: listSignature(state.data?.listes?.causesRemplacement),
+      typesEffets: listSignature(state.data?.listes?.typesEffets),
+      references: listSignature(state.data?.listes?.referencesEffets),
+      cots: listSignature(state.data?.listes?.coutsRemplacement),
+      representants: listSignature(state.data?.listes?.representantsSignataires),
+      stockMovements: stockMovementsSignature,
+      listesFingerprint:
+        state.data?.listes?.referencesEffets?.length || 0,
+    },
+    context: {
+      typesPersonnel: listMapSignature(referenceRenderContext.simpleUsage.typesPersonnel),
+      typesContrats: listMapSignature(referenceRenderContext.simpleUsage.typesContrats),
+      fonctions: listMapSignature(referenceRenderContext.simpleUsage.fonctions),
+      typesEffets: listMapSignature(referenceRenderContext.simpleUsage.typesEffets),
+      representativeUsage: listMapSignature(referenceRenderContext.representativeUsage),
+      referenceEffectUsage: listMapSignature(referenceRenderContext.referenceEffectUsage),
+    },
+    filters: {
+      search: filterSearch,
+      site: filterSite,
+      typeEffet: filterTypeEffet,
+      sortKey: String(referenceSort.key || ""),
+      sortDir: String(referenceSort.dir || ""),
+      stock: `${normalizeText(stockFilters.site || "")}|${normalizeText(stockFilters.typeEffet || "")}|${String(
+        stockFilters.referenceEffetId || ""
+      )}`,
+    },
+  });
+
+  if (state.listRenderCache.referenceBases === nextReferenceBasesRenderSignature) {
+    return false;
+  }
+
+  state.listRenderCache.referenceBases = nextReferenceBasesRenderSignature;
+  state.referenceRenderContext = referenceRenderContext;
   renderSimpleReferenceList("sites", state.referenceRenderContext);
   renderSimpleReferenceList("typesPersonnel", state.referenceRenderContext);
   renderSimpleReferenceList("typesContrats", state.referenceRenderContext);
@@ -13970,6 +14055,7 @@ function renderReferenceBases() {
   renderReferenceCounts();
   renderMobileSignatureSettings();
   bindReferenceBaseResetButtons();
+  return true;
 }
 
 function renderStockTypeKpis() {

@@ -804,6 +804,25 @@ Pour chaque lot:
 - ✅ Contrôle
   - naviguer/recharger la fiche sans modification réelle ne doit pas re-faire `sheetEffects` de façon systématique.
 
+## 🧪 LOT 1.18 - ÉVITER LES RAFRAÎCHISSEMENTS REDONDANTS SUR L'ONGLET RÉFÉRENCES (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - éviter de relancer le rendu complet de `reference-bases` si la vue utile n’a pas changé.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - ajout d’un cache `state.listRenderCache.referenceBases`;
+  - `renderReferenceBases()` calcule une signature de page (données, filtres, tri, signatures de références/stock) et retourne `true` uniquement en cas de réel changement.
+  - `renderPage()` n’appelle `bindEffectTableSorting` / `updateSortableHeaders("referenceEffects")` que si la page Références a vraiment changé.
+- ✅ Effet attendu
+  - moins de mises à jour DOM inutiles lors des changements d’onglets et des rafraîchissements sans mutation métier.
+- ⚠️ Risque
+  - faible; logique métier inchangée.
+- ✅ Contrôle
+  - en restant sur Références avec données/filtre/sort stable, la table ne doit plus se reconstruire à chaque rerender.
+
 ---
 
 ## 🧾 RESUME EXECUTIF
