@@ -11713,29 +11713,94 @@ function renderPersonSheet(personId) {
   const person = (state.data?.personnes || []).find(
     (entry) => String(entry?.id || "") === requestedPersonId
   );
+  const requestedEditEffectId = consumeRequestedEditEffectId();
+
   if (!person) {
-    state.currentSheetPersonId = "";
-    nameNode.textContent = "AUCUNE PERSONNE SELECTIONNEE";
-    metaNode.textContent = "SELECTIONNER UNE PERSONNE POUR AFFICHER LA FICHE";
-    alertNode.hidden = true;
-    alertNode.textContent = "";
-    applySheetPersonStatus(statusNode, "EN ATTENTE");
-    body.innerHTML = buildEmptyTableRow(body, "AUCUN EFFET A AFFICHER", 11);
-    fillSheetForm(null);
-    if (totalNode) totalNode.textContent = "0";
-    if (returnedNode) returnedNode.textContent = "0";
-    if (missingNode) missingNode.textContent = "0";
-    if (costNode) costNode.textContent = "0,00 €";
-    renderSheetEffectTypeKpis([]);
-    if (totalTypesNode) totalTypesNode.textContent = "0";
-    if (totalTypesAmountNode) totalTypesAmountNode.textContent = "0,00 €";
-    updateSheetDocumentButtons(null);
-    hydrateEffectReferenceSiteSelect(null, "", "");
-    hydrateReferenceSelect("", "", "");
-    updateEffectFormMode("");
+    const emptySheetSignature = "sheet|none";
+    if (state.listRenderCache.sheet !== emptySheetSignature) {
+      state.listRenderCache.sheet = emptySheetSignature;
+      state.currentSheetPersonId = "";
+      nameNode.textContent = "AUCUNE PERSONNE SELECTIONNEE";
+      metaNode.textContent = "SELECTIONNER UNE PERSONNE POUR AFFICHER LA FICHE";
+      alertNode.hidden = true;
+      alertNode.textContent = "";
+      applySheetPersonStatus(statusNode, "EN ATTENTE");
+      body.innerHTML = buildEmptyTableRow(body, "AUCUN EFFET A AFFICHER", 11);
+      fillSheetForm(null);
+      if (totalNode) totalNode.textContent = "0";
+      if (returnedNode) returnedNode.textContent = "0";
+      if (missingNode) missingNode.textContent = "0";
+      if (costNode) costNode.textContent = "0,00 €";
+      renderSheetEffectTypeKpis([]);
+      if (totalTypesNode) totalTypesNode.textContent = "0";
+      if (totalTypesAmountNode) totalTypesAmountNode.textContent = "0,00 €";
+      updateSheetDocumentButtons(null);
+      hydrateEffectReferenceSiteSelect(null, "", "");
+      hydrateReferenceSelect("", "", "");
+      updateEffectFormMode("");
+      updateManualStatusCriticalState(document.getElementById("effect-form"));
+    }
+    if (requestedEditEffectId) {
+      return;
+    }
     return;
   }
 
+  const effects = person.effetsConfies || [];
+  const currentEffects = getCurrentAssignedEffects(person);
+  const sortedEffects = sortEffectsForTable(person, currentEffects, "sheetEffects");
+  const movementMap = getArrivalComplementMovementMap(person, currentEffects);
+  const returned = effects.filter((effect) => getEffectStatus(person, effect) === "RESTITUE").length;
+  const missing = currentEffects.filter((effect) => getEffectStatus(person, effect) === "NON RENDU").length;
+  const totalCost = currentEffects.reduce((sum, effect) => sum + getEffectReplacementCost(person, effect), 0);
+  const totalEffectsUnitValue = currentEffects.reduce((sum, effect) => sum + getEffectUnitValue(effect), 0);
+  const overdueMessage = getOverdueExitMessage(person);
+  const rowFlash =
+    state.effectRowFlash && String(state.effectRowFlash.personId || "") === String(person.id || "")
+      ? state.effectRowFlash
+      : null;
+  const effectTableFlash =
+    state.effectTableFlash &&
+    String(state.effectTableFlash.personId || "") === String(person.id || "") &&
+    String(state.effectTableFlash.kind || "") === "delete"
+      ? state.effectTableFlash
+      : null;
+  const rowFlashSignature = rowFlash ? `${String(rowFlash.kind || "")}:${String(rowFlash.effectId || "")}` : "";
+  const effectTableFlashSignature = effectTableFlash ? `${String(effectTableFlash.kind || "")}:${String(effectTableFlash.personId || "")}` : "";
+  const sheetRowsSignature = `sheet|${String(person.id || "")}|${normalizeText(person.nom || "")}|${normalizeText(person.prenom || "")}|${normalizeText(person.typePersonnel || "")}|${normalizeText(person.typeContrat || "")}|${String(person.dateEntree || "")}|${String(person.dateSortiePrevue || "")}|${String(person.dateSortieReelle || "")}|${String(getDossierStatus(person))}|${String(overdueMessage || "")}|${String(currentEffects.length)}|${String(returned)}|${String(missing)}|${String(totalCost)}|${String(totalEffectsUnitValue)}|${rowFlashSignature}|${effectTableFlashSignature}|${sortedEffects
+    .map((effect) => {
+      const effectStatus = getEffectStatus(person, effect);
+      const effectDesignation = getEffectDisplayDesignation(effect);
+      const effectSite = getEffectDisplaySite(effect);
+      const movement =
+        movementMap.get(getEffectMovementKey(effect)) ||
+        movementMap.get(getEffectStableKey(effect)) ||
+        getEffectMovementLabel(person, effect);
+      return [
+        String(effect.id || ""),
+        String(effect.typeEffet || ""),
+        String(effectDesignation),
+        String(effectSite),
+        String(effect.numeroIdentification || ""),
+        String(effect.dateRemise || ""),
+        String(effect.dateRetour || ""),
+        String(effect.dateRemplacement || ""),
+        String(effectStatus),
+        String(getEffectUnitValue(effect)),
+        String(effect.commentaire || ""),
+        String(movement || ""),
+      ].join("|");
+    })
+    .join("||")}`;
+
+  if (state.listRenderCache.sheet === sheetRowsSignature) {
+    if (requestedEditEffectId && effects.some((effect) => String(effect.id || "") === requestedEditEffectId)) {
+      startEditEffect(person.id, requestedEditEffectId);
+    }
+    return;
+  }
+
+  state.listRenderCache.sheet = sheetRowsSignature;
   state.currentSheetPersonId = String(person.id || "");
   nameNode.textContent = `${person.nom} ${person.prenom}`;
   metaNode.innerHTML = [
@@ -11745,25 +11810,11 @@ function renderPersonSheet(personId) {
   ]
     .filter(Boolean)
     .join(' <span class="meta-separator">|</span> ');
-  const overdueMessage = getOverdueExitMessage(person);
   alertNode.hidden = !overdueMessage;
   alertNode.textContent = overdueMessage;
   applySheetPersonStatus(statusNode, getDossierStatus(person));
   updateSheetDocumentButtons(person);
   fillSheetForm(person);
-
-  const effects = person.effetsConfies || [];
-  const currentEffects = getCurrentAssignedEffects(person);
-  const sortedEffects = sortEffectsForTable(person, currentEffects, "sheetEffects");
-  const rowFlash =
-    state.effectRowFlash && String(state.effectRowFlash.personId || "") === String(person.id || "")
-      ? state.effectRowFlash
-      : null;
-  const movementMap = getArrivalComplementMovementMap(person, currentEffects);
-  const returned = effects.filter((effect) => getEffectStatus(person, effect) === "RESTITUE").length;
-  const missing = currentEffects.filter((effect) => getEffectStatus(person, effect) === "NON RENDU").length;
-  const totalCost = currentEffects.reduce((sum, effect) => sum + getEffectReplacementCost(person, effect), 0);
-  const totalEffectsUnitValue = currentEffects.reduce((sum, effect) => sum + getEffectUnitValue(effect), 0);
 
   if (totalNode) totalNode.textContent = String(currentEffects.length);
   if (returnedNode) returnedNode.textContent = String(returned);
@@ -11822,11 +11873,7 @@ function renderPersonSheet(personId) {
   if (rowFlash) {
     state.effectRowFlash = null;
   }
-  if (
-    state.effectTableFlash &&
-    String(state.effectTableFlash.personId || "") === String(person.id || "") &&
-    String(state.effectTableFlash.kind || "") === "delete"
-  ) {
+  if (effectTableFlash) {
     body.classList.remove("table-flash--delete");
     void body.offsetWidth;
     body.classList.add("table-flash--delete");
@@ -11846,7 +11893,6 @@ function renderPersonSheet(personId) {
   bindEffectRowActions();
   updateSortableHeaders("sheetEffects");
 
-  const requestedEditEffectId = consumeRequestedEditEffectId();
   if (requestedEditEffectId && effects.some((effect) => String(effect.id || "") === requestedEditEffectId)) {
     startEditEffect(person.id, requestedEditEffectId);
   }
