@@ -491,6 +491,25 @@ Pour chaque lot:
 - Aucune suppression/addition de flux Supabase.
 - Aucune modification UI/UX effectuée.
 
+## 🧪 LOT 1.2 - OPTIMISATION RENDER (P2, GO VALIDÉ)
+
+- 🎯 Objectif
+  - réduire les rerenders inutiles sur Entrée / Sortie sans modifier la logique métier.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - ajout d’un cache d’état du sélecteur de personne (`state.personPickerRenderCache`) ;
+  - si la page, la personne et le `state_supabaseRevision` n’ont pas changé, on saute le recalcul/listage complet du picker.
+- ✅ Effet attendu
+  - bascule d’onglets Entrée/Sortie plus fluide quand rien n’a changé côté données utiles ;
+  - moins de re-render DOM sur des données identiques.
+- ⚠️ Risque
+  - faible, contrôlé : risque d’affichage obsolète uniquement si la source de données externe change sans mettre à jour la revision/compte.
+- ✅ Contrôle
+  - validation visuelle : changement de personne, changement d’onglet, signature mobile entrante.
+
 ---
 
 ## 🧾 RESUME EXECUTIF

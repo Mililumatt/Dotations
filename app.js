@@ -91,6 +91,11 @@ const state = {
   pageRenderRafId: 0,
   filterInputDebounceTimerId: 0,
   referenceFilterDebounceTimerId: 0,
+  personPickerRenderCache: {
+    "person-sheet": "",
+    "arrival-document": "",
+    "exit-document": "",
+  },
 };
 const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
 const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
@@ -11413,21 +11418,45 @@ function renderPersonPicker() {
   }
 
   const currentPersonId = getCurrentPersonId();
+  const page = document.body.dataset.page || "";
+  const selectedPerson = currentPersonId
+    ? state.data.personnes.find((person) => String(person?.id || "") === String(currentPersonId || "")) || null
+    : null;
+  const personPickerSignature = [
+    page,
+    String(currentPersonId || ""),
+    String(selectedPerson ? getPersonPickerLabel(selectedPerson) : ""),
+    String(state.supabaseRevision || ""),
+    String(Array.isArray(state.data.personnes) ? state.data.personnes.length : 0),
+  ].join("|");
+  const lastPersonPickerSignature = state.personPickerRenderCache?.[page] || "";
+
+  if (lastPersonPickerSignature === personPickerSignature) {
+    const pickerIsFocused = document.activeElement === picker;
+    if (!pickerIsFocused) {
+      picker.value = selectedPerson ? getPersonPickerLabel(selectedPerson) : "";
+    }
+    return;
+  }
+
+  state.personPickerRenderCache = state.personPickerRenderCache || {
+    "person-sheet": "",
+    "arrival-document": "",
+    "exit-document": "",
+  };
+  state.personPickerRenderCache[page] = personPickerSignature;
+
   picker.setAttribute("autocomplete", "off");
   picker.setAttribute("autocorrect", "off");
   picker.setAttribute("autocapitalize", "off");
   picker.setAttribute("spellcheck", "false");
   picker.removeAttribute("list");
-  const selectedPerson = currentPersonId
-    ? state.data.personnes.find((person) => String(person?.id || "") === String(currentPersonId || "")) || null
-    : null;
 
   const pickerIsFocused = document.activeElement === picker;
   if (!pickerIsFocused) {
     picker.value = selectedPerson ? getPersonPickerLabel(selectedPerson) : "";
   }
 
-  const page = document.body.dataset.page || "";
   const useDirectNavigation = page === "arrival-document" || page === "exit-document";
   const useSuggestionBox = Boolean(suggestionBox);
   const options = state.data.personnes
