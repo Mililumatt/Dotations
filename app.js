@@ -11544,13 +11544,11 @@ function renderPersonPicker() {
       state.mobileSignaturePollLastSyncAt = 0;
       renderArrivalDocument(personId);
       refreshDocumentSignatureCanvases("arrival");
-      updateSortableHeaders("arrivalEffects");
       scheduleMobileSignatureRenderSync();
     } else if (page === "exit-document") {
       state.mobileSignaturePollLastSyncAt = 0;
       renderExitDocument(personId);
       refreshDocumentSignatureCanvases("exit");
-      updateSortableHeaders("exitEffects");
       scheduleMobileSignatureRenderSync();
     } else {
       schedulePageRender();

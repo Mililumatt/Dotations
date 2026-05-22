@@ -667,6 +667,25 @@ Pour chaque lot:
 - ✅ Contrôle
   - vérifier que le tri Arrivée/Sortie fonctionne encore après clic sur entête.
 
+## 🧪 LOT 1.11 - ÉVITER LES RAFRAÎCHISSEMENTS DE TRI REDONDANTS EN CHANGEMENT DE PERSONNE (P2, EXÉCUTÉ)
+
+- 🎯 Objectif
+  - supprimer les appels de tri répétés lors du clic sur une personne dans les pages Document Entrée / Document Sortie.
+- ✅ Statut
+  - FAIT.
+- ✅ Fichiers modifiés
+  - `app.js`
+- ✅ Actions réalisées
+  - suppression des appels `updateSortableHeaders("arrivalEffects")` et `updateSortableHeaders("exitEffects")` dans `applyDocumentNavigation()`;
+  - le tri visuel reste piloté par `renderArrivalDocument()` et `renderExitDocument()` déjà appelées juste après la sélection.
+- ✅ Effet attendu
+  - léger gain de réactivité lors de la navigation entre fiches dans les onglets document;
+  - disparition de recalculs visuels en doublon sans effet métier.
+- ⚠️ Risque
+  - faible; comportement identique car la source réelle de mise à jour est gardée.
+- ✅ Contrôle
+  - vérifier qu’un clic sur une personne réaffiche bien les effets, puis tri et flèches restent cohérents.
+
 ---
 
 ## 🧾 RESUME EXECUTIF
