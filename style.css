@@ -3765,49 +3765,6 @@ button.btn-click-ack,
   }
 }
 
-/* Style bouton œil login (aligné avec Suivi de chantiers) */
-#supabase-login-toggle-password{
-  position:relative !important;
-  border:1px solid #9bb2be !important;
-  background:#fff !important;
-  border-radius:8px !important;
-  width:40px !important;
-  min-width:40px !important;
-  height:40px !important;
-  min-height:40px !important;
-  padding:0 !important;
-  cursor:pointer !important;
-  font-size:0 !important;
-  color:transparent !important;
-  text-indent:-9999px !important;
-  overflow:hidden !important;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z'/%3E%3Ccircle cx='12' cy='12' r='3.5'/%3E%3C/svg%3E") !important;
-  background-repeat:no-repeat !important;
-  background-position:center !important;
-  background-size:18px 18px !important;
-  box-shadow:none !important;
-  -webkit-appearance:none !important;
-  appearance:none !important;
-}
-
-#supabase-login-toggle-password.is-hidden::after{
-  content:"" !important;
-  position:absolute !important;
-  left:6px !important;
-  right:6px !important;
-  top:50% !important;
-  height:2px !important;
-  background:#111827 !important;
-  transform:translateY(-50%) rotate(-20deg) !important;
-  opacity:0.9 !important;
-  pointer-events:none !important;
-}
-
-#supabase-login-toggle-password:focus-visible{
-  outline:none !important;
-}
-
-
 
 
 

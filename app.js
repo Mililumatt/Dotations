@@ -1006,7 +1006,8 @@ function promptSupabaseCredentialsForm() {
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
           <input id="supabase-login-password" name="password" type="password" autocomplete="current-password" required
             style="flex:1 1 auto;width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;" />
-          <button type="button" id="supabase-login-toggle-password" class="supabase-login-toggle-password" aria-label="Afficher le mot de passe" tabindex="0">👁</button>
+          <button type="button" id="supabase-login-toggle-password" aria-label="Afficher le mot de passe"
+            style="position:relative;border:1px solid #9bb2be;background:#fff;border-radius:8px;width:40px;min-width:40px;height:40px;min-height:40px;padding:0;cursor:pointer;overflow:hidden;background-size:18px 18px;background-repeat:no-repeat;background-position:center;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z'/%3E%3Ccircle cx='12' cy='12' r='3.5'/%3E%3C/svg%3E');font-size:0;color:transparent;text-indent:-9999px;-webkit-appearance:none;appearance:none;">👁</button>
         </div>
         <div id="supabase-login-status" style="font-size:12px;color:#4a6170;margin:-6px 0 10px;"></div>
         <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:nowrap;">
@@ -1056,12 +1057,13 @@ function promptSupabaseCredentialsForm() {
       if (!passwordInput) return;
       const show = passwordInput.type === "password";
       passwordInput.type = show ? "text" : "password";
-      togglePasswordButton.classList.toggle("is-hidden", !show);
+      togglePasswordButton.textContent = show ? "🙈" : "👁";
       togglePasswordButton.setAttribute("aria-label", show ? "Masquer le mot de passe" : "Afficher le mot de passe");
     });
 
     if (passwordInput && togglePasswordButton) {
-      togglePasswordButton.classList.toggle("is-hidden", passwordInput.type === "password");
+      togglePasswordButton.textContent = "🙈";
+      togglePasswordButton.setAttribute("aria-label", "Afficher le mot de passe");
     }
 
     const cleanup = () => {
