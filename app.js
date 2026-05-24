@@ -1006,8 +1006,7 @@ function promptSupabaseCredentialsForm() {
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
           <input id="supabase-login-password" name="password" type="password" autocomplete="current-password" required
             style="flex:1 1 auto;width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;" />
-          <button type="button" id="supabase-login-toggle-password" aria-label="Afficher le mot de passe"
-            style="height:40px;min-width:40px;padding:0 10px;border:1px solid #9bb2be;background:#fff;border-radius:8px;cursor:pointer;">👁</button>
+          <button type="button" id="supabase-login-toggle-password" class="supabase-login-toggle-password" aria-label="Afficher le mot de passe" tabindex="0">👁</button>
         </div>
         <div id="supabase-login-status" style="font-size:12px;color:#4a6170;margin:-6px 0 10px;"></div>
         <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:nowrap;">
@@ -1057,9 +1056,13 @@ function promptSupabaseCredentialsForm() {
       if (!passwordInput) return;
       const show = passwordInput.type === "password";
       passwordInput.type = show ? "text" : "password";
-      togglePasswordButton.textContent = show ? "🙈" : "👁";
+      togglePasswordButton.classList.toggle("is-hidden", !show);
       togglePasswordButton.setAttribute("aria-label", show ? "Masquer le mot de passe" : "Afficher le mot de passe");
     });
+
+    if (passwordInput && togglePasswordButton) {
+      togglePasswordButton.classList.toggle("is-hidden", passwordInput.type === "password");
+    }
 
     const cleanup = () => {
       backdrop.remove();
