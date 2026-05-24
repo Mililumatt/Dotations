@@ -1007,7 +1007,7 @@ function promptSupabaseCredentialsForm() {
           <input id="supabase-login-password" name="password" type="password" autocomplete="current-password" required
             style="flex:1 1 auto;width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;" />
           <button type="button" id="supabase-login-toggle-password" aria-label="Afficher le mot de passe"
-            style="position:relative;border:1px solid #9bb2be;background:#fff;border-radius:8px;width:40px;min-width:40px;height:40px;min-height:40px;padding:0;cursor:pointer;overflow:hidden;background-size:18px 18px;background-repeat:no-repeat;background-position:center;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z'/%3E%3Ccircle cx='12' cy='12' r='3.5'/%3E%3C/svg%3E');font-size:0;color:transparent;text-indent:-9999px;-webkit-appearance:none;appearance:none;">👁</button>
+            style="position:relative;border:1px solid #9bb2be;background:#fff;border-radius:8px;width:40px;min-width:40px;height:40px;min-height:40px;padding:0;cursor:pointer;overflow:hidden;background-size:18px 18px;background-repeat:no-repeat;background-position:center;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 3l19.5 19.5'/%3E%3Cpath d='M4.71 4.71C3.2 6.03 2 7.88 2 7.88s3.5 6 10 6c1.25 0 2.44-0.28 3.53-0.77'/%3E%3Cpath d='M8.53 8.53a3 3 0 0 0 4.24 4.24'/%3E%3Cpath d='M14.48 14.48c-0.88 0.37-1.84 0.56-2.86 0.56-6.5 0-10-6-10-6a17.5 17.5 0 0 1 5.37-5.1'/%3E%3Cpath d='M22 12s-3.5 6-10 6c-0.9 0-1.75-0.07-2.56-0.2M15.5 15.5L9.95 9.95'/%3E%3C/svg%3E');font-size:0;color:transparent;text-indent:-9999px;-webkit-appearance:none;appearance:none;"></button>
         </div>
         <div id="supabase-login-status" style="font-size:12px;color:#4a6170;margin:-6px 0 10px;"></div>
         <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:nowrap;">
@@ -1057,12 +1057,14 @@ function promptSupabaseCredentialsForm() {
       if (!passwordInput) return;
       const show = passwordInput.type === "password";
       passwordInput.type = show ? "text" : "password";
-      togglePasswordButton.textContent = show ? "🙈" : "👁";
+      togglePasswordButton.style.backgroundImage = show
+        ? "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 3l19 19'/%3E%3Cpath d='M6.7 6.7a7 7 0 0 0-4.7 5.3s3.5 6 10 6c1.2 0 2.33-0.2 3.37-0.57'/%3E%3Cpath d='M10.7 10.7A3 3 0 0 0 12 15.5a3 3 0 0 0 2.12-5.12'/%3E%3Cpath d='M14.1 14.1A3 3 0 0 0 12 9a3 3 0 0 0-1.38 5.75'/%3E%3Cpath d='M17.35 17.35C20.08 15.83 22 12 22 12s-3.5-6-10-6c-0.7 0-1.35 0.07-1.98 0.19'/%3E%3Cpath d='M12 9.5v5'/%3E%3C/svg%3E\")"
+        : "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z'/%3E%3Ccircle cx='12' cy='12' r='3.5'/%3E%3C/svg%3E\")";
       togglePasswordButton.setAttribute("aria-label", show ? "Masquer le mot de passe" : "Afficher le mot de passe");
     });
 
     if (passwordInput && togglePasswordButton) {
-      togglePasswordButton.textContent = "🙈";
+      togglePasswordButton.style.backgroundImage = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 3l19.5 19.5'/%3E%3Cpath d='M4.71 4.71C3.2 6.03 2 7.88 2 7.88s3.5 6 10 6c1.25 0 2.44-0.28 3.53-0.77'/%3E%3Cpath d='M8.53 8.53a3 3 0 0 0 4.24 4.24'/%3E%3Cpath d='M14.48 14.48c-0.88 0.37-1.84 0.56-2.86 0.56-6.5 0-10-6-10-6a17.5 17.5 0 0 1 5.37-5.1'/%3E%3Cpath d='M22 12s-3.5 6-10 6c-0.9 0-1.75-0.07-2.56-0.2M15.5 15.5L9.95 9.95'/%3E%3C/svg%3E\")";
       togglePasswordButton.setAttribute("aria-label", "Afficher le mot de passe");
     }
 
