@@ -995,7 +995,7 @@ function promptSupabaseCredentialsForm() {
     box.innerHTML = `
       <div style="font-weight:700;font-size:16px;margin-bottom:10px;color:#132833;">Connexion requise</div>
       <form id="supabase-login-form" autocomplete="on">
-        <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Email Supabase</label>
+        <label style="display:block;font-size:12px;color:#334c58;margin-bottom:6px;">Email</label>
         <input id="supabase-login-email-input" name="username" type="email" autocomplete="username email" required
           list="supabase-login-email-options" placeholder="Selectionner un compte..."
           style="width:100%;padding:10px;border:1px solid #9bb2be;border-radius:8px;margin-bottom:10px;background:#fff;" />
@@ -2154,7 +2154,7 @@ async function openAdminUsersModal() {
         message.includes("MAGIC_LINK_ECHEC:429") ||
         message.includes("over_email_send_rate_limit")
       ) {
-        setStatus("Quota email Supabase atteint. Reessayez dans environ 1 heure.", "error");
+        setStatus("Quota Email atteint. Reessayez dans environ 1 heure.", "error");
       } else {
         setStatus(`Creation impossible: ${message}`, "error");
       }
@@ -16805,5 +16805,6 @@ loadData();
         })
         .catch(() => null);
     }
+
 
 
