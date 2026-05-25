@@ -12039,10 +12039,17 @@ function hasUrgencyCondition(person) {
     return false;
   }
   const hasOverdueExitAlert = hasOverdueExit(person);
-  const hasNonRendu = (person.effetsConfies || []).some(
+  const hasNonRendu = hasCurrentNonRenduEffects(person);
+  return hasOverdueExitAlert && hasNonRendu;
+}
+
+function hasCurrentNonRenduEffects(person) {
+  if (!person) {
+    return false;
+  }
+  return getCurrentAssignedEffects(person).some(
     (effect) => normalizeText(getEffectStatus(person, effect)) === "NON RENDU"
   );
-  return hasOverdueExitAlert && hasNonRendu;
 }
 
 function matchesFilters(person, filters) {
@@ -12174,7 +12181,8 @@ function renderOverview(persons) {
   }
 
   if (alertsSection && alertsList) {
-    const alerts = persons.flatMap((person) => getPersonAlerts(person));
+    const sourcePersons = Array.isArray(state.data?.personnes) ? state.data.personnes : persons;
+    const alerts = sourcePersons.flatMap((person) => getPersonAlerts(person));
     const alertsSignature = `overview-alerts|${alerts
       .map((alert) =>
         `${String(alert.id || "")}|${normalizeText(alert.type || "")}|${String(alert.nom || "")}|${String(alert.prenom || "")}|${String(alert.message || "")}`
@@ -14007,9 +14015,7 @@ function getOverdueExitAlertMeta(person) {
           : `ALERTE : DATE DE SORTIE PREVUE DEPASSEE (${formatDate(plannedExit)})`,
     };
   }
-  const hasNonRenduEffects = (person?.effetsConfies || []).some(
-    (effect) => normalizeText(getEffectStatus(person, effect)) === "NON RENDU"
-  );
+  const hasNonRenduEffects = hasCurrentNonRenduEffects(person);
   if (realExit && realExit <= today && hasNonRenduEffects) {
     return {
       type: "dateSortieReelle",
