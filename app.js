@@ -12047,8 +12047,13 @@ function hasCurrentNonRenduEffects(person) {
   if (!person) {
     return false;
   }
-  return getCurrentAssignedEffects(person).some(
-    (effect) => normalizeText(getEffectStatus(person, effect)) === "NON RENDU"
+  const currentEffects = getCurrentAssignedEffects(person);
+  if (!currentEffects.length) {
+    return false;
+  }
+  return (
+    currentEffects.some((effect) => normalizeText(getEffectStatus(person, effect)) === "NON RENDU") ||
+    isExitDue(person)
   );
 }
 
