@@ -6540,6 +6540,22 @@ function bindAddPersonForm() {
       effetsConfies: [],
     };
 
+    const addDateChecks = [
+      { value: person.dateEntree, label: "DATE D'ENTREE", field: form.elements.dateEntree },
+      { value: person.dateSortiePrevue, label: "DATE DE SORTIE PREVUE", field: form.elements.dateSortiePrevue },
+      { value: person.dateSortieReelle, label: "DATE DE SORTIE REELLE", field: form.elements.dateSortieReelle },
+    ];
+    for (const check of addDateChecks) {
+      const validation = validateDateFieldFormat(check.value, check.label);
+      if (!validation.ok) {
+        showDataStatus(validation.message);
+        if (check.field instanceof HTMLElement) {
+          check.field.focus();
+        }
+        return;
+      }
+    }
+
     if (!person.nom && !person.prenom) {
       person.nom = "PERSONNE";
       person.prenom = person.id;
@@ -6698,6 +6714,23 @@ function bindPersonSheetForm() {
       form.elements.sheetDateEntree?.focus();
       updateSheetRequiredHighlights();
       return false;
+    }
+
+    const sheetDateChecks = [
+      { value: dateEntree, label: "DATE D'ENTREE", field: form.elements.sheetDateEntree },
+      { value: dateSortiePrevue, label: "DATE DE SORTIE PREVUE", field: form.elements.sheetDateSortiePrevue },
+      { value: String(formData.get("sheetDateSortieReelle") || "").trim(), label: "DATE DE SORTIE REELLE", field: form.elements.sheetDateSortieReelle },
+    ];
+    for (const check of sheetDateChecks) {
+      const validation = validateDateFieldFormat(check.value, check.label);
+      if (!validation.ok) {
+        showDataStatus(validation.message);
+        if (check.field instanceof HTMLElement) {
+          check.field.focus();
+        }
+        updateSheetRequiredHighlights();
+        return false;
+      }
     }
 
     updateSheetRequiredHighlights();
@@ -9973,6 +10006,43 @@ function normalizeDateString(value) {
   const month = String(parsed.getMonth() + 1).padStart(2, "0");
   const day = String(parsed.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function isStrictIsoCalendarDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return true;
+  }
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return false;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return false;
+  }
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() + 1 === month &&
+    date.getUTCDate() === day
+  );
+}
+
+function validateDateFieldFormat(value, label) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return { ok: true, message: "" };
+  }
+  if (!isStrictIsoCalendarDate(raw)) {
+    return {
+      ok: false,
+      message: `${label} INVALIDE (FORMAT ATTENDU : AAAA-MM-JJ)`,
+    };
+  }
+  return { ok: true, message: "" };
 }
 
 function getLatestSignedArrivalArchiveForPerson(personId) {
