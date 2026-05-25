@@ -14032,10 +14032,12 @@ function hasOverdueExit(person) {
 
 function isExitDue(person) {
   const today = getTodayIsoDate();
-  if (person?.dateSortieReelle && String(person.dateSortieReelle) <= today) {
+  const realExit = normalizeDateString(person?.dateSortieReelle || "");
+  const plannedExit = normalizeDateString(person?.dateSortiePrevue || "");
+  if (realExit && realExit <= today) {
     return true;
   }
-  if (person?.dateSortiePrevue && isPastDate(person.dateSortiePrevue)) {
+  if (plannedExit && plannedExit <= today) {
     return true;
   }
   return false;
