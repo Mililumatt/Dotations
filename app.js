@@ -9194,6 +9194,9 @@ function renderPage() {
     const filteredPersonsSignature = [
       "filtered-persons",
       String(state.supabaseRevision || ""),
+      String(state.localMutationTick || 0),
+      String(state.latestDataEtag || ""),
+      String(Array.isArray(state.data?.personnes) ? state.data.personnes.length : 0),
       String(state.urgentMode ? "1" : "0"),
       String(filters.search || ""),
       String(filters.site || ""),
