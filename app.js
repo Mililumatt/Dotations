@@ -13976,8 +13976,8 @@ function isPastDate(value) {
 
 function getOverdueExitAlertMeta(person) {
   const today = getTodayIsoDate();
-  const plannedExit = String(person?.dateSortiePrevue || "");
-  const realExit = String(person?.dateSortieReelle || "");
+  const plannedExit = normalizeDateString(person?.dateSortiePrevue || "");
+  const realExit = normalizeDateString(person?.dateSortieReelle || "");
   const plannedDate = plannedExit ? new Date(`${plannedExit}T00:00:00`) : null;
   const todayDate = new Date(`${today}T00:00:00`);
   const daysUntilPlannedExit =
