@@ -515,10 +515,14 @@ function normalizeBucketName(value, fallback = "") {
 
 function isLocalRuntime() {
   const host = String(window.location.hostname || "").toLowerCase();
+  const isPrivateIpv4 =
+    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host);
   return (
-    window.location.protocol === "file:" ||
     host === "localhost" ||
-    host === "127.0.0.1"
+    host === "127.0.0.1" ||
+    isPrivateIpv4
   );
 }
 
@@ -529,11 +533,11 @@ function isSupabaseConfigured() {
 }
 
 function getDataBackendMode() {
-  if (isSupabaseConfigured()) {
-    return "SUPABASE";
-  }
   if (isLocalRuntime()) {
     return "LOCAL_API";
+  }
+  if (isSupabaseConfigured()) {
+    return "SUPABASE";
   }
   return "HOSTED_NO_BACKEND";
 }
@@ -778,6 +782,27 @@ async function promptSupabaseLoginAndStoreSession() {
   const email = String(credentials?.email || "").trim();
   const password = String(credentials?.password || "");
   if (!email || !password) throw new Error("BACKEND_AUTH_REQUIRED");
+  if (getDataBackendMode() === "LOCAL_API") {
+    const response = await fetch("/api/local-login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ username: email, password }),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error("BACKEND_AUTH_INVALID");
+    }
+    const payload = await response.json().catch(() => ({}));
+    state.currentUserRoleLabel = String(payload?.role_label || "LOCAL_SECOURS");
+    try {
+      sessionStorage.setItem(ADMIN_INTERACTIVE_AUTH_MARKER_KEY, "1");
+    } catch (error) {
+      // ignore marker failures
+    }
+    return "LOCAL_MODE_TOKEN";
+  }
   const baseUrl = normalizeHttpUrl(SUPABASE_PROJECT_URL);
   const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
   const response = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
@@ -1231,6 +1256,16 @@ function hasSessionBridgeParamsInUrl() {
 }
 
 async function getSupabaseUserAccessToken(options = {}) {
+  if (getDataBackendMode() === "LOCAL_API") {
+    const current = await fetch("/api/local-session", { cache: "no-store" }).catch(() => null);
+    if (current?.ok) {
+      return "LOCAL_MODE_TOKEN";
+    }
+    if (options?.requireInteractiveLogin === true || !isMobileSignaturePageContext()) {
+      return promptSupabaseLoginAndStoreSession();
+    }
+    throw new Error("BACKEND_AUTH_REQUIRED");
+  }
   const isMobileSignaturePage = isMobileSignaturePageContext();
   const requireInteractiveLogin = options?.requireInteractiveLogin === true;
   if (requireInteractiveLogin) {
@@ -1276,6 +1311,30 @@ async function getSupabaseUserAccessToken(options = {}) {
 }
 
 async function enforceUiLoginOnEachOpen() {
+  if (isPdfRenderMode()) {
+    return;
+  }
+  if (getDataBackendMode() === "LOCAL_API") {
+    while (true) {
+      try {
+        const current = await fetch("/api/local-session", { cache: "no-store" });
+        if (current.ok) {
+          const payload = await current.json().catch(() => ({}));
+          state.currentUserRoleLabel = String(payload?.role_label || "LOCAL_SECOURS");
+          return;
+        }
+        await promptSupabaseLoginAndStoreSession();
+        return;
+      } catch (error) {
+        const message = String(error?.message || "");
+        if (message === "BACKEND_AUTH_INVALID") {
+          window.alert("IDENTIFIANT OU MOT DE PASSE INCORRECT.");
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
   if (isMobileSignaturePageContext()) {
     return;
   }
@@ -1340,6 +1399,29 @@ function renderRoleBadge() {
 }
 
 async function handleSwitchUserClick() {
+  if (getDataBackendMode() === "LOCAL_API") {
+    try {
+      await fetch("/api/local-logout", { method: "POST", cache: "no-store" }).catch(() => null);
+      while (true) {
+        try {
+          await promptSupabaseLoginAndStoreSession();
+          break;
+        } catch (error) {
+          const message = String(error?.message || "");
+          if (message === "BACKEND_AUTH_INVALID") {
+            window.alert("IDENTIFIANT OU MOT DE PASSE INCORRECT.");
+            continue;
+          }
+          throw error;
+        }
+      }
+      showDataStatus("CONNEXION LOCALE MISE A JOUR");
+      await reloadData("RECHARGEMENT APRES CHANGEMENT UTILISATEUR...");
+    } catch (error) {
+      showDataStatus("CHANGEMENT UTILISATEUR IMPOSSIBLE");
+    }
+    return;
+  }
   try {
     clearStoredSupabaseSession();
     while (true) {
@@ -1600,6 +1682,7 @@ async function openAdminUsersModal() {
   let users = [];
   let loginEvents = [];
   let appStateVersions = [];
+  const isLocalAdminMode = getDataBackendMode() === "LOCAL_API";
   let archivedUserIds = new Set(getAdminArchivedUserIds());
   const getArchivedPeople = () => (state.data?.personnes || []).filter((person) => isSoftDeletedEntity(person));
   const getArchivedEffects = () =>
@@ -1699,9 +1782,23 @@ async function openAdminUsersModal() {
   const fetchUsers = async () => {
     setStatus("Chargement utilisateurs...");
     try {
-      const response = await callEdgeApi("admin/users", { method: "GET" });
-      const payload = await response.json().catch(() => ({}));
-      users = normalizeAdminUsersList(payload);
+      if (isLocalAdminMode) {
+        const response = await fetch("/api/local-users", {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          const details = await response.text().catch(() => "");
+          throw new Error(`LOCAL_USERS_LOAD_FAILED:${response.status}:${details}`);
+        }
+        const payload = await response.json().catch(() => ({}));
+        users = normalizeAdminUsersList(payload?.users || []);
+      } else {
+        const response = await callEdgeApi("admin/users", { method: "GET" });
+        const payload = await response.json().catch(() => ({}));
+        users = normalizeAdminUsersList(payload);
+      }
       mergeLoginEmailSuggestions(users.map((entry) => entry?.email || ""));
       renderUsers();
       const visibleCount = users.filter((user) => !archivedUserIds.has(String(user.id || ""))).length;
@@ -1720,6 +1817,12 @@ async function openAdminUsersModal() {
     }
   };
   const fetchAppStateVersions = async () => {
+    if (isLocalAdminMode) {
+      appStateVersions = [];
+      setStatus("Mode local : historique Supabase indisponible", "info");
+      renderRestorePanel();
+      return;
+    }
     const loadVersions = async (accessToken) => {
       const endpoint = `${getSupabaseRestEndpoint().replace(/\/app_state$/i, "/app_state_versions")}?select=app_state_id,source_revision,created_at,reason&order=created_at.desc&limit=30`;
       return fetch(endpoint, {
@@ -1926,6 +2029,12 @@ async function openAdminUsersModal() {
     `;
   };
   const fetchLoginEvents = async () => {
+    if (isLocalAdminMode) {
+      loginEvents = [];
+      renderLoginEvents();
+      setLoginsStatus("Mode local : historique Supabase indisponible", "info");
+      return;
+    }
     setLoginsStatus("Chargement journal connexions...");
     try {
       const response = await callEdgeApi("admin/login-events", { method: "GET" });
@@ -1957,21 +2066,49 @@ async function openAdminUsersModal() {
     try {
       if (action === "save") {
         setStatus("Mise a jour utilisateur...");
-        await callEdgeApi(`admin/users/${encodeURIComponent(userId)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ role }),
-        });
+        if (isLocalAdminMode) {
+          const response = await fetch("/api/local-users/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ userId, role }),
+          });
+          if (!response.ok) {
+            const details = await response.text().catch(() => "");
+            throw new Error(`LOCAL_USERS_UPDATE_FAILED:${response.status}:${details}`);
+          }
+        } else {
+          await callEdgeApi(`admin/users/${encodeURIComponent(userId)}`, {
+            method: "PATCH",
+            body: JSON.stringify({ role }),
+          });
+        }
         setStatus("Role utilisateur mis a jour.", "ok");
         await fetchUsers();
         return;
       }
       if (action === "delete") {
-        if (!window.confirm("Archiver cet utilisateur de la vue admin ?")) return;
-        archivedUserIds.add(userId);
-        setAdminArchivedUserIds(Array.from(archivedUserIds));
-        setStatus("Utilisateur archive (masque de la liste).", "ok");
-        renderUsers();
-        renderRestorePanel();
+        if (!window.confirm(isLocalAdminMode ? "Desactiver cet utilisateur local ?" : "Archiver cet utilisateur de la vue admin ?")) return;
+        if (isLocalAdminMode) {
+          const response = await fetch("/api/local-users/deactivate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ userId }),
+          });
+          if (!response.ok) {
+            const details = await response.text().catch(() => "");
+            throw new Error(`LOCAL_USERS_DEACTIVATE_FAILED:${response.status}:${details}`);
+          }
+          setStatus("Utilisateur local desactive.", "ok");
+          await fetchUsers();
+        } else {
+          archivedUserIds.add(userId);
+          setAdminArchivedUserIds(Array.from(archivedUserIds));
+          setStatus("Utilisateur archive (masque de la liste).", "ok");
+          renderUsers();
+          renderRestorePanel();
+        }
       }
     } catch (error) {
       setStatus(`Action impossible: ${String(error?.message || "erreur")}`, "error");
@@ -2109,6 +2246,10 @@ async function openAdminUsersModal() {
     const generatedPassword = `Tmp#${Math.random().toString(36).slice(2, 10)}A1`;
     const passwordToUse = password || generatedPassword;
     const isInviteFlow = submitAction === "invite";
+    if (isLocalAdminMode && isInviteFlow) {
+      setStatus("Mode local : invitation Supabase indisponible.", "info");
+      return;
+    }
     if (isInviteFlow) {
       const now = Date.now();
       const lastInviteAt = Number.parseInt(String(localStorage.getItem(ADMIN_INVITE_COOLDOWN_KEY) || ""), 10);
@@ -2136,10 +2277,23 @@ async function openAdminUsersModal() {
           }
         }
       } else {
-        await callEdgeApi("admin/users", {
-          method: "POST",
-          body: JSON.stringify({ email, password: passwordToUse, role }),
-        });
+        if (isLocalAdminMode) {
+          const response = await fetch("/api/local-users/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ email, password: passwordToUse, role }),
+          });
+          if (!response.ok) {
+            const details = await response.text().catch(() => "");
+            throw new Error(`LOCAL_USERS_CREATE_FAILED:${response.status}:${details}`);
+          }
+        } else {
+          await callEdgeApi("admin/users", {
+            method: "POST",
+            body: JSON.stringify({ email, password: passwordToUse, role }),
+          });
+        }
       }
       if (isInviteFlow) {
         localStorage.setItem(ADMIN_INVITE_COOLDOWN_KEY, String(Date.now()));
@@ -2179,6 +2333,21 @@ async function openAdminCreateUserFlow() {
 }
 
 async function refreshCurrentUserRoleLabel() {
+  if (getDataBackendMode() === "LOCAL_API") {
+    try {
+      const response = await fetch("/api/local-session", { cache: "no-store" });
+      if (!response.ok) {
+        state.currentUserRoleLabel = "";
+      } else {
+        const payload = await response.json().catch(() => ({}));
+        state.currentUserRoleLabel = String(payload?.role_label || "LOCAL_SECOURS");
+      }
+    } catch (error) {
+      state.currentUserRoleLabel = "";
+    }
+    renderRoleBadge();
+    return;
+  }
   if (document.body?.dataset?.page === "mobile-signature") {
     state.currentUserRoleLabel = "";
     renderRoleBadge();
@@ -2218,6 +2387,28 @@ async function refreshCurrentUserRoleLabel() {
 }
 
 async function callEdgeApi(pathname, options = {}, retryOnAuthFailure = true) {
+  if (getDataBackendMode() === "LOCAL_API") {
+    const normalizedPath = String(pathname || "").trim().replace(/^\/+/, "");
+    if (normalizedPath === "save") {
+      const body = options?.body || "{}";
+      return fetch(`/api/state/save?ts=${Date.now()}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
+        body,
+        cache: "no-store",
+      });
+    }
+    if (normalizedPath === "data") {
+      return fetch(appendPdfTokenToUrl(`/api/state?ts=${Date.now()}`), {
+        method: "GET",
+        headers: options.headers || {},
+        cache: "no-store",
+      });
+    }
+  }
   const baseUrl = normalizeHttpUrl(SUPABASE_EDGE_API_URL);
   const key = String(SUPABASE_PUBLISHABLE_KEY || "").trim();
   if (!baseUrl || !key) {
@@ -2591,6 +2782,18 @@ async function uploadSignatureImageToSupabaseStorage(docType, person, signer, si
 }
 
 async function fetchSupabaseStateData() {
+  if (getDataBackendMode() === "LOCAL_API") {
+    const response = await fetch(appendPdfTokenToUrl(`/api/state?ts=${Date.now()}`), { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("LOCAL LOAD FAILED");
+    }
+    const payload = await response.json();
+    const data = payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "data")
+      ? payload.data
+      : payload;
+    state.supabaseRevision = Number.isFinite(Number(payload?.revision)) ? Number(payload.revision) : 0;
+    return data;
+  }
   const start = performance.now();
   const endpoint = `${getSupabaseRestEndpoint()}?id=eq.${encodeURIComponent(
     SUPABASE_APP_STATE_ID
@@ -2791,6 +2994,20 @@ function markSoftDeletedEntity(entry = {}) {
 }
 
 async function saveSupabaseStateData(payload) {
+  if (getDataBackendMode() === "LOCAL_API") {
+    const response = await fetch(`/api/state/save?ts=${Date.now()}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ data: payload }),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error("LOCAL SAVE FAILED");
+    }
+    return;
+  }
   if (!Number.isFinite(Number(state.supabaseRevision))) {
     await fetchSupabaseStateData();
   }
@@ -2829,6 +3046,10 @@ async function saveSupabaseStateData(payload) {
 }
 
 async function saveSupabasePayloadWithRetry(payload, maxAttempts = 3) {
+  if (getDataBackendMode() === "LOCAL_API") {
+    await saveSupabaseStateData(payload);
+    return;
+  }
   let lastError = null;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (!Number.isFinite(Number(state.supabaseRevision))) {
@@ -3068,7 +3289,7 @@ async function fetchLatestDataSnapshot({ forceFresh = false } = {}) {
       return nextSnapshot;
     }
     const start = performance.now();
-    const response = await fetch(`/api/data?ts=${Date.now()}`, { cache: "no-store" });
+    const response = await fetch(appendPdfTokenToUrl(`/api/state?ts=${Date.now()}`), { cache: "no-store" });
     if (!response.ok) {
       const durationMs = Math.round(performance.now() - start);
       const responseText = await response.text().catch(() => "");
@@ -3083,7 +3304,13 @@ async function fetchLatestDataSnapshot({ forceFresh = false } = {}) {
       });
       throw new Error("LOCAL LOAD FAILED");
     }
-    const responseData = await response.json();
+    const responsePayload = await response.json();
+    const responseData =
+      responsePayload &&
+      typeof responsePayload === "object" &&
+      Object.prototype.hasOwnProperty.call(responsePayload, "data")
+        ? responsePayload.data
+        : responsePayload;
     const durationMs = Math.round(performance.now() - start);
     recordNetworkDebugSample({
       route: "/api/data",
@@ -3892,6 +4119,23 @@ async function getMobileSignatureBaseUrl() {
   }
 
   if (configuredBaseUrl) {
+    if (isLikelyLocalUrl(currentRuntimeBaseUrl)) {
+      try {
+        const modeResponse = await fetch(`/api/network-info?ts=${Date.now()}`, { cache: "no-store" });
+        if (modeResponse.ok) {
+          const modeInfo = await modeResponse.json().catch(() => ({}));
+          state.mobileSignatureNetworkInfo = modeInfo;
+          if (String(modeInfo?.mode || "").toLowerCase() === "local" && modeInfo?.preferredUrl) {
+            return String(modeInfo.preferredUrl);
+          }
+          if (String(modeInfo?.mode || "").toLowerCase() === "supabase" && modeInfo?.publicUrl) {
+            return String(modeInfo.publicUrl);
+          }
+        }
+      } catch (error) {
+        // ignore network info failures and keep configured fallback
+      }
+    }
     if (!currentRuntimeBaseUrl || isLikelyLocalUrl(currentRuntimeBaseUrl)) {
       return configuredBaseUrl;
     }
@@ -4215,6 +4459,9 @@ async function loadData() {
   bindArchiveFilterForm();
   bindSignatureCanvases();
   bindRepresentativeFields();
+  if (getDataBackendMode() === "LOCAL_API") {
+    console.info("MODE LOCAL DATA ACTIF");
+  }
   renderRoleBadge();
   refreshCurrentUserRoleLabel();
 
@@ -4437,6 +4684,13 @@ function migrateDataModel(options = {}) {
       totalEffets: Number(entry.totalEffets || 0),
       totalFacturable: normalizeAmount(entry.totalFacturable),
       pdfPath: String(entry.pdfPath || ""),
+      filename: String(entry.filename || ""),
+      localPath: String(entry.localPath || ""),
+      openLocalUrl: String(entry.openLocalUrl || ""),
+      storagePath: String(entry.storagePath || ""),
+      publicUrl: String(entry.publicUrl || ""),
+      openRemoteUrl: String(entry.openRemoteUrl || ""),
+      storageStatus: String(entry.storageStatus || ""),
       metadataPath: String(entry.metadataPath || ""),
       dateArchivage: String(entry.dateArchivage || ""),
       fingerprint: isLegacyArrivalArchiveFingerprint(entry.fingerprint) ? "" : String(entry.fingerprint || ""),
@@ -4820,6 +5074,21 @@ function getActiveDocumentMobileSignatureRequest() {
   const docType = page === "exit-document" ? "exit" : "arrival";
   const { personnel, representant } = getActiveMobileSignatureRequestContext(personId, docType);
   return personnel || representant;
+}
+
+function appendPdfTokenToUrl(rawUrl) {
+  try {
+    if (!isPdfRenderMode()) return String(rawUrl || "");
+    const token = String(new URLSearchParams(window.location.search).get("pdfToken") || "").trim();
+    if (!token) return String(rawUrl || "");
+    const base = new URL(String(rawUrl || ""), window.location.origin);
+    if (!base.searchParams.get("pdfToken")) {
+      base.searchParams.set("pdfToken", token);
+    }
+    return `${base.pathname}${base.search}${base.hash}`;
+  } catch {
+    return String(rawUrl || "");
+  }
 }
 
 function setMobileSignaturePollStatus(message, tone = "normal") {
@@ -5907,40 +6176,36 @@ async function openPdfDocument(docType, personId) {
 
     const url = `/api/pdf?type=${encodeURIComponent(docType)}&personId=${encodeURIComponent(personId)}&archive=${shouldArchive ? "1" : "0"}&mode=${encodeURIComponent(archiveMode)}&ts=${Date.now()}`;
     const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error("PDF impossible");
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) {
+      throw new Error(String(payload?.error || "PDF impossible"));
     }
+    const archiveSaved = payload.archiveSaved === true;
+    const archivePdfPath = String(payload.archivePdfPath || "");
+    const archiveMetadataPath = String(payload.archiveMetadataPath || "");
+    const archiveLocalPath = String(payload.archiveLocalPath || "");
+    const archiveStoragePath = String(payload.archiveStoragePath || "");
+    const archivePublicUrl = String(payload.archivePublicUrl || "");
+    const archiveOpenLocalUrl = String(payload.archiveOpenLocalUrl || "");
+    const archiveOpenRemoteUrl = String(payload.archiveOpenRemoteUrl || "");
+    const archiveFilename = String(payload.archiveFilename || "");
+    const archiveStorageStatus = String(payload.archiveStorageStatus || "");
 
-    const archiveSaved = response.headers.get("X-Archive-Saved") === "1";
-    const archivePdfPath = response.headers.get("X-Archive-Pdf-Path") || "";
-    const archiveMetadataPath = response.headers.get("X-Archive-Metadata-Path") || "";
-    const blob = await response.blob();
-
-    let hostedStoragePdfPath = "";
-    if (shouldArchive && getDataBackendMode() === "LOCAL_API" && person) {
-      try {
-        const uploadResult = await uploadPdfBlobToSupabaseStorage(docType, person, blob, archiveMode);
-        hostedStoragePdfPath = String(uploadResult?.storageRef || "");
-        if (hostedStoragePdfPath) {
-          console.info("[SUPABASE][PDF] final storage path", hostedStoragePdfPath);
-          showDataStatus("PDF ARCHIVE ENVOYE VERS SUPABASE STORAGE");
-        } else {
-          console.warn("[SUPABASE][PDF] upload returned empty storageRef");
-        }
-      } catch (uploadError) {
-        console.error("[SUPABASE][PDF] upload fail", uploadError);
-        const message = String(uploadError?.message || "ERREUR INCONNUE").slice(0, 220);
-        showDataStatus(`UPLOAD STORAGE PDF IMPOSSIBLE - ARCHIVAGE LOCAL CONSERVE (${message})`);
-      }
-    }
-
-    const objectUrl = window.URL.createObjectURL(blob);
     hidePdfProgressModal();
-    popup.location.href = objectUrl;
-    const finalArchivePath = hostedStoragePdfPath || archivePdfPath;
+    popup.location.href = archiveOpenLocalUrl || archiveOpenRemoteUrl || archivePublicUrl || "about:blank";
+    const finalArchivePath = archiveStoragePath || archivePdfPath || archiveLocalPath;
+    const archiveDetails = {
+      filename: archiveFilename,
+      localPath: archiveLocalPath,
+      openLocalUrl: archiveOpenLocalUrl,
+      storagePath: archiveStoragePath,
+      publicUrl: archivePublicUrl,
+      openRemoteUrl: archiveOpenRemoteUrl || archivePublicUrl,
+      storageStatus: archiveStorageStatus || (archiveStoragePath ? "synced" : "failed"),
+    };
     if (person && finalArchivePath) {
       clearPendingPdfTaskFor(person.id, docType);
-      registerArchivedDocument(person, docType, finalArchivePath, archiveMetadataPath, archiveMode).catch((error) => {
+      registerArchivedDocument(person, docType, finalArchivePath, archiveMetadataPath, archiveMode, archiveDetails).catch((error) => {
         console.error(error);
         showDataStatus("ARCHIVAGE PDF IMPOSSIBLE");
       });
@@ -5949,13 +6214,6 @@ async function openPdfDocument(docType, personId) {
     } else if (!shouldArchive) {
       showDataStatus("PDF OUVERT - DOCUMENT NON SIGNE, UPLOAD SUPABASE NON LANCE");
     }
-    window.setTimeout(() => {
-      try {
-        window.URL.revokeObjectURL(objectUrl);
-      } catch (error) {
-        console.error(error);
-      }
-    }, 60000);
   } catch (error) {
     console.error(error);
     hidePdfProgressModal();
@@ -6015,29 +6273,33 @@ async function generatePdfArchiveSilently(person, docType) {
   const archiveMode = getDocumentArchiveMode(person, docType);
   const url = `/api/pdf?type=${encodeURIComponent(docType)}&personId=${encodeURIComponent(person.id)}&archive=1&mode=${encodeURIComponent(archiveMode)}&ts=${Date.now()}`;
   const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) {
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.ok) {
     throw new Error(`AUTO PDF IMPOSSIBLE (${docType}/${person.id})`);
   }
+  const archivePdfPath = String(payload.archivePdfPath || "");
+  const archiveMetadataPath = String(payload.archiveMetadataPath || "");
+  const archiveLocalPath = String(payload.archiveLocalPath || "");
+  const archiveStoragePath = String(payload.archiveStoragePath || "");
+  const archivePublicUrl = String(payload.archivePublicUrl || "");
+  const archiveOpenLocalUrl = String(payload.archiveOpenLocalUrl || "");
+  const archiveOpenRemoteUrl = String(payload.archiveOpenRemoteUrl || "");
+  const archiveFilename = String(payload.archiveFilename || "");
+  const archiveStorageStatus = String(payload.archiveStorageStatus || "");
 
-  const archivePdfPath = response.headers.get("X-Archive-Pdf-Path") || "";
-  const archiveMetadataPath = response.headers.get("X-Archive-Metadata-Path") || "";
-  const blob = await response.blob();
-
-  let hostedStoragePdfPath = "";
-  if (isSupabaseConfigured()) {
-    try {
-      const uploadResult = await uploadPdfBlobToSupabaseStorage(docType, person, blob, archiveMode);
-      hostedStoragePdfPath = String(uploadResult?.storageRef || "");
-    } catch (error) {
-      console.error("[SUPABASE][PDF][AUTO] upload fail", error);
-    }
-  }
-
-  const finalArchivePath = hostedStoragePdfPath || archivePdfPath;
+  const finalArchivePath = archiveStoragePath || archivePdfPath || archiveLocalPath;
   if (!finalArchivePath) {
     return false;
   }
-  await registerArchivedDocument(person, docType, finalArchivePath, archiveMetadataPath, archiveMode);
+  await registerArchivedDocument(person, docType, finalArchivePath, archiveMetadataPath, archiveMode, {
+    filename: archiveFilename,
+    localPath: archiveLocalPath,
+    openLocalUrl: archiveOpenLocalUrl,
+    storagePath: archiveStoragePath,
+    publicUrl: archivePublicUrl,
+    openRemoteUrl: archiveOpenRemoteUrl || archivePublicUrl,
+    storageStatus: archiveStorageStatus || (archiveStoragePath ? "synced" : "failed"),
+  });
   return true;
 }
 
@@ -10258,6 +10520,78 @@ function getDocumentArchiveOpenPath(entry) {
   return raw.replace(/^\/+/, "");
 }
 
+function getArchiveFileNameFromPath(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const cleaned = raw.split("?")[0].split("#")[0];
+  const parts = cleaned.split(/[\\/]/).filter(Boolean);
+  const last = parts.length ? parts[parts.length - 1] : "";
+  return /\.pdf$/i.test(last) ? last : "";
+}
+
+function resolveArchivePdfLocations(pdfPath, existing = {}) {
+  const raw = String(pdfPath || "").trim();
+  const existingLocalPath = String(existing.localPath || "").trim();
+  const existingOpenLocalUrl = String(existing.openLocalUrl || "").trim();
+  const existingStoragePath = String(existing.storagePath || "").trim();
+  const existingPublicUrl = String(existing.publicUrl || "").trim();
+  const existingOpenRemoteUrl = String(existing.openRemoteUrl || "").trim();
+
+  let localPath = existingLocalPath;
+  let openLocalUrl = existingOpenLocalUrl;
+  let storagePath = existingStoragePath;
+  let publicUrl = existingPublicUrl;
+  let openRemoteUrl = existingOpenRemoteUrl;
+
+  const storageRef = parseStorageSchemePath(raw);
+  if (storageRef) {
+    storagePath = `storage://${storageRef.bucket}/${storageRef.objectPath}`;
+    const resolvedPublicUrl = getSupabaseStoragePublicUrl(storageRef.bucket, storageRef.objectPath) || "";
+    if (resolvedPublicUrl) {
+      publicUrl = resolvedPublicUrl;
+      openRemoteUrl = resolvedPublicUrl;
+    }
+  } else if (/^https?:\/\//i.test(raw) && isSafeArchiveHttpUrl(raw)) {
+    const safeUrl = normalizeHttpUrl(raw) || "";
+    if (safeUrl) {
+      publicUrl = safeUrl;
+      openRemoteUrl = safeUrl;
+    }
+  } else if (/\.pdf(?:$|\?)/i.test(raw) && isSafeArchiveRelativePath(raw)) {
+    localPath = raw.replace(/^\/+/, "").split("?")[0];
+    if (localPath.toLowerCase().startsWith("data/pdf/")) {
+      const apiPath = localPath.slice("data/pdf/".length);
+      openLocalUrl = `/api/pdf-file?path=${encodeURIComponent(apiPath)}`;
+    }
+  }
+
+  const filename =
+    getArchiveFileNameFromPath(localPath) ||
+    getArchiveFileNameFromPath(storagePath) ||
+    getArchiveFileNameFromPath(publicUrl) ||
+    getArchiveFileNameFromPath(raw) ||
+    String(existing.filename || "").trim();
+
+  return {
+    filename,
+    localPath,
+    openLocalUrl,
+    storagePath,
+    publicUrl,
+    openRemoteUrl,
+  };
+}
+
+function getArchivePreferredOpenPath(entry) {
+  const localUrl = String(entry?.openLocalUrl || "").trim();
+  const remoteUrl = String(entry?.openRemoteUrl || entry?.publicUrl || "").trim();
+  const legacyUrl = getDocumentArchiveOpenPath(entry);
+  if (getDataBackendMode() === "LOCAL_API") {
+    return localUrl || remoteUrl || legacyUrl || "";
+  }
+  return remoteUrl || legacyUrl || localUrl || "";
+}
+
 function getArchiveEntrySites(entry) {
   return normalizeSites(String(entry?.sites || "").split("/").map((value) => value.trim()));
 }
@@ -10294,10 +10628,11 @@ function archiveEntryMatchesSite(entry, site) {
   return sites.includes(ALL_SITES_VALUE) || sites.includes(normalizedSite);
 }
 
-function buildDocumentArchiveEntry(person, docType, pdfPath, metadataPath, archiveMode = "STANDARD") {
+function buildDocumentArchiveEntry(person, docType, pdfPath, metadataPath, archiveMode = "STANDARD", existingEntry = null, archiveDetails = null) {
   const effects = person?.effetsConfies || [];
   const documentMode = normalizeText(archiveMode || "STANDARD");
   const baseId = `DOC-${getDocumentTypeLabel(docType)}-${person?.id || ""}`;
+  const locations = resolveArchivePdfLocations(pdfPath, existingEntry || {});
   return {
     id: baseId,
     personId: String(person?.id || ""),
@@ -10317,6 +10652,13 @@ function buildDocumentArchiveEntry(person, docType, pdfPath, metadataPath, archi
         : 0,
     fingerprint: getDocumentFingerprint(person, docType),
     pdfPath: String(pdfPath || ""),
+    filename: String(archiveDetails?.filename || locations.filename || ""),
+    localPath: String(archiveDetails?.localPath || locations.localPath || ""),
+    openLocalUrl: String(archiveDetails?.openLocalUrl || locations.openLocalUrl || ""),
+    storagePath: String(archiveDetails?.storagePath || locations.storagePath || ""),
+    publicUrl: String(archiveDetails?.publicUrl || locations.publicUrl || ""),
+    openRemoteUrl: String(archiveDetails?.openRemoteUrl || locations.openRemoteUrl || ""),
+    storageStatus: String(archiveDetails?.storageStatus || existingEntry?.storageStatus || ""),
     metadataPath: String(metadataPath || ""),
     dateArchivage: getCurrentSignatureTimestamp(),
   };
@@ -10374,7 +10716,7 @@ function upsertDocumentArchiveEntry(entry) {
   sortDocumentsArchives();
 }
 
-async function registerArchivedDocument(person, docType, pdfPath, metadataPath, archiveMode = "STANDARD") {
+async function registerArchivedDocument(person, docType, pdfPath, metadataPath, archiveMode = "STANDARD", archiveDetails = null) {
   if (!state.data || !person || !pdfPath) {
     return;
   }
@@ -10384,7 +10726,8 @@ async function registerArchivedDocument(person, docType, pdfPath, metadataPath, 
   if (!isDocumentFullySigned(person, docType)) {
     return;
   }
-  upsertDocumentArchiveEntry(buildDocumentArchiveEntry(person, docType, pdfPath, metadataPath, archiveMode));
+  const existingEntry = findReusableArchivedDocument(person, docType);
+  upsertDocumentArchiveEntry(buildDocumentArchiveEntry(person, docType, pdfPath, metadataPath, archiveMode, existingEntry, archiveDetails));
   markDirty();
   await saveDataToFile({
     silent: true,
@@ -10704,15 +11047,20 @@ function renderDocumentsArchivePage() {
         const workflowStatus = String(
           entry?.__workflowStatus || resolveWorkflowStatus(entry, person)
         );
-        const openPath = getDocumentArchiveOpenPath(entry);
+        const openPath = getArchivePreferredOpenPath(entry);
         const hasPdf = Boolean(openPath);
         const typeLabel = normalizeText(entry.typeDocument || "");
         const typeIcon = typeLabel === "SORTIE" ? "🔴" : typeLabel === "ARRIVEE" ? "🟢" : "⚪";
         const typeTitle = typeLabel || "TYPE INCONNU";
+        const openLocalUrl = String(entry?.openLocalUrl || "").trim();
+        const openRemoteUrl = String(entry?.openRemoteUrl || "").trim();
+        const publicUrl = String(entry?.publicUrl || "").trim();
+        const filename = String(entry?.filename || "").trim();
+        const localPathInfo = String(entry?.localPath || "").trim();
         const openInNewTab = hasPdf && !isHostedPdfDocumentPath(openPath);
         const targetAttributes = openInNewTab ? 'target="_blank" rel="noopener"' : "";
         const openButton = hasPdf
-          ? `<a class="archive-pdf-button" href="${escapeHtml(openPath)}" ${targetAttributes} aria-label="OUVRIR PDF"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>`
+          ? `<a class="archive-pdf-button js-open-archive-pdf" href="${escapeHtml(openPath)}" ${targetAttributes} aria-label="OUVRIR PDF" data-local-url="${escapeHtml(openLocalUrl)}" data-remote-url="${escapeHtml(openRemoteUrl)}" data-public-url="${escapeHtml(publicUrl)}" data-filename="${escapeHtml(filename)}"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>`
           : "-";
         const deleteButton = hasPdf && !entry?.__isWorkflowSynthetic
           ? `<button type="button" class="table-link js-delete-archive-row" data-archive-id="${escapeHtml(String(entry.id || ""))}">SUPPRIMER</button>`
@@ -10727,7 +11075,7 @@ function renderDocumentsArchivePage() {
          <td>${getDocumentArchiveStatusCellMarkup(workflowStatus)}</td>
         <td>${escapeHtml(String(getArchiveDisplayedTotalEffets(entry)))}</td>
         <td>${formatAmountWithEuro(entry.totalFacturable || 0)}</td>
-        <td>${escapeHtml(getDocumentArchiveVersionLabel(entry))}</td>
+        <td title="${escapeHtml(localPathInfo)}">${escapeHtml(getDocumentArchiveVersionLabel(entry))}</td>
         <td class="archive-actions-cell">${openButton} ${deleteButton}</td>
       </tr>`;
       }
@@ -10809,9 +11157,43 @@ function bindArchiveRowActions() {
     return;
   }
 
-  body.addEventListener("click", (event) => {
+  body.addEventListener("click", async (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const openPdfLink = target.closest(".js-open-archive-pdf");
+    if (openPdfLink instanceof HTMLAnchorElement && getDataBackendMode() === "LOCAL_API") {
+      const localUrl = String(openPdfLink.dataset.localUrl || "").trim();
+      const remoteUrl = String(openPdfLink.dataset.remoteUrl || "").trim();
+      const publicUrl = String(openPdfLink.dataset.publicUrl || "").trim();
+      const legacyUrl = String(openPdfLink.getAttribute("href") || "").trim();
+      if (localUrl) {
+        event.preventDefault();
+        try {
+          const response = await fetch(localUrl, { method: "HEAD", cache: "no-store" });
+          if (response.ok) {
+            window.open(localUrl, "_blank", "noopener");
+            return;
+          }
+        } catch (error) {
+          // fallback to remote URL below
+        }
+      }
+      if (remoteUrl) {
+        event.preventDefault();
+        window.open(remoteUrl, "_blank", "noopener");
+        return;
+      }
+      if (publicUrl) {
+        event.preventDefault();
+        window.open(publicUrl, "_blank", "noopener");
+        return;
+      }
+      if (legacyUrl) {
+        event.preventDefault();
+        window.open(legacyUrl, "_blank", "noopener");
+      }
       return;
     }
     const deleteButton = target.closest(".js-delete-archive-row");
@@ -16339,12 +16721,12 @@ async function saveDataToFile(options = {}) {
         saveAlertText = alertText || "DONNEES MISES A JOUR VIA BACKEND";
         saveSource = "BACKEND";
       } else if (mode === "LOCAL_API") {
-        const response = await fetch("/api/save", {
+        const response = await fetch("/api/state/save", {
           method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(state.data),
+        body: JSON.stringify({ data: state.data }),
       });
 
         if (!response.ok) {
@@ -16388,7 +16770,7 @@ async function saveDataToFile(options = {}) {
     }
     if (shouldReloadAfter) {
       try {
-        await reloadData(mode === "SUPABASE" ? "RELECTURE DES DONNEES SUPABASE..." : "RELECTURE DE data.json...");
+        await reloadData(mode === "SUPABASE" ? "RELECTURE DES DONNEES SUPABASE..." : "RELECTURE DES DONNEES LOCALES...");
       } catch (reloadError) {
         console.error(reloadError);
         showDataStatus("SAUVEGARDE OK - RELECTURE IMPOSSIBLE");
