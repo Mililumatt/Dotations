@@ -4691,6 +4691,7 @@ function migrateDataModel(options = {}) {
       publicUrl: String(entry.publicUrl || ""),
       openRemoteUrl: String(entry.openRemoteUrl || ""),
       storageStatus: String(entry.storageStatus || ""),
+      pdfQualityStatus: normalizePdfQualityStatus(entry.pdfQualityStatus || ""),
       metadataPath: String(entry.metadataPath || ""),
       dateArchivage: String(entry.dateArchivage || ""),
       fingerprint: isLegacyArrivalArchiveFingerprint(entry.fingerprint) ? "" : String(entry.fingerprint || ""),
@@ -10583,13 +10584,49 @@ function resolveArchivePdfLocations(pdfPath, existing = {}) {
 }
 
 function getArchivePreferredOpenPath(entry) {
+  return resolveArchiveOpenTarget(entry).url;
+}
+
+function normalizePdfQualityStatus(value) {
+  const normalized = normalizeText(value);
+  if (normalized === "VALID") return "VALID";
+  if (normalized.startsWith("INVALID_LOGIN")) return "INVALID_LOGIN";
+  if (normalized.startsWith("INVALID_TOO_SMALL")) return "INVALID_TOO_SMALL";
+  if (normalized.startsWith("INVALID_BLANK")) return "INVALID_BLANK";
+  if (normalized.startsWith("INVALID")) return "INVALID_BLANK";
+  return "UNKNOWN";
+}
+
+function resolveArchiveOpenTarget(entry) {
   const localUrl = String(entry?.openLocalUrl || "").trim();
   const remoteUrl = String(entry?.openRemoteUrl || entry?.publicUrl || "").trim();
   const legacyUrl = getDocumentArchiveOpenPath(entry);
-  if (getDataBackendMode() === "LOCAL_API") {
-    return localUrl || remoteUrl || legacyUrl || "";
+  const pdfQualityStatus = normalizePdfQualityStatus(entry?.pdfQualityStatus);
+  const backendMode = getDataBackendMode();
+  if (pdfQualityStatus.startsWith("INVALID")) {
+    return { url: legacyUrl || "", source: legacyUrl ? "legacy" : "", qualityIssue: pdfQualityStatus };
   }
-  return remoteUrl || legacyUrl || localUrl || "";
+  if (pdfQualityStatus === "UNKNOWN" && legacyUrl) {
+    return { url: legacyUrl, source: "legacy", qualityIssue: "UNKNOWN" };
+  }
+  if (backendMode === "LOCAL_API") {
+    if (localUrl) return { url: localUrl, source: "local", qualityIssue: pdfQualityStatus };
+    if (remoteUrl) return { url: remoteUrl, source: "remote", qualityIssue: pdfQualityStatus };
+    return { url: legacyUrl || "", source: legacyUrl ? "legacy" : "", qualityIssue: pdfQualityStatus };
+  }
+  if (remoteUrl) return { url: remoteUrl, source: "remote", qualityIssue: pdfQualityStatus };
+  if (legacyUrl) return { url: legacyUrl, source: "legacy", qualityIssue: pdfQualityStatus };
+  if (localUrl) return { url: localUrl, source: "local", qualityIssue: pdfQualityStatus };
+  return { url: "", source: "", qualityIssue: pdfQualityStatus };
+}
+
+function handleArchiveOpenClick(archive, fallbackEntry = null) {
+  const resolved = resolveArchiveOpenTarget(archive || fallbackEntry || {});
+  if (!resolved.url) {
+    return false;
+  }
+  window.open(resolved.url, "_blank", "noopener");
+  return true;
 }
 
 function getArchiveEntrySites(entry) {
@@ -10659,6 +10696,9 @@ function buildDocumentArchiveEntry(person, docType, pdfPath, metadataPath, archi
     publicUrl: String(archiveDetails?.publicUrl || locations.publicUrl || ""),
     openRemoteUrl: String(archiveDetails?.openRemoteUrl || locations.openRemoteUrl || ""),
     storageStatus: String(archiveDetails?.storageStatus || existingEntry?.storageStatus || ""),
+    pdfQualityStatus: normalizePdfQualityStatus(
+      archiveDetails?.pdfQualityStatus || existingEntry?.pdfQualityStatus || "VALID"
+    ),
     metadataPath: String(metadataPath || ""),
     dateArchivage: getCurrentSignatureTimestamp(),
   };
@@ -11047,7 +11087,8 @@ function renderDocumentsArchivePage() {
         const workflowStatus = String(
           entry?.__workflowStatus || resolveWorkflowStatus(entry, person)
         );
-        const openPath = getArchivePreferredOpenPath(entry);
+        const openResolution = resolveArchiveOpenTarget(entry);
+        const openPath = String(openResolution.url || "");
         const hasPdf = Boolean(openPath);
         const typeLabel = normalizeText(entry.typeDocument || "");
         const typeIcon = typeLabel === "SORTIE" ? "🔴" : typeLabel === "ARRIVEE" ? "🟢" : "⚪";
@@ -11057,10 +11098,9 @@ function renderDocumentsArchivePage() {
         const publicUrl = String(entry?.publicUrl || "").trim();
         const filename = String(entry?.filename || "").trim();
         const localPathInfo = String(entry?.localPath || "").trim();
-        const openInNewTab = hasPdf && !isHostedPdfDocumentPath(openPath);
-        const targetAttributes = openInNewTab ? 'target="_blank" rel="noopener"' : "";
+        const targetAttributes = 'target="_blank" rel="noopener"';
         const openButton = hasPdf
-          ? `<a class="archive-pdf-button js-open-archive-pdf" href="${escapeHtml(openPath)}" ${targetAttributes} aria-label="OUVRIR PDF" data-local-url="${escapeHtml(openLocalUrl)}" data-remote-url="${escapeHtml(openRemoteUrl)}" data-public-url="${escapeHtml(publicUrl)}" data-filename="${escapeHtml(filename)}"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>`
+          ? `<a class="archive-pdf-button js-open-archive-pdf" href="#" ${targetAttributes} aria-label="OUVRIR PDF" data-archive-id="${escapeHtml(String(entry?.id || ""))}" data-local-url="${escapeHtml(openLocalUrl)}" data-remote-url="${escapeHtml(openRemoteUrl)}" data-public-url="${escapeHtml(publicUrl)}" data-legacy-url="${escapeHtml(getDocumentArchiveOpenPath(entry))}" data-filename="${escapeHtml(filename)}"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>`
           : "-";
         const deleteButton = hasPdf && !entry?.__isWorkflowSynthetic
           ? `<button type="button" class="table-link js-delete-archive-row" data-archive-id="${escapeHtml(String(entry.id || ""))}">SUPPRIMER</button>`
@@ -11163,36 +11203,21 @@ function bindArchiveRowActions() {
       return;
     }
     const openPdfLink = target.closest(".js-open-archive-pdf");
-    if (openPdfLink instanceof HTMLAnchorElement && getDataBackendMode() === "LOCAL_API") {
-      const localUrl = String(openPdfLink.dataset.localUrl || "").trim();
-      const remoteUrl = String(openPdfLink.dataset.remoteUrl || "").trim();
-      const publicUrl = String(openPdfLink.dataset.publicUrl || "").trim();
-      const legacyUrl = String(openPdfLink.getAttribute("href") || "").trim();
-      if (localUrl) {
-        event.preventDefault();
-        try {
-          const response = await fetch(localUrl, { method: "HEAD", cache: "no-store" });
-          if (response.ok) {
-            window.open(localUrl, "_blank", "noopener");
-            return;
-          }
-        } catch (error) {
-          // fallback to remote URL below
-        }
-      }
-      if (remoteUrl) {
-        event.preventDefault();
-        window.open(remoteUrl, "_blank", "noopener");
+    if (openPdfLink instanceof HTMLAnchorElement) {
+      event.preventDefault();
+      const archiveId = String(openPdfLink.dataset.archiveId || "").trim();
+      const archiveEntry = archiveId && Array.isArray(state.data?.documentsArchives)
+        ? state.data.documentsArchives.find((entry) => String(entry?.id || "") === archiveId)
+        : null;
+      const fallbackEntry = {
+        openLocalUrl: String(openPdfLink.dataset.localUrl || "").trim(),
+        openRemoteUrl: String(openPdfLink.dataset.remoteUrl || "").trim(),
+        publicUrl: String(openPdfLink.dataset.publicUrl || "").trim(),
+        pdfPath: String(openPdfLink.dataset.legacyUrl || "").trim(),
+        pdfQualityStatus: "UNKNOWN",
+      };
+      if (!handleArchiveOpenClick(archiveEntry, fallbackEntry)) {
         return;
-      }
-      if (publicUrl) {
-        event.preventDefault();
-        window.open(publicUrl, "_blank", "noopener");
-        return;
-      }
-      if (legacyUrl) {
-        event.preventDefault();
-        window.open(legacyUrl, "_blank", "noopener");
       }
       return;
     }
