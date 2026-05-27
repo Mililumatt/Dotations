@@ -11089,7 +11089,8 @@ function renderDocumentsArchivePage() {
         );
         const openResolution = resolveArchiveOpenTarget(entry);
         const openPath = String(openResolution.url || "");
-        const hasPdf = Boolean(openPath);
+        const legacyOpenPath = getDocumentArchiveOpenPath(entry);
+        const hasPdf = Boolean(openPath || legacyOpenPath);
         const typeLabel = normalizeText(entry.typeDocument || "");
         const typeIcon = typeLabel === "SORTIE" ? "🔴" : typeLabel === "ARRIVEE" ? "🟢" : "⚪";
         const typeTitle = typeLabel || "TYPE INCONNU";
@@ -11100,7 +11101,7 @@ function renderDocumentsArchivePage() {
         const localPathInfo = String(entry?.localPath || "").trim();
         const targetAttributes = 'target="_blank" rel="noopener"';
         const openButton = hasPdf
-          ? `<a class="archive-pdf-button js-open-archive-pdf" href="#" ${targetAttributes} aria-label="OUVRIR PDF" data-archive-id="${escapeHtml(String(entry?.id || ""))}" data-local-url="${escapeHtml(openLocalUrl)}" data-remote-url="${escapeHtml(openRemoteUrl)}" data-public-url="${escapeHtml(publicUrl)}" data-legacy-url="${escapeHtml(getDocumentArchiveOpenPath(entry))}" data-filename="${escapeHtml(filename)}"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>`
+          ? `<a class="archive-pdf-button js-open-archive-pdf" href="#" ${targetAttributes} aria-label="OUVRIR PDF" data-archive-id="${escapeHtml(String(entry?.id || ""))}" data-local-url="${escapeHtml(openLocalUrl)}" data-remote-url="${escapeHtml(openRemoteUrl)}" data-public-url="${escapeHtml(publicUrl)}" data-legacy-url="${escapeHtml(legacyOpenPath)}" data-filename="${escapeHtml(filename)}"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>`
           : "-";
         const deleteButton = hasPdf && !entry?.__isWorkflowSynthetic
           ? `<button type="button" class="table-link js-delete-archive-row" data-archive-id="${escapeHtml(String(entry.id || ""))}">SUPPRIMER</button>`
