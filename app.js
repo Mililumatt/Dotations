@@ -17243,69 +17243,6 @@ window.resetNetworkDebug = () => {
 };
 
 loadData();
-    const renderEmailOptions = (emails = []) => {
-      if (!emailSelect) return;
-      const normalized = Array.from(
-        new Set((emails || []).map((entry) => String(entry || "").trim().toLowerCase()).filter(Boolean)),
-      );
-      emailSelect.innerHTML = `
-        <option value="">Selectionner un compte...</option>
-        ${normalized.map((email) => `<option value="${escapeHtml(email)}">${escapeHtml(email)}</option>`).join("")}
-        <option value="__manual__">Autre email...</option>
-      `;
-    };
-
-    const syncEmailInputFromSelect = () => {
-      if (!emailInput || !emailSelect) return;
-      const selected = String(emailSelect.value || "");
-      if (!selected) {
-        emailInput.value = "";
-        emailInput.readOnly = false;
-        return;
-      }
-      if (selected === "__manual__") {
-        emailInput.value = "";
-        emailInput.readOnly = false;
-        emailInput.focus();
-        return;
-      }
-      emailInput.value = selected;
-      emailInput.readOnly = true;
-    };
-
-    if (emailSelect) {
-      emailSelect.addEventListener("change", syncEmailInputFromSelect);
-      if (primaryEmail) {
-        emailSelect.value = primaryEmail;
-      } else if (emailSelect.options.length > 2) {
-        emailSelect.selectedIndex = 1;
-      } else {
-        emailSelect.value = "__manual__";
-      }
-      syncEmailInputFromSelect();
-    }
-
-    const session = getStoredSupabaseSession();
-    const sessionToken = String(session?.access_token || "").trim();
-    if (sessionToken) {
-      fetchLoginEmailSuggestionsFromBackend(sessionToken)
-        .then((emails) => {
-          if (!emails.length) return;
-          const merged = mergeLoginEmailSuggestions(emails);
-          renderEmailOptions(merged);
-          if (emailSelect) {
-            if (primaryEmail && merged.includes(primaryEmail)) {
-              emailSelect.value = primaryEmail;
-            } else if (merged[0]) {
-              emailSelect.value = merged[0];
-            } else {
-              emailSelect.value = "__manual__";
-            }
-            syncEmailInputFromSelect();
-          }
-        })
-        .catch(() => null);
-    }
 
 
 
