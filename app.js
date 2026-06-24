@@ -8645,7 +8645,7 @@ function validateEffectFormContext(form, options = {}) {
   }
   const missing = {
     typeEffet: !context.typeEffet,
-    referenceSite: Boolean(context.siteRequired && !context.resolvedReferenceSite),
+    referenceSite: Boolean(context.siteRequired && !context.referenceSite),
     referenceEffet: Boolean(context.usesReferenceCatalog && !context.referenceEffetId),
     dateRemise: !context.dateRemise,
     dateRetour: Boolean(context.returnDateRequired && !context.dateRetour),
@@ -11243,7 +11243,7 @@ function validateDateFieldFormat(value, label) {
   if (!isStrictIsoCalendarDate(raw)) {
     return {
       ok: false,
-      message: `${label} INVALIDE (FORMAT ATTENDU : AAAA-MM-JJ)`,
+      message: `${label} INVALIDE (FORMAT ATTENDU : JJ/MM/AAAA)`,
     };
   }
   const year = Number(raw.slice(0, 4));
