@@ -38,6 +38,7 @@ const state = {
   mobileSignaturePollStateSignature: "",
   mobileSignaturePollSyncModeSignature: "",
   mobileSignaturePollStatusSignature: "",
+  mobileSignatureRecoveryModalOpen: false,
   mobileSignatureVisibilityBound: false,
   browserStorageQuotaLevel: 0,
   mobileSignatureNetworkInfo: null,
@@ -59,6 +60,7 @@ const state = {
   referenceRenderContext: null,
   urgentMode: false,
   lastSaveInfo: null,
+  lastPersistedDataSignature: null,
   effectRowFlash: null,
   effectTableFlash: null,
   autoPdfGenerationInFlight: false,
@@ -76,6 +78,9 @@ const state = {
   latestDataFetchPromise: null,
   latestDataFetchAt: 0,
   latestDataSnapshotCache: null,
+  hostedSyncState: "unknown",
+  hostedSyncInFlight: false,
+  hostedSyncDetails: "",
   documentRenderCache: { arrival: "", exit: "" },
   documentCostRenderCache: { arrival: "", exit: "", mobile: "" },
   documentViewRenderCache: { arrival: "", exit: "" },
@@ -138,6 +143,7 @@ const ALL_TYPES_VALUE = "TOUS TYPES";
 const ALL_DESIGNATIONS_VALUE = "__ALL_DESIGNATIONS__";
 const STOCK_SYNTHETIC_REFERENCE_PREFIX = "__STOCK_SYNTHETIC__:";
 const STOCK_EMPTY_DESIGNATION_LABEL = "SANS DESIGNATION";
+const EFFECT_TYPES_WITHOUT_REFERENCE_DESIGNATION = ["RADIATEUR APPOINT"];
 const EFFECT_STATUS_CAUSES = ["HS", "PERTE", "VOL", "NON RENDU", "DETRUIT"];
 const BILLABLE_EFFECT_CAUSES = ["PERTE", "VOL", "NON RENDU", "DETRUIT"];
 const NON_RENDU_REFERENCE_COSTS = {
@@ -145,7 +151,9 @@ const NON_RENDU_REFERENCE_COSTS = {
   "CARTE TURBOSELF": 10,
   CLE: 5,
   "CLE CES": 50,
+  "RADIATEUR APPOINT": 45,
   "TELECOMMANDE URMET": 40,
+  VENTILATEUR: 30,
 };
 const MOBILE_SIGNATURE_REQUEST_TTL_MS = 10 * 60 * 1000;
 const SUPABASE_PROJECT_URL = "https://dphrvdhqhgycmllietuk.supabase.co";
@@ -454,9 +462,13 @@ function normalizePricingKey(value, { cause = false } = {}) {
 
 function getFallbackNonRenduCost(typeEffet, designation = "") {
   const normalizedType = normalizePricingKey(typeEffet);
+  const normalizedDesignation = normalizePricingKey(designation);
   if (!normalizedType) return 0;
   if (normalizedType === "CLE") {
     return isCesKeyDesignation(designation) ? 50 : 5;
+  }
+  if (normalizedType === "VENTILATEUR") {
+    return normalizedDesignation === "VENTILATEUR SUR PIED" ? 35 : 30;
   }
   return NON_RENDU_REFERENCE_COSTS[normalizedType] || 0;
 }
@@ -3125,7 +3137,16 @@ async function saveSupabaseSignatureWithRebase({
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const latestPayload = await fetchSupabaseStateData();
     const persons = Array.isArray(latestPayload?.personnes) ? latestPayload.personnes : [];
-    const person = persons.find((entry) => String(entry?.id || "") === normalizedPersonId);
+    const requests = Array.isArray(latestPayload?.demandesSignatureMobile) ? latestPayload.demandesSignatureMobile : [];
+    const request = requests.find((entry) => String(entry?.token || "") === mobileRequestToken);
+    let person = persons.find((entry) => String(entry?.id || "") === normalizedPersonId);
+    if (!person && request) {
+      person = buildMobileSignaturePersonFromRequest(request, normalizedPersonId);
+      if (person) {
+        latestPayload.personnes = persons;
+        persons.push(person);
+      }
+    }
     if (!person) throw new Error("PERSONNE INTROUVABLE POUR SAUVEGARDE SIGNATURE");
 
     setSignatureValue(
@@ -3140,11 +3161,7 @@ async function saveSupabaseSignatureWithRebase({
     if (normalizedDocType === "exit" && String(signatureValue || "")) {
       applySignedExitCompletion(person);
     }
-    if (mobileRequestToken) {
-      const requests = Array.isArray(latestPayload?.demandesSignatureMobile) ? latestPayload.demandesSignatureMobile : [];
-      const request = requests.find((entry) => String(entry?.token || "") === mobileRequestToken);
-      if (request) markMobileSignatureRequestSigned(request);
-    }
+    if (request) markMobileSignatureRequestSigned(request);
 
     try {
       await saveSupabaseStateData(latestPayload);
@@ -3161,7 +3178,16 @@ async function saveSupabaseSignatureWithRebase({
   try {
     const latestPayload = await fetchSupabaseStateData();
     const persons = Array.isArray(latestPayload?.personnes) ? latestPayload.personnes : [];
-    const person = persons.find((entry) => String(entry?.id || "") === normalizedPersonId);
+    const requests = Array.isArray(latestPayload?.demandesSignatureMobile) ? latestPayload.demandesSignatureMobile : [];
+    const request = requests.find((entry) => String(entry?.token || "") === mobileRequestToken);
+    let person = persons.find((entry) => String(entry?.id || "") === normalizedPersonId);
+    if (!person && request) {
+      person = buildMobileSignaturePersonFromRequest(request, normalizedPersonId);
+      if (person) {
+        latestPayload.personnes = persons;
+        persons.push(person);
+      }
+    }
     if (!person) throw new Error("PERSONNE INTROUVABLE POUR SAUVEGARDE SIGNATURE");
     setSignatureValue(
       person,
@@ -3175,11 +3201,7 @@ async function saveSupabaseSignatureWithRebase({
     if (normalizedDocType === "exit" && String(signatureValue || "")) {
       applySignedExitCompletion(person);
     }
-    if (mobileRequestToken) {
-      const requests = Array.isArray(latestPayload?.demandesSignatureMobile) ? latestPayload.demandesSignatureMobile : [];
-      const request = requests.find((entry) => String(entry?.token || "") === mobileRequestToken);
-      if (request) markMobileSignatureRequestSigned(request);
-    }
+    if (request) markMobileSignatureRequestSigned(request);
     await forceSaveSupabaseStateData(latestPayload);
     state.data = latestPayload;
     return latestPayload;
@@ -3337,6 +3359,116 @@ async function fetchLatestDataSnapshot({ forceFresh = false } = {}) {
   }
 }
 
+async function fetchHostedSupabaseStateSnapshot() {
+  if (!isSupabaseConfigured()) {
+    throw new Error("SUPABASE NON CONFIGURE");
+  }
+  const endpoint = `${getSupabaseRestEndpoint()}?id=eq.${encodeURIComponent(
+    SUPABASE_APP_STATE_ID
+  )}&select=payload,revision&limit=1`;
+  const response = await fetch(endpoint, {
+    headers: getSupabaseHeaders(),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`SUPABASE LOAD FAILED:${response.status}`);
+  }
+  const rows = await response.json();
+  if (!Array.isArray(rows) || !rows.length || !rows[0]?.payload) {
+    throw new Error("SUPABASE EMPTY PAYLOAD");
+  }
+  const revision = Number(rows[0]?.revision);
+  if (Number.isFinite(revision)) {
+    state.supabaseRevision = revision;
+  }
+  return rows[0].payload;
+}
+
+function mergeHostedMobileSignaturesIntoLocal(localPayload, hostedPayload, personId, docType) {
+  if (!localPayload || !hostedPayload) {
+    return false;
+  }
+  const normalizedPersonId = String(personId || "");
+  const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
+  const localPerson = Array.isArray(localPayload.personnes)
+    ? localPayload.personnes.find((entry) => String(entry?.id || "") === normalizedPersonId)
+    : null;
+  const hostedPerson = Array.isArray(hostedPayload.personnes)
+    ? hostedPayload.personnes.find((entry) => String(entry?.id || "") === normalizedPersonId)
+    : null;
+  if (!localPerson || !hostedPerson) {
+    return false;
+  }
+
+  let changed = false;
+  ["personnel", "representant"].forEach((signer) => {
+    const hostedEntry = hostedPerson.signatures?.[normalizedDocType]?.[signer] || {};
+    const hostedImage = String(hostedEntry.image || "").trim();
+    const hostedValidatedAt = String(hostedEntry.validatedAt || "").trim();
+    const hostedStorageRef = String(hostedEntry.storageRef || "").trim();
+    const hostedStoragePublicUrl = String(hostedEntry.storagePublicUrl || "").trim();
+    const hostedHasSignature = Boolean(hostedImage || hostedStorageRef || hostedStoragePublicUrl);
+    if (!hostedHasSignature || !hostedValidatedAt) {
+      return;
+    }
+    const localEntry = localPerson.signatures?.[normalizedDocType]?.[signer] || {};
+    const localImage = String(localEntry.image || "").trim();
+    const localValidatedAt = String(localEntry.validatedAt || "").trim();
+    const hostedMs = Date.parse(hostedValidatedAt) || 0;
+    const localMs = Date.parse(localValidatedAt) || 0;
+    if (localImage === hostedImage && localValidatedAt === hostedValidatedAt) {
+      return;
+    }
+    if (localImage && localMs > hostedMs) {
+      return;
+    }
+    setSignatureValue(
+      localPerson,
+      normalizedDocType,
+      signer,
+      hostedImage,
+      hostedValidatedAt,
+      hostedStorageRef,
+      hostedStoragePublicUrl
+    );
+    changed = true;
+  });
+
+  const localRequests = Array.isArray(localPayload.demandesSignatureMobile)
+    ? localPayload.demandesSignatureMobile
+    : [];
+  const hostedRequests = Array.isArray(hostedPayload.demandesSignatureMobile)
+    ? hostedPayload.demandesSignatureMobile
+    : [];
+  const hostedByToken = new Map(
+    hostedRequests
+      .map((request) => [String(request?.token || ""), request])
+      .filter(([token]) => Boolean(token))
+  );
+  localRequests.forEach((localRequest) => {
+    const token = String(localRequest?.token || "");
+    const hostedRequest = hostedByToken.get(token);
+    if (!hostedRequest) {
+      return;
+    }
+    if (
+      String(localRequest.personId || "") !== normalizedPersonId ||
+      normalizeText(localRequest.docType || "") !== normalizeText(normalizedDocType)
+    ) {
+      return;
+    }
+    ["status", "validatedAt"].forEach((key) => {
+      const nextValue = String(hostedRequest?.[key] || "");
+      if (nextValue && String(localRequest?.[key] || "") !== nextValue) {
+        localRequest[key] = nextValue;
+        changed = true;
+      }
+    });
+  });
+
+  return changed;
+}
+
 function isLikelyLocalUrl(value) {
   const normalized = normalizeHttpUrl(value);
   if (!normalized) {
@@ -3433,7 +3565,7 @@ function formatCurrentUiTimestamp() {
 }
 
 function typeUsesReferenceCatalog(typeEffet) {
-  return ["CLE", "CLE CES"].includes(normalizeText(typeEffet));
+  return ["CLE", "CLE CES", "VENTILATEUR"].includes(normalizeText(typeEffet));
 }
 
 function getReferenceCatalogType(typeEffet) {
@@ -3454,14 +3586,14 @@ function getStockReferenceDesignation(reference) {
 
 function getStockGroupingDesignation(typeEffet, designation) {
   const normalizedType = normalizeText(typeEffet);
-  if (["BADGE INTRUSION", "CARTE TURBOSELF", "TELECOMMANDE URMET"].includes(normalizedType)) {
+  if (["BADGE INTRUSION", "CARTE TURBOSELF", "RADIATEUR APPOINT", "TELECOMMANDE URMET"].includes(normalizedType)) {
     return STOCK_EMPTY_DESIGNATION_LABEL;
   }
   return normalizeText(designation || "") || STOCK_EMPTY_DESIGNATION_LABEL;
 }
 
 function typeIgnoresStockDesignation(typeEffet) {
-  return ["BADGE INTRUSION", "CARTE TURBOSELF", "TELECOMMANDE URMET"].includes(normalizeText(typeEffet));
+  return ["BADGE INTRUSION", "CARTE TURBOSELF", "RADIATEUR APPOINT", "TELECOMMANDE URMET"].includes(normalizeText(typeEffet));
 }
 
 function getStockSyntheticReferenceValue(site, typeEffet, designation) {
@@ -3845,7 +3977,6 @@ function navigateWithAutoSave(url, mode = "href") {
     performPageNavigation(url, mode);
     return;
   }
-  const maxWaitMs = 220;
   let navigationDone = false;
   const navigateNow = () => {
     if (navigationDone) {
@@ -3854,16 +3985,18 @@ function navigateWithAutoSave(url, mode = "href") {
     navigationDone = true;
     performPageNavigation(url, mode);
   };
-  const fallbackTimer = window.setTimeout(() => {
-    navigateNow();
-  }, maxWaitMs);
-  runAutoSaveBeforeNavigation().finally(() => {
-    if (navigationDone) {
-      return;
-    }
-    window.clearTimeout(fallbackTimer);
-    navigateNow();
-  });
+  runAutoSaveBeforeNavigation()
+    .then((saved) => {
+      if (saved || !state.isDirty) {
+        navigateNow();
+        return;
+      }
+      showDataStatus("NAVIGATION BLOQUEE : SAUVEGARDE AUTOMATIQUE IMPOSSIBLE");
+    })
+    .catch((error) => {
+      console.error(error);
+      showDataStatus("NAVIGATION BLOQUEE : SAUVEGARDE AUTOMATIQUE IMPOSSIBLE");
+    });
 }
 
 function openPersonSheet(personId) {
@@ -3967,6 +4100,32 @@ function findMobileSignatureRequestByToken(token) {
   return (state.data?.demandesSignatureMobile || []).find((entry) => entry.token === token) || null;
 }
 
+function getMobileSignatureIdentityFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    personNom: normalizeText(params.get("personNom") || ""),
+    personPrenom: normalizeText(params.get("personPrenom") || ""),
+    personSite: normalizeText(params.get("personSite") || ""),
+    personTypePersonnel: normalizeText(params.get("personTypePersonnel") || ""),
+    personTypeContrat: normalizeText(params.get("personTypeContrat") || ""),
+    representativeNom: normalizeText(params.get("representativeNom") || ""),
+    representativeFonction: normalizeText(params.get("representativeFonction") || ""),
+  };
+}
+
+function applyMobileSignatureIdentityFromUrl(request) {
+  if (!request) {
+    return request;
+  }
+  const identity = getMobileSignatureIdentityFromUrl();
+  Object.entries(identity).forEach(([key, value]) => {
+    if (value && !String(request[key] || "").trim()) {
+      request[key] = value;
+    }
+  });
+  return request;
+}
+
 function buildFallbackMobileSignatureRequestFromUrl(token) {
   const normalizedToken = String(token || "").trim();
   if (!normalizedToken) {
@@ -3981,7 +4140,7 @@ function buildFallbackMobileSignatureRequestFromUrl(token) {
   }
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + MOBILE_SIGNATURE_REQUEST_TTL_MS);
-  return {
+  const request = {
     id: "DSM-FALLBACK",
     token: normalizedToken,
     personId,
@@ -3993,6 +4152,7 @@ function buildFallbackMobileSignatureRequestFromUrl(token) {
     validatedAt: "",
     fallbackFromUrl: true,
   };
+  return applyMobileSignatureIdentityFromUrl(request);
 }
 
 function getActiveMobileSignatureRequestContext(personId, docType) {
@@ -4073,12 +4233,22 @@ function createMobileSignatureRequest(personId, docType, signer = "personnel") {
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + MOBILE_SIGNATURE_REQUEST_TTL_MS);
   const normalizedSigner = normalizeMobileSignatureSigner(signer);
+  const person = (state.data?.personnes || []).find((entry) => String(entry?.id || "") === String(personId || "")) || null;
+  const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
+  const representative = person ? getRepresentativeInfo(person, normalizedDocType) : null;
   const request = {
     id: getNextId("DSM", state.data?.demandesSignatureMobile || []),
     token: generateMobileSignatureToken(),
     personId: String(personId || ""),
     docType: normalizeText(docType),
     signer: normalizedSigner.toUpperCase(),
+    personNom: normalizeText(person?.nom || ""),
+    personPrenom: normalizeText(person?.prenom || ""),
+    personSite: normalizeText(person?.site || ""),
+    personTypePersonnel: normalizeText(person?.typePersonnel || ""),
+    personTypeContrat: normalizeText(person?.typeContrat || ""),
+    representativeNom: normalizeText(representative?.nom || ""),
+    representativeFonction: normalizeText(representative?.fonction || ""),
     createdAt: createdAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
     status: "EN ATTENTE",
@@ -4088,11 +4258,60 @@ function createMobileSignatureRequest(personId, docType, signer = "personnel") {
   return request;
 }
 
+function enrichMobileSignatureRequestIdentity(request) {
+  if (!request || !state.data) {
+    return false;
+  }
+  const person = (state.data.personnes || []).find((entry) => String(entry?.id || "") === String(request.personId || "")) || null;
+  if (!person) {
+    return false;
+  }
+  const normalizedDocType = normalizeText(request.docType) === "EXIT" ? "exit" : "arrival";
+  const representative = getRepresentativeInfo(person, normalizedDocType);
+  const nextValues = {
+    personNom: normalizeText(person.nom || ""),
+    personPrenom: normalizeText(person.prenom || ""),
+    personSite: normalizeText(person.site || ""),
+    personTypePersonnel: normalizeText(person.typePersonnel || ""),
+    personTypeContrat: normalizeText(person.typeContrat || ""),
+    representativeNom: normalizeText(representative?.nom || ""),
+    representativeFonction: normalizeText(representative?.fonction || ""),
+  };
+  let changed = false;
+  Object.entries(nextValues).forEach(([key, value]) => {
+    if (value && String(request[key] || "") !== value) {
+      request[key] = value;
+      changed = true;
+    }
+  });
+  return changed;
+}
+
 function getMobileSignaturePageUrl(request, options = {}) {
   const includeSessionBridge = options?.includeSessionBridge !== false;
   const docType = normalizeText(request?.docType) === "EXIT" ? "exit" : "arrival";
   const signer = normalizeMobileSignatureSigner(request?.signer || "");
-  const relativeUrl = `signature-mobile.html?personId=${encodeURIComponent(request?.personId || "")}&docType=${encodeURIComponent(docType)}&token=${encodeURIComponent(request?.token || "")}&signer=${encodeURIComponent(signer)}`;
+  const params = new URLSearchParams({
+    personId: String(request?.personId || ""),
+    docType,
+    token: String(request?.token || ""),
+    signer,
+  });
+  [
+    "personNom",
+    "personPrenom",
+    "personSite",
+    "personTypePersonnel",
+    "personTypeContrat",
+    "representativeNom",
+    "representativeFonction",
+  ].forEach((key) => {
+    const value = String(request?.[key] || "").trim();
+    if (value) {
+      params.set(key, value);
+    }
+  });
+  const relativeUrl = `signature-mobile.html?${params.toString()}`;
   if (includeSessionBridge) {
     return appendSupabaseSessionBridgeParams(relativeUrl, options?.sessionBridgeOptions || {});
   }
@@ -4394,12 +4613,38 @@ async function syncDocumentMobileSignatureLinks(docType, personId) {
   renderMobileSignatureLink(docType, "representant", representantUrl);
 }
 
+async function pushMobileSignatureRequestToHosted(request) {
+  if (getDataBackendMode() !== "LOCAL_API") {
+    return true;
+  }
+  const response = await fetch("/api/sync/send-mobile-signature-request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      personId: String(request?.personId || ""),
+      docType: normalizeText(request?.docType || "") === "EXIT" ? "exit" : "arrival",
+      signer: normalizeMobileSignatureSigner(request?.signer || ""),
+      token: String(request?.token || ""),
+    }),
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload?.ok) {
+    const detail = String(payload?.detail || payload?.error || `HTTP_${response.status}`);
+    throw new Error(detail || "MOBILE_SIGNATURE_REQUEST_PUSH_FAILED");
+  }
+  return true;
+}
+
 async function openMobileSignatureRequest(docType, personId, signer = "personnel") {
   if (!state.data) {
     showDataStatus("DONNEES NON CHARGEES");
     return;
   }
   const normalizedSigner = normalizeMobileSignatureSigner(signer);
+  const person = (state.data?.personnes || []).find((entry) => String(entry?.id || "") === String(personId || "")) || null;
+  const representativeDraftChanged =
+    normalizedSigner === "representant" ? captureRepresentativeIdentityDraftToState(docType, person) : false;
   if (normalizedSigner === "representant" && !hasRepresentativeIdentityForDocument(docType)) {
     showDataStatus("IDENTITE DU REPRESENTANT OBLIGATOIRE AVANT VALIDATION");
     window.alert("VOUS DEVEZ IDENTIFIER L'IDENTITE DU REPRESENTANT DE L'ETABLISSEMENT POUR VALIDATION.");
@@ -4407,22 +4652,153 @@ async function openMobileSignatureRequest(docType, personId, signer = "personnel
     return;
   }
 
+  const signatureWindow = window.open("", "_blank");
+  if (!signatureWindow) {
+    showDataStatus("AUTORISER L'OUVERTURE DE LA PAGE DE SIGNATURE DANS LE NAVIGATEUR");
+    window.alert("LE NAVIGATEUR A BLOQUE L'OUVERTURE DE LA PAGE DE SIGNATURE. AUTORISEZ LES POPUPS POUR DOTATIONS.");
+    return;
+  }
+  try {
+    signatureWindow.opener = null;
+    signatureWindow.document.title = "SIGNATURE MOBILE";
+    signatureWindow.document.body.style.fontFamily = "Arial, sans-serif";
+    signatureWindow.document.body.style.padding = "24px";
+    signatureWindow.document.body.textContent = "PREPARATION DE LA PAGE DE SIGNATURE...";
+  } catch (error) {
+    // noop: some browsers restrict access even to the just-opened blank window.
+  }
+  showMobileSignatureRecoveryModal("PAGE DE SIGNATURE EN PREPARATION. EN ATTENTE DU RETOUR DE SIGNATURE.");
+
   let request = getActiveMobileSignatureRequest(personId, docType, normalizedSigner);
   if (!request) {
     request = createMobileSignatureRequest(personId, docType, normalizedSigner);
     markDirty();
-    await saveDataToFile({ silent: true });
+    await saveDataToFile({ silent: true, reloadAfter: false, autoPushHosted: false });
+  } else if (representativeDraftChanged || enrichMobileSignatureRequestIdentity(request)) {
+    markDirty();
+    enrichMobileSignatureRequestIdentity(request);
+    await saveDataToFile({ silent: true, reloadAfter: false, autoPushHosted: false });
+  }
+  if (getDataBackendMode() === "LOCAL_API") {
+    if (state.isDirty) {
+      await saveDataToFile({ silent: true, reloadAfter: false, autoPushHosted: false });
+    }
+    if (!state.isDirty) {
+      try {
+        await pushMobileSignatureRequestToHosted(request);
+      } catch (error) {
+        const message = String(error?.message || error || "MOBILE_SIGNATURE_REQUEST_PUSH_FAILED");
+        showDataStatus("SIGNATURE MOBILE BLOQUEE : HEBERGE NON MIS A JOUR");
+        hideMobileSignatureRecoveryModal();
+        try {
+          signatureWindow.document.body.textContent = `SIGNATURE MOBILE BLOQUEE : ${message}`;
+        } catch (writeError) {
+          // ignore blank-window write failures
+        }
+        try {
+          signatureWindow.close();
+        } catch (closeError) {
+          // ignore close failures
+        }
+        return;
+      }
+    }
   }
 
   const absoluteUrl = await getAbsoluteMobileSignatureUrl(request);
-  window.open(absoluteUrl, "_blank", "noopener");
+  try {
+    signatureWindow.location.replace(absoluteUrl);
+    signatureWindow.focus();
+  } catch (error) {
+    const fallbackWindow = window.open(absoluteUrl, "_blank", "noopener");
+    if (!fallbackWindow) {
+      showDataStatus("PAGE DE SIGNATURE PRETE - OUVERTURE BLOQUEE PAR LE NAVIGATEUR");
+      renderMobileSignatureLink(docType, normalizedSigner, absoluteUrl);
+      return;
+    }
+  }
   renderMobileSignatureLink(docType, normalizedSigner, absoluteUrl);
 
   showDataStatus("PAGE DE SIGNATURE MOBILE OUVERTE");
+  showMobileSignatureRecoveryModal("PAGE DE SIGNATURE OUVERTE. EN ATTENTE DU RETOUR DE SIGNATURE.");
   syncMobileSignaturePolling();
 }
 
+
+
+async function refreshHostedSyncStatusOnLocalOpen() {
+  if (getDataBackendMode() !== "LOCAL_API") return;
+  if (state.isDirty) {
+    state.hostedSyncState = "pending";
+    renderHostedSyncUi();
+    return;
+  }
+  try {
+    const response = await fetch("/api/local/check-before-send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok && payload?.ok) {
+      state.hostedSyncState = "up_to_date";
+      state.hostedSyncDetails = "";
+    } else {
+      state.hostedSyncState = payload?.supabaseReachable === false ? "inaccessible" : "blocked";
+      state.hostedSyncDetails = JSON.stringify(payload?.technicalDetails || payload || {}, null, 2);
+    }
+  } catch (error) {
+    state.hostedSyncState = "inaccessible";
+    state.hostedSyncDetails = String(error?.message || error || "");
+  }
+  renderHostedSyncUi();
+}
+function isRescueModalRequest() {
+  try {
+    const url = new URL(window.location.href);
+    const path = String(url.pathname || "").replace(/\/+$/, "") || "/";
+    return path === "/rescue" || url.searchParams.has("rescue");
+  } catch {
+    return false;
+  }
+}
+
+async function openRescueModalFromCurrentCheck() {
+  if (typeof openRescueActionModal !== "function") return;
+  let hostedState = "blocked";
+  let detailsRaw = "";
+  try {
+    const response = await fetch("/api/local/check-before-send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const payload = await response.json().catch(() => ({}));
+    hostedState = payload?.ok ? "pending" : (payload?.supabaseReachable === false ? "inaccessible" : "blocked");
+    detailsRaw = JSON.stringify(payload?.technicalDetails || payload || {}, null, 2);
+    state.hostedSyncState = hostedState;
+    state.hostedSyncDetails = detailsRaw;
+    if (response.ok && payload?.ok) {
+      state.hostedSyncState = "up_to_date";
+      state.hostedSyncDetails = "";
+      renderHostedSyncUi();
+      window.location.replace(`${window.location.origin}/`);
+      return;
+    }
+  } catch (error) {
+    hostedState = "blocked";
+    detailsRaw = JSON.stringify({ errors: [`LOCAL_CHECK_FAILED:${String(error?.message || error || "")}`] }, null, 2);
+  }
+  openRescueActionModal({ detailsRaw, hostedState });
+}
+
+function scheduleRescueModalFromUrl() {
+  if (!isRescueModalRequest()) return;
+  if (getDataBackendMode() !== "LOCAL_API") return;
+  window.setTimeout(() => {
+    void openRescueModalFromCurrentCheck();
+  }, 350);
+}
 async function loadData() {
+  bindBeforeUnloadGuard();
   bindPdfModalCleanup();
   reorderOverviewSearchBlock();
   importSupabaseSessionFromUrlIfPresent();
@@ -4435,6 +4811,8 @@ async function loadData() {
   bindAutoSaveOnNavigation();
   bindGlobalResetSelectionClear();
   bindGlobalShortcuts();
+  bindArchiveFilterDelegation();
+  bindArchiveFilterValueWatcher();
   bindLoadButton();
   bindSaveButtons();
   bindDirtyFallbackTracking();
@@ -4464,12 +4842,19 @@ async function loadData() {
   }
   renderRoleBadge();
   refreshCurrentUserRoleLabel();
+  if (getDataBackendMode() === "LOCAL_API") {
+    state.hostedSyncState = state.isDirty ? "pending" : "unknown";
+    ensureHostedSyncUi();
+    renderHostedSyncUi();
+    maybeOpenRescueModalPreview();
+  }
 
   const workingData = loadWorkingData();
   if (workingData) {
     state.data = workingData;
     migrateDataModel({ suppressDirty: true });
     state.isDirty = true;
+    state.lastPersistedDataSignature = null;
     clearUndoStack();
     applyMeta();
     hydrateStaticLists();
@@ -4478,10 +4863,14 @@ async function loadData() {
     showDataStatus("DONNEES EN COURS REPRISES - SAUVEGARDER POUR LES RENDRE DEFINITIVES");
     void updateBrowserStorageAlert();
     scheduleBackgroundAutoSave();
+    scheduleRescueModalFromUrl();
+    void refreshHostedSyncStatusOnLocalOpen();
     return;
   }
 
   await reloadData("OUVERTURE DES DONNEES...");
+  scheduleRescueModalFromUrl();
+  void refreshHostedSyncStatusOnLocalOpen();
 }
 
 function reorderOverviewSearchBlock() {
@@ -4530,6 +4919,7 @@ async function reloadData(statusText = "RECHARGEMENT DES DONNEES...") {
     migrateDataModel();
     clearWorkingData();
     state.isDirty = false;
+    state.lastPersistedDataSignature = computeDataPersistenceSignature(state.data);
     clearUndoStack();
     applyMeta();
     hydrateStaticLists();
@@ -4572,6 +4962,18 @@ function applyMeta() {
   document.querySelectorAll(".sidebar__subtitle").forEach((node) => {
     node.textContent = state.data.meta.appSubtitle || node.textContent;
   });
+}
+
+function normalizeArchiveQualityForLegacyEntry(entry) {
+  const quality = normalizePdfQualityStatus(entry?.pdfQualityStatus || "");
+  const hasLegacyPath = Boolean(String(entry?.pdfPath || "").trim());
+  const hasLocalPath = Boolean(String(entry?.localPath || "").trim());
+  const hasOpenLocalUrl = Boolean(String(entry?.openLocalUrl || "").trim());
+  const hasRemoteUrl = Boolean(String(entry?.openRemoteUrl || entry?.publicUrl || "").trim());
+  if (quality === "UNKNOWN" && hasLegacyPath && !hasLocalPath && !hasOpenLocalUrl && !hasRemoteUrl) {
+    return "LEGACY_ONLY";
+  }
+  return quality;
 }
 
 function migrateDataModel(options = {}) {
@@ -4645,6 +5047,11 @@ function migrateDataModel(options = {}) {
   state.data.listes.typesEffets = Array.from(new Set(state.data.listes.typesEffets.map(normalizeText))).filter(
     Boolean
   );
+  ["RADIATEUR APPOINT", "VENTILATEUR"].forEach((typeEffet) => {
+    if (!state.data.listes.typesEffets.includes(typeEffet)) {
+      state.data.listes.typesEffets.push(typeEffet);
+    }
+  });
   state.data.listes.statutsObjetManuels = Array.from(
     new Set(state.data.listes.statutsObjetManuels.map(normalizeText).map((value) => (value === "CASSE" ? "DETRUIT" : value)))
   ).filter(Boolean);
@@ -4657,6 +5064,7 @@ function migrateDataModel(options = {}) {
   state.data.listes.coutsRemplacement = state.data.listes.coutsRemplacement
     .map((entry) => ({
       typeEffet: normalizeText(entry.typeEffet),
+      designation: normalizeText(entry.designation),
       cause: normalizeText(entry.cause) === "CASSE" ? "DETRUIT" : normalizeText(entry.cause),
       montant: normalizeAmount(entry.montant),
     }))
@@ -4670,32 +5078,36 @@ function migrateDataModel(options = {}) {
     .filter((entry) => entry.nom || entry.fonction);
 
   state.data.documentsArchives = state.data.documentsArchives
-    .map((entry, index) => ({
-      id: String(entry.id || `DOCARCH${String(index + 1).padStart(4, "0")}`),
-      personId: String(entry.personId || ""),
-      nom: normalizeText(entry.nom),
-      prenom: normalizeText(entry.prenom),
-      typeDocument: normalizeArchiveTypeLabel(entry.typeDocument),
-      dateDocument: String(entry.dateDocument || ""),
-      sites: normalizeText(entry.sites),
-      typePersonnel: normalizeText(entry.typePersonnel),
-      typeContrat: normalizeText(entry.typeContrat),
-      statutSignature: normalizeText(entry.statutSignature) || "EN ATTENTE",
-      totalEffets: Number(entry.totalEffets || 0),
-      totalFacturable: normalizeAmount(entry.totalFacturable),
-      pdfPath: String(entry.pdfPath || ""),
-      filename: String(entry.filename || ""),
-      localPath: String(entry.localPath || ""),
-      openLocalUrl: String(entry.openLocalUrl || ""),
-      storagePath: String(entry.storagePath || ""),
-      publicUrl: String(entry.publicUrl || ""),
-      openRemoteUrl: String(entry.openRemoteUrl || ""),
-      storageStatus: String(entry.storageStatus || ""),
-      pdfQualityStatus: normalizePdfQualityStatus(entry.pdfQualityStatus || ""),
-      metadataPath: String(entry.metadataPath || ""),
-      dateArchivage: String(entry.dateArchivage || ""),
-      fingerprint: isLegacyArrivalArchiveFingerprint(entry.fingerprint) ? "" : String(entry.fingerprint || ""),
-    }))
+    .map((entry, index) => {
+      const nextEntry = {
+        id: String(entry.id || `DOCARCH${String(index + 1).padStart(4, "0")}`),
+        personId: String(entry.personId || ""),
+        nom: normalizeText(entry.nom),
+        prenom: normalizeText(entry.prenom),
+        typeDocument: normalizeArchiveTypeLabel(entry.typeDocument),
+        dateDocument: String(entry.dateDocument || ""),
+        sites: normalizeText(entry.sites),
+        typePersonnel: normalizeText(entry.typePersonnel),
+        typeContrat: normalizeText(entry.typeContrat),
+        statutSignature: normalizeText(entry.statutSignature) || "EN ATTENTE",
+        totalEffets: Number(entry.totalEffets || 0),
+        totalFacturable: normalizeAmount(entry.totalFacturable),
+        pdfPath: String(entry.pdfPath || ""),
+        filename: String(entry.filename || ""),
+        localPath: String(entry.localPath || ""),
+        openLocalUrl: String(entry.openLocalUrl || ""),
+        storagePath: String(entry.storagePath || ""),
+        publicUrl: String(entry.publicUrl || ""),
+        openRemoteUrl: String(entry.openRemoteUrl || ""),
+        storageStatus: String(entry.storageStatus || ""),
+        pdfQualityStatus: normalizePdfQualityStatus(entry.pdfQualityStatus || ""),
+        metadataPath: String(entry.metadataPath || ""),
+        dateArchivage: String(entry.dateArchivage || ""),
+        fingerprint: isLegacyArrivalArchiveFingerprint(entry.fingerprint) ? "" : String(entry.fingerprint || ""),
+      };
+      nextEntry.pdfQualityStatus = normalizeArchiveQualityForLegacyEntry(nextEntry);
+      return nextEntry;
+    })
     .filter((entry) => entry.personId && entry.typeDocument && entry.pdfPath);
 
   state.data.stocksEffetsManuels = state.data.stocksEffetsManuels
@@ -4721,6 +5133,13 @@ function migrateDataModel(options = {}) {
       personId: String(entry.personId || ""),
       docType: normalizeText(entry.docType),
       signer: normalizeText(entry.signer) === "REPRESENTANT" ? "REPRESENTANT" : "PERSONNEL",
+      personNom: normalizeText(entry.personNom || ""),
+      personPrenom: normalizeText(entry.personPrenom || ""),
+      personSite: normalizeText(entry.personSite || ""),
+      personTypePersonnel: normalizeText(entry.personTypePersonnel || ""),
+      personTypeContrat: normalizeText(entry.personTypeContrat || ""),
+      representativeNom: normalizeText(entry.representativeNom || ""),
+      representativeFonction: normalizeText(entry.representativeFonction || ""),
       createdAt: String(entry.createdAt || ""),
       expiresAt: String(entry.expiresAt || ""),
       status: normalizeText(entry.status) || "EN ATTENTE",
@@ -4980,6 +5399,7 @@ function isLegacyArrivalArchiveFingerprint(fingerprint) {
 }
 
 function stopMobileSignaturePolling() {
+  hideMobileSignatureRecoveryModal();
   if (state.mobileSignaturePollTimerId) {
     window.clearInterval(state.mobileSignaturePollTimerId);
     state.mobileSignaturePollTimerId = 0;
@@ -5138,6 +5558,58 @@ function setMobileSignaturePollStatus(message, tone = "normal") {
   }
 }
 
+function ensureMobileSignatureRecoveryModal() {
+  let modal = document.getElementById("mobile-signature-recovery-modal");
+  if (modal) {
+    return modal;
+  }
+  modal = document.createElement("div");
+  modal.id = "mobile-signature-recovery-modal";
+  modal.className = "mobile-signature-recovery-modal";
+  modal.hidden = true;
+  modal.setAttribute("role", "status");
+  modal.setAttribute("aria-live", "polite");
+  modal.innerHTML = [
+    '<div class="mobile-signature-recovery-modal__card">',
+    '<p class="mobile-signature-recovery-modal__eyebrow">SIGNATURE MOBILE</p>',
+    '<p class="mobile-signature-recovery-modal__title">RECUPERATION EN COURS</p>',
+    '<p class="mobile-signature-recovery-modal__text" id="mobile-signature-recovery-modal-text">L\'UI VERIFIE SI LA SIGNATURE EST DISPONIBLE.</p>',
+    '<div class="mobile-signature-recovery-modal__track" aria-hidden="true"><span class="mobile-signature-recovery-modal__bar"></span></div>',
+    '</div>',
+  ].join("");
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function showMobileSignatureRecoveryModal(message = "") {
+  const page = document.body.dataset.page || "";
+  if (page !== "arrival-document" && page !== "exit-document") {
+    hideMobileSignatureRecoveryModal();
+    return;
+  }
+  const modal = ensureMobileSignatureRecoveryModal();
+  const textNode = document.getElementById("mobile-signature-recovery-modal-text");
+  if (textNode) {
+    textNode.textContent = message || "L'UI VERIFIE SI LA SIGNATURE EST DISPONIBLE.";
+  }
+  modal.hidden = false;
+  state.mobileSignatureRecoveryModalOpen = true;
+}
+
+function hideMobileSignatureRecoveryModal() {
+  const modal = document.getElementById("mobile-signature-recovery-modal");
+  if (modal) {
+    modal.hidden = true;
+  }
+  state.mobileSignatureRecoveryModalOpen = false;
+}
+
+function hideMobileSignatureRecoveryModalAfterRender() {
+  window.requestAnimationFrame(() => {
+    window.setTimeout(() => hideMobileSignatureRecoveryModal(), 180);
+  });
+}
+
 async function pollMobileSignatureRequest() {
   if (document.visibilityState === "hidden") {
     return;
@@ -5151,17 +5623,43 @@ async function pollMobileSignatureRequest() {
   state.mobileSignaturePollInFlight = true;
   const page = document.body.dataset.page || "";
   if (page !== "arrival-document" && page !== "exit-document") {
+    hideMobileSignatureRecoveryModal();
     stopMobileSignaturePolling();
     return;
   }
   const personId = getCurrentPersonId();
   if (!personId) {
+    hideMobileSignatureRecoveryModal();
     stopMobileSignaturePolling();
     return;
   }
   const docType = page === "exit-document" ? "exit" : "arrival";
   try {
-    const json = await fetchLatestDataSnapshot();
+    let json = await fetchLatestDataSnapshot({ forceFresh: true });
+    if (getDataBackendMode() === "LOCAL_API" && isSupabaseConfigured()) {
+      try {
+        const pullResponse = await fetch("/api/sync/pull-mobile-signatures", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ personId, docType }),
+          cache: "no-store",
+        });
+        const pullPayload = await pullResponse.json().catch(() => ({}));
+        if (pullResponse.ok && pullPayload?.data) {
+          json = pullPayload.data;
+          if (pullPayload.changed) {
+            state.data = pullPayload.data;
+            migrateDataModel({ suppressDirty: true });
+            state.isDirty = false;
+            state.lastPersistedDataSignature = computeDataPersistenceSignature(state.data);
+            clearUndoStack();
+            showDataStatus("SIGNATURE MOBILE HEBERGEE REPRISE EN LOCAL");
+          }
+        }
+      } catch (hostedError) {
+        console.warn("Lecture signature mobile hebergee indisponible", hostedError);
+      }
+    }
     const normalizedDocType = normalizeText(docType);
     const pollNow = Date.now();
     const requests = Array.isArray(json?.demandesSignatureMobile) ? json.demandesSignatureMobile : [];
@@ -5255,6 +5753,9 @@ async function pollMobileSignatureRequest() {
     }
     state.mobileSignaturePollHasPendingRequest = Boolean(anyPending);
     ensureMobileSignaturePollingInterval();
+    if (anyPending && state.mobileSignatureRecoveryModalOpen) {
+      showMobileSignatureRecoveryModal("SIGNATURE EN ATTENTE. VERIFICATION DE L'HEBERGE EN COURS.");
+    }
 
     const nextSignaturePersonnel = getSignatureValue(person, docType, "personnel");
     const nextValidatedAtPersonnel = getSignatureValidationDate(person, docType, "personnel");
@@ -5272,11 +5773,13 @@ async function pollMobileSignatureRequest() {
 
     if (state.mobileSignaturePollStateSignature === pollStateSignature) {
       if (!anyPending && trackedRequestsLength === 0 && activeServerRequests.length === 0) {
+        hideMobileSignatureRecoveryModal();
         return;
       }
       if (!anyPending) {
         renderMobileSignatureLink(docType, "personnel", "");
         renderMobileSignatureLink(docType, "representant", "");
+        hideMobileSignatureRecoveryModalAfterRender();
       }
       return;
     }
@@ -5285,6 +5788,7 @@ async function pollMobileSignatureRequest() {
     migrateDataModel({ suppressDirty: true });
 
     if (!anyPending && trackedRequestsLength === 0 && activeServerRequests.length === 0) {
+      hideMobileSignatureRecoveryModal();
       return;
     }
 
@@ -5294,12 +5798,16 @@ async function pollMobileSignatureRequest() {
     }
 
     schedulePageRender();
+    queueAutoGenerateSignedDocumentsPdfIfMissing();
     const signedRepresentative = Array.from(nextRequestsByToken.values()).some(
       (request) => normalizeMobileSignatureSigner(request.signer || "") === "representant" && request.status === "SIGNEE"
     );
     const signedPersonnel = Array.from(nextRequestsByToken.values()).some(
       (request) => normalizeMobileSignatureSigner(request.signer || "") === "personnel" && request.status === "SIGNEE"
     );
+    if (signedRepresentative || signedPersonnel) {
+      hideMobileSignatureRecoveryModalAfterRender();
+    }
     if (signedRepresentative) showDataStatus("SIGNATURE MOBILE DU REPRESENTANT ENREGISTREE");
     else if (signedPersonnel) showDataStatus("SIGNATURE MOBILE DU PERSONNEL ENREGISTREE");
   } catch (error) {
@@ -5861,8 +6369,8 @@ function compareEffectValues(left, right, isNumeric = false) {
 }
 
 function getOverviewSortValue(person, key) {
-  const currentEffects = getCurrentAssignedEffects(person);
-  const movementMap = getArrivalComplementMovementMap(person, person?.effetsConfies || []);
+  const currentEffects = getCurrentAssignedEffectsForActiveFilters(person);
+  const movementMap = getArrivalComplementMovementMap(person, getEffectsForActiveFilters(person));
   const movementCount = movementMap.size;
   switch (key) {
     case "nom":
@@ -6113,6 +6621,43 @@ function getHostedPdfDocumentPath(docType, personId, mode = "STANDARD") {
   return `${pagePath}?personId=${encodeURIComponent(personId)}&pdf=1&mode=${encodeURIComponent(normalizeText(mode || "STANDARD"))}`;
 }
 
+function normalizeDirectPdfOpenUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  if (/^data\/pdf\//i.test(raw)) {
+    const apiPath = raw.replace(/^data\/pdf\//i, "");
+    return new URL(`/api/pdf-file?path=${encodeURIComponent(apiPath)}`, window.location.origin).href;
+  }
+  let parsed = null;
+  try {
+    parsed = new URL(raw, window.location.origin);
+  } catch {
+    return "";
+  }
+  const pathname = parsed.pathname.toLowerCase();
+  const isPdfApi = pathname.endsWith("/api/pdf-file");
+  const isPdfFile = pathname.endsWith(".pdf");
+  return isPdfApi || isPdfFile ? parsed.href : "";
+}
+
+function openPdfUrlInBrowserWindow(popup, value) {
+  const pdfUrl = normalizeDirectPdfOpenUrl(value);
+  if (!pdfUrl) {
+    return false;
+  }
+  try {
+    popup.location.replace(pdfUrl);
+    popup.focus();
+    return true;
+  } catch (popupNavigationError) {
+    console.error(popupNavigationError);
+    const fallbackPopup = window.open(pdfUrl, "_blank", "noopener");
+    return Boolean(fallbackPopup);
+  }
+}
+
 async function openPdfDocument(docType, personId) {
   if (state.isDirty) {
     showDataStatus("SAUVEGARDER AVANT OUVERTURE DU PDF");
@@ -6154,9 +6699,12 @@ async function openPdfDocument(docType, personId) {
 
   try {
     if (reusableArchive && !canPromoteReusableArchiveToStorage) {
-      popup.location.href = getDocumentArchiveOpenPath(reusableArchive);
-      showActionStatus("update", "PDF ARCHIVE REUTILISE");
-      return;
+      const reusableOpenUrl = getArchivePreferredOpenPath(reusableArchive) || getDocumentArchiveOpenPath(reusableArchive);
+      if (openPdfUrlInBrowserWindow(popup, reusableOpenUrl)) {
+        showActionStatus("update", "PDF ARCHIVE REUTILISE");
+        return;
+      }
+      showDataStatus("PDF ARCHIVE EXISTANT NON DIRECT - REGENERATION POUR VERIFICATION");
     }
     if (canPromoteReusableArchiveToStorage) {
       showDataStatus("PDF ARCHIVE LOCAL DETECTE - MIGRATION VERS SUPABASE EN COURS");
@@ -6193,7 +6741,11 @@ async function openPdfDocument(docType, personId) {
     const archiveStorageStatus = String(payload.archiveStorageStatus || "");
 
     hidePdfProgressModal();
-    popup.location.href = archiveOpenLocalUrl || archiveOpenRemoteUrl || archivePublicUrl || "about:blank";
+    const pdfOpenUrl = archiveOpenLocalUrl || archiveOpenRemoteUrl || archivePublicUrl || "";
+    if (!openPdfUrlInBrowserWindow(popup, pdfOpenUrl)) {
+      popup.location.href = "about:blank";
+      showDataStatus(pdfOpenUrl ? "PDF GENERE - URL NON PDF BLOQUEE" : "PDF GENERE - URL D'OUVERTURE INTROUVABLE");
+    }
     const finalArchivePath = archiveStoragePath || archivePdfPath || archiveLocalPath;
     const archiveDetails = {
       filename: archiveFilename,
@@ -6206,10 +6758,13 @@ async function openPdfDocument(docType, personId) {
     };
     if (person && finalArchivePath) {
       clearPendingPdfTaskFor(person.id, docType);
-      registerArchivedDocument(person, docType, finalArchivePath, archiveMetadataPath, archiveMode, archiveDetails).catch((error) => {
-        console.error(error);
-        showDataStatus("ARCHIVAGE PDF IMPOSSIBLE");
-      });
+      await registerArchivedDocument(person, docType, finalArchivePath, archiveMetadataPath, archiveMode, archiveDetails);
+      const archiveCheck = await verifyActiveArchiveOpenable(person.id, docType);
+      if (archiveCheck.ok) {
+        showDataStatus("LE DOCUMENT A ETE REGENERE ET VERIFIE.");
+      } else {
+        showDataStatus("LE DOCUMENT A ETE REGENERE, MAIS IL NE PEUT TOUJOURS PAS ETRE OUVERT. UTILISEZ LE MODE SECOURS.");
+      }
     } else if (shouldArchive && !finalArchivePath) {
       showDataStatus("PDF OUVERT - ARCHIVAGE NON REALISE");
     } else if (!shouldArchive) {
@@ -6716,10 +7271,22 @@ function schedulePageRender() {
     return;
   }
 
-  state.pageRenderRafId = window.requestAnimationFrame(() => {
+  const runScheduledRender = () => {
+    if (!state.pageRenderRafId) {
+      return;
+    }
+    if (state.pageRenderTimeoutId) {
+      window.clearTimeout(state.pageRenderTimeoutId);
+      state.pageRenderTimeoutId = 0;
+    }
     state.pageRenderRafId = 0;
     renderPage();
+  };
+
+  state.pageRenderRafId = window.requestAnimationFrame(() => {
+    runScheduledRender();
   });
+  state.pageRenderTimeoutId = window.setTimeout(runScheduledRender, 120);
 }
 
 function bindArchiveFilterForm() {
@@ -6727,16 +7294,18 @@ function bindArchiveFilterForm() {
   if (!form) {
     return;
   }
+  form.dataset.archiveFiltersBound = "1";
+  const getArchiveFilterField = (fieldName) => form.querySelector(`[name="${fieldName}"]`);
 
   const resetArchiveFilters = () => {
     clearFormSearchFields(form);
-    const searchField = form.elements.archiveSearch;
+    const searchField = getArchiveFilterField("archiveSearch");
     if (searchField instanceof HTMLInputElement) {
       searchField.value = "";
       searchField.defaultValue = "";
     }
     ["archiveTypeDocument", "archiveSite", "archiveStatutSignature"].forEach((fieldName) => {
-      const field = form.elements[fieldName];
+      const field = getArchiveFilterField(fieldName);
       if (field instanceof HTMLSelectElement) {
         field.value = "";
       }
@@ -6747,22 +7316,35 @@ function bindArchiveFilterForm() {
     setCurrentPersonId("", "replace");
     resetArchiveFilters();
     state.tableSorts.documentsArchives = { key: "nom", dir: "asc" };
+    state.listRenderCache.documentsArchives = "";
     schedulePageRender();
   };
 
-  form.oninput = () => {
+  const applyArchiveFilters = () => {
+    state.listRenderCache.documentsArchives = "";
     schedulePageRender();
   };
+  form.oninput = applyArchiveFilters;
+  form.onchange = applyArchiveFilters;
+  ["archiveSearch", "archiveTypeDocument", "archiveSite", "archiveStatutSignature"].forEach((fieldName) => {
+    const field = getArchiveFilterField(fieldName);
+    if (!(field instanceof HTMLElement)) {
+      return;
+    }
+    field.addEventListener("input", applyArchiveFilters);
+    field.addEventListener("change", applyArchiveFilters);
+  });
 
   form.onreset = (event) => {
     event.preventDefault();
     setCurrentPersonId("", "replace");
     resetArchiveFilters();
     state.tableSorts.documentsArchives = { key: "nom", dir: "asc" };
+    state.listRenderCache.documentsArchives = "";
     schedulePageRender();
   };
 
-  const searchField = form.elements.archiveSearch;
+  const searchField = getArchiveFilterField("archiveSearch");
   if (searchField) {
     searchField.value = "";
     searchField.addEventListener("search", () => {
@@ -6788,6 +7370,16 @@ function bindAddPersonForm() {
     }
 
     const formData = new FormData(form);
+    const setAddFieldMissingState = (fieldName, isMissing) => {
+      const field = form.elements[fieldName];
+      if (!(field instanceof HTMLElement)) {
+        return;
+      }
+      const node = field.closest(".field");
+      if (node) {
+        node.classList.toggle("field--missing", Boolean(isMissing));
+      }
+    };
     const selectedSites = readSelectedSites(form, "add");
     const person = {
       id: getNextId("P", state.data.personnes || []),
@@ -6810,6 +7402,12 @@ function bindAddPersonForm() {
     ];
     for (const check of addDateChecks) {
       const validation = validateDateFieldFormat(check.value, check.label);
+      if (check.field instanceof HTMLElement) {
+        const fieldName = String(check.field.getAttribute("name") || "");
+        if (fieldName) {
+          setAddFieldMissingState(fieldName, !validation.ok);
+        }
+      }
       if (!validation.ok) {
         showDataStatus(validation.message);
         if (check.field instanceof HTMLElement) {
@@ -6885,14 +7483,22 @@ function bindPersonSheetForm() {
     const dateEntree = String(formData.get("sheetDateEntree") || "").trim();
     const needsExpectedExitDate = ["CDD", "INTERIMAIRE"].includes(typeContrat);
     const dateSortiePrevue = String(formData.get("sheetDateSortiePrevue") || "").trim();
+    const dateSortieReelle = String(formData.get("sheetDateSortieReelle") || "").trim();
+    const dateEntreeValidation = validateDateFieldFormat(dateEntree, "DATE D'ENTREE");
+    const dateSortiePrevueValidation = validateDateFieldFormat(dateSortiePrevue, "DATE DE SORTIE PREVUE");
+    const dateSortieReelleValidation = validateDateFieldFormat(dateSortieReelle, "DATE DE SORTIE REELLE");
 
     setSheetFieldMissingState("sheetNom", !nom);
     setSheetFieldMissingState("sheetPrenom", !prenom);
     setSheetFieldMissingState("sheetFonction", !fonction);
     setSheetFieldMissingState("sheetTypePersonnel", !typePersonnel);
     setSheetFieldMissingState("sheetTypeContrat", !typeContrat);
-    setSheetFieldMissingState("sheetDateEntree", !dateEntree);
-    setSheetFieldMissingState("sheetDateSortiePrevue", needsExpectedExitDate && !dateSortiePrevue);
+    setSheetFieldMissingState("sheetDateEntree", !dateEntree || !dateEntreeValidation.ok);
+    setSheetFieldMissingState(
+      "sheetDateSortiePrevue",
+      (needsExpectedExitDate && !dateSortiePrevue) || !dateSortiePrevueValidation.ok
+    );
+    setSheetFieldMissingState("sheetDateSortieReelle", !dateSortieReelleValidation.ok);
 
     const siteField = form.querySelector("#sheet-site-selector")?.closest(".field");
     if (siteField) {
@@ -7013,6 +7619,7 @@ function bindPersonSheetForm() {
     "sheetTypeContrat",
     "sheetDateEntree",
     "sheetDateSortiePrevue",
+    "sheetDateSortieReelle",
   ].forEach((fieldName) => {
     const field = form.elements[fieldName];
     if (!(field instanceof HTMLElement)) {
@@ -7257,6 +7864,7 @@ function bindEffectForm() {
   if (replacementDateField) {
     replacementDateField.onchange = () => {
       syncReplacementCostField();
+      updateEffectRequiredHighlights(form);
     };
   }
   if (form.elements.referenceEffet) {
@@ -7310,6 +7918,15 @@ function bindEffectForm() {
       return;
     }
 
+    const validation = validateEffectFormContext(form, { markMissing: true });
+    updateEffectActionButtons();
+    if (!validation.ok) {
+      showDataStatus(validation.message);
+      window.alert(validation.message);
+      focusEffectField(form, validation.field);
+      return;
+    }
+
     const formData = new FormData(form);
     const typeEffet = normalizeText(formData.get("typeEffet"));
     const isTurboSelf = typeEffet === "CARTE TURBOSELF";
@@ -7352,7 +7969,7 @@ function bindEffectForm() {
     }
 
     if (usesReferenceCatalog && !referenceEffetId) {
-      showDataStatus("CHOISIR UNE CLE EXISTANTE DANS LA LISTE");
+      showDataStatus(typeEffet === "VENTILATEUR" ? "CHOISIR UN TYPE DE VENTILATEUR DANS LA LISTE" : "CHOISIR UNE CLE EXISTANTE DANS LA LISTE");
       return;
     }
 
@@ -7467,9 +8084,11 @@ function bindEffectForm() {
 
   form.addEventListener("input", () => {
     updateEffectResetButtonState(form);
+    updateEffectRequiredHighlights(form);
   });
   form.addEventListener("change", () => {
     updateEffectResetButtonState(form);
+    updateEffectRequiredHighlights(form);
   });
 
   updateEffectActionButtons();
@@ -7691,8 +8310,80 @@ function resetEffectForm() {
   hydrateReferenceSelect(getCurrentPerson() || "", "", "", "");
   updateEffectFormMode("");
   updateEffectActionButtons();
+  updateEffectRequiredHighlights(form);
   updateEffectResetButtonState(form);
   updateManualStatusCriticalState(form);
+}
+
+function bindArchiveFilterDelegation() {
+  if (window.__documentsArchiveFilterDelegationBound) {
+    return;
+  }
+  const handleArchiveFilterChange = (event) => {
+    if (document.body?.dataset?.page !== "documents-archives") {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const form = target.closest("#documents-archives-filter-form");
+    if (!(form instanceof HTMLFormElement)) {
+      return;
+    }
+    state.listRenderCache.documentsArchives = "";
+    schedulePageRender();
+  };
+  document.addEventListener("input", handleArchiveFilterChange, true);
+  document.addEventListener("change", handleArchiveFilterChange, true);
+  window.__documentsArchiveFilterDelegationBound = true;
+}
+
+function getArchiveFilterSignatureFromDom() {
+  if (document.body?.dataset?.page !== "documents-archives") {
+    return "";
+  }
+  const form = document.getElementById("documents-archives-filter-form");
+  if (!(form instanceof HTMLFormElement)) {
+    return "";
+  }
+  return ["archiveSearch", "archiveTypeDocument", "archiveSite", "archiveStatutSignature"]
+    .map((fieldName) => {
+      const field = form.querySelector(`[name="${fieldName}"]`);
+      return field instanceof HTMLInputElement || field instanceof HTMLSelectElement
+        ? String(field.value || "")
+        : "";
+    })
+    .join("|");
+}
+
+function bindArchiveFilterValueWatcher() {
+  if (window.__documentsArchiveFilterWatcherBound) {
+    return;
+  }
+  const checkArchiveFilterValues = () => {
+    if (document.body?.dataset?.page !== "documents-archives") {
+      return;
+    }
+    const signature = getArchiveFilterSignatureFromDom();
+    if (!signature) {
+      return;
+    }
+    if (state.documentsArchiveFilterSignature === undefined) {
+      state.documentsArchiveFilterSignature = signature;
+      return;
+    }
+    if (state.documentsArchiveFilterSignature === signature) {
+      return;
+    }
+    state.documentsArchiveFilterSignature = signature;
+    state.listRenderCache.documentsArchives = "";
+    schedulePageRender();
+  };
+  document.addEventListener("input", checkArchiveFilterValues, true);
+  document.addEventListener("change", checkArchiveFilterValues, true);
+  window.setInterval(checkArchiveFilterValues, 300);
+  window.__documentsArchiveFilterWatcherBound = true;
 }
 
 function resetEffectFormFieldsExceptCost() {
@@ -7718,7 +8409,15 @@ function resetEffectFormFieldsExceptCost() {
 }
 
 function isCriticalManualStatus(value) {
-  return ["PERDU", "VOL", "HS"].includes(normalizeText(value));
+  return ["PERDU", "VOL", "HS", "DETRUIT", "CASSE", "NON RENDU"].includes(normalizeText(value));
+}
+
+function isReturnDateRequiredForManualStatus(value) {
+  return ["RENDU", "RESTITUE"].includes(normalizeText(value));
+}
+
+function isReplacementDateRequiredForManualStatus(value) {
+  return ["PERDU", "VOL", "HS", "DETRUIT", "CASSE", "NON RENDU"].includes(normalizeText(value));
 }
 
 function updateManualStatusCriticalState(form) {
@@ -7777,21 +8476,30 @@ function updateEffectResetButtonState(form) {
 }
 
 function updateEffectActionButtons() {
+  const form = document.getElementById("effect-form");
   const addButton = document.getElementById("effect-add-button");
   const updateButton = document.getElementById("effect-update-button");
   const deleteButton = document.getElementById("effect-delete-button");
   const cancelButton = document.getElementById("effect-cancel-button");
   const isEditing = Boolean(state.editingEffectId);
+  const validation = validateEffectFormContext(form, { markMissing: false });
+  const canSubmit = Boolean(validation.ok);
 
   if (addButton) {
-    addButton.disabled = false;
+    addButton.disabled = isEditing;
+    addButton.classList.toggle("is-disabled", !isEditing && !canSubmit);
+    addButton.setAttribute("aria-disabled", !isEditing && !canSubmit ? "true" : "false");
     addButton.classList.toggle("button--primary", !isEditing);
     addButton.classList.toggle("button--secondary", isEditing);
+    addButton.title = canSubmit ? "" : validation.message;
   }
   if (updateButton) {
     updateButton.disabled = !isEditing;
+    updateButton.classList.toggle("is-disabled", isEditing && !canSubmit);
+    updateButton.setAttribute("aria-disabled", isEditing && !canSubmit ? "true" : "false");
     updateButton.classList.toggle("button--primary", isEditing);
     updateButton.classList.toggle("button--secondary", !isEditing);
+    updateButton.title = canSubmit ? "" : validation.message;
   }
   if (deleteButton) {
     deleteButton.disabled = !isEditing;
@@ -7878,18 +8586,146 @@ function setEffectFieldMissingState(form, name, isMissing) {
   }
 }
 
-function updateEffectRequiredHighlights(form) {
+function getEffectFormContext(form) {
   if (!form) {
-    return;
+    return null;
   }
   const typeEffet = normalizeText(form.elements.typeEffet?.value || "");
-  const site = normalizeText(form.elements.referenceSite?.value || "");
+  const isTurboSelf = typeEffet === "CARTE TURBOSELF";
+  const person = getCurrentPerson();
+  const availableReferenceSites = getAvailableReferenceSites(person);
+  const referenceSite = normalizeText(form.elements.referenceSite?.value || "");
+  const usesReferenceCatalog = typeUsesReferenceCatalog(typeEffet);
+  const usesSiteField = typeUsesSiteField(typeEffet);
+  const referenceEffetId = usesReferenceCatalog ? String(form.elements.referenceEffet?.value || "") : "";
+  const reference = findReferenceById(referenceEffetId);
+  const resolvedReferenceSite = isTurboSelf
+    ? ALL_SITES_VALUE
+    : usesReferenceCatalog
+      ? normalizeText(
+          reference?.site || referenceSite || (availableReferenceSites.length === 1 ? availableReferenceSites[0] : "")
+        )
+      : usesSiteField
+        ? normalizeText(referenceSite || (availableReferenceSites.length === 1 ? availableReferenceSites[0] : ""))
+        : "";
   const statutManuel = normalizeText(form.elements.statutManuel?.value || "");
-  const siteRequired = Boolean(form.elements.referenceSite?.required);
+  const dateRemise = String(form.elements.dateRemise?.value || "").trim();
+  const dateRetour = String(form.elements.dateRetour?.value || "").trim();
+  const dateRemplacement = String(form.elements.dateRemplacement?.value || "").trim();
+  const returnDateRequired = isReturnDateRequiredForManualStatus(statutManuel);
+  const replacementDateRequired = isReplacementDateRequiredForManualStatus(statutManuel);
+  return {
+    typeEffet,
+    referenceSite,
+    usesReferenceCatalog,
+    usesSiteField,
+    referenceEffetId,
+    resolvedReferenceSite,
+    statutManuel,
+    dateRemise,
+    dateRetour,
+    dateRemplacement,
+    returnDateRequired,
+    replacementDateRequired,
+    siteRequired: Boolean(form.elements.referenceSite?.required),
+  };
+}
 
-  setEffectFieldMissingState(form, "typeEffet", !typeEffet);
-  setEffectFieldMissingState(form, "referenceSite", siteRequired && !site);
-  setEffectFieldMissingState(form, "statutManuel", !statutManuel);
+function getEffectReferenceMissingMessage(typeEffet) {
+  return normalizeText(typeEffet) === "VENTILATEUR"
+    ? "VOUS DEVEZ REMPLIR LE CHAMP TYPE DE VENTILATEUR"
+    : "VOUS DEVEZ REMPLIR LE CHAMP DESIGNATION EXISTANTE";
+}
+
+function validateEffectFormContext(form, options = {}) {
+  const markMissing = options.markMissing !== false;
+  const context = getEffectFormContext(form);
+  if (!context) {
+    return { ok: false, field: "", message: "FORMULAIRE EFFET INDISPONIBLE" };
+  }
+  const missing = {
+    typeEffet: !context.typeEffet,
+    referenceSite: Boolean(context.siteRequired && !context.resolvedReferenceSite),
+    referenceEffet: Boolean(context.usesReferenceCatalog && !context.referenceEffetId),
+    dateRemise: !context.dateRemise,
+    dateRetour: Boolean(context.returnDateRequired && !context.dateRetour),
+    statutManuel: !context.statutManuel,
+    dateRemplacement: Boolean(context.replacementDateRequired && !context.dateRemplacement),
+  };
+  const dateValidations = {
+    dateRemise: validateDateFieldFormat(context.dateRemise, "DATE DE REMISE"),
+    dateRetour: validateDateFieldFormat(context.dateRetour, "DATE DE RETOUR"),
+    dateRemplacement: validateDateFieldFormat(context.dateRemplacement, "DATE DE REMPLACEMENT"),
+  };
+
+  if (form.elements.dateRemise instanceof HTMLElement) {
+    form.elements.dateRemise.required = true;
+  }
+  if (form.elements.dateRetour instanceof HTMLElement) {
+    form.elements.dateRetour.required = context.returnDateRequired;
+  }
+  if (form.elements.dateRemplacement instanceof HTMLElement) {
+    form.elements.dateRemplacement.required = context.replacementDateRequired;
+  }
+
+  if (markMissing) {
+    const returnDateField = getEffectFormFieldNode(form, "dateRetour");
+    const replacementDateField = getEffectFormFieldNode(form, "dateRemplacement");
+    if (returnDateField) {
+      returnDateField.classList.toggle("field--key", Boolean(context.returnDateRequired));
+    }
+    if (replacementDateField) {
+      replacementDateField.classList.toggle("field--key", Boolean(context.replacementDateRequired));
+    }
+    setEffectFieldMissingState(form, "typeEffet", missing.typeEffet);
+    setEffectFieldMissingState(form, "referenceSite", missing.referenceSite);
+    setEffectFieldMissingState(form, "referenceEffet", missing.referenceEffet);
+    setEffectFieldMissingState(form, "dateRemise", missing.dateRemise || !dateValidations.dateRemise.ok);
+    setEffectFieldMissingState(form, "dateRetour", missing.dateRetour || !dateValidations.dateRetour.ok);
+    setEffectFieldMissingState(form, "statutManuel", missing.statutManuel);
+    setEffectFieldMissingState(form, "dateRemplacement", missing.dateRemplacement || !dateValidations.dateRemplacement.ok);
+  }
+
+  if (missing.typeEffet) {
+    return { ok: false, field: "typeEffet", message: "VOUS DEVEZ REMPLIR LE CHAMP TYPE D'EFFET" };
+  }
+  if (missing.referenceSite) {
+    return { ok: false, field: "referenceSite", message: "VOUS DEVEZ REMPLIR LE CHAMP SITE DE L'EFFET" };
+  }
+  if (missing.referenceEffet) {
+    return { ok: false, field: "referenceEffet", message: getEffectReferenceMissingMessage(context.typeEffet) };
+  }
+  if (missing.dateRemise) {
+    return { ok: false, field: "dateRemise", message: "VOUS DEVEZ REMPLIR LE CHAMP DATE DE REMISE" };
+  }
+  if (!dateValidations.dateRemise.ok) {
+    return { ok: false, field: "dateRemise", message: dateValidations.dateRemise.message };
+  }
+  if (missing.dateRetour) {
+    return { ok: false, field: "dateRetour", message: "VOUS DEVEZ REMPLIR LE CHAMP DATE DE RETOUR" };
+  }
+  if (!dateValidations.dateRetour.ok) {
+    return { ok: false, field: "dateRetour", message: dateValidations.dateRetour.message };
+  }
+  if (missing.statutManuel) {
+    return { ok: false, field: "statutManuel", message: "VOUS DEVEZ REMPLIR LE CHAMP STATUT MANUEL" };
+  }
+  if (missing.dateRemplacement) {
+    return {
+      ok: false,
+      field: "dateRemplacement",
+      message: "VOUS DEVEZ REMPLIR LE CHAMP DATE DE REMPLACEMENT",
+    };
+  }
+  if (!dateValidations.dateRemplacement.ok) {
+    return { ok: false, field: "dateRemplacement", message: dateValidations.dateRemplacement.message };
+  }
+  return { ok: true, field: "", message: "" };
+}
+
+function updateEffectRequiredHighlights(form) {
+  validateEffectFormContext(form, { markMissing: true });
+  updateEffectActionButtons();
 }
 
 function updateEffectFormMode(typeEffet) {
@@ -7954,11 +8790,24 @@ function updateEffectFormMode(typeEffet) {
           ? "POUR UNE CLE : CHOISIR D'ABORD LE SITE, PUIS LE NOM DE LA CLE"
           : "POUR UNE CLE : CHOISIR UN NOM DE CLE DU SITE";
     }
-  } else if (["BADGE INTRUSION", "TELECOMMANDE URMET", "CARTE TURBOSELF"].includes(normalizedType)) {
+  } else if (normalizedType === "VENTILATEUR") {
+    showReferenceSite = true;
+    referenceSiteLabel.textContent = "SITE DU VENTILATEUR";
+    referenceLabel.textContent = "TYPE DE VENTILATEUR";
+    designationLabel.textContent = "DESIGNATION";
+    showDesignation = false;
+    numberLabel.textContent = "N° VENTILATEUR";
+    helpNode.textContent =
+      availableReferenceSites.length > 1
+        ? "POUR UN VENTILATEUR : CHOISIR D'ABORD LE SITE, PUIS LE TYPE"
+        : "POUR UN VENTILATEUR : CHOISIR LE TYPE";
+  } else if (["BADGE INTRUSION", "RADIATEUR APPOINT", "TELECOMMANDE URMET", "CARTE TURBOSELF"].includes(normalizedType)) {
     showReferenceSite = true;
     referenceSiteLabel.textContent =
       normalizedType === "BADGE INTRUSION"
         ? "SITE DU BADGE"
+        : normalizedType === "RADIATEUR APPOINT"
+          ? "SITE DU RADIATEUR"
         : normalizedType === "CARTE TURBOSELF"
           ? "SITE DE LA CARTE"
           : "SITE DE LA TELECOMMANDE";
@@ -7971,6 +8820,9 @@ function updateEffectFormMode(typeEffet) {
     if (normalizedType === "BADGE INTRUSION") {
       numberLabel.textContent = "N° BADGE";
       helpNode.textContent = "POUR UN BADGE INTRUSION : RENSEIGNER UNIQUEMENT LE N°";
+    } else if (normalizedType === "RADIATEUR APPOINT") {
+      numberLabel.textContent = "N° RADIATEUR";
+      helpNode.textContent = "POUR UN RADIATEUR APPOINT : CHOISIR LE SITE, PAS DE DESIGNATION";
     } else if (normalizedType === "TELECOMMANDE URMET") {
       numberLabel.textContent = "N° TELECOMMANDE";
       helpNode.textContent = "POUR UNE TELECOMMANDE URMET : RENSEIGNER UNIQUEMENT LE N°";
@@ -8003,7 +8855,12 @@ function updateEffectFormMode(typeEffet) {
   setEffectFieldVisualState(form, "statutManuel", true, true);
   form.elements.typeEffet.required = true;
   form.elements.referenceSite.required = showReferenceSite;
+  form.elements.dateRemise.required = true;
+  form.elements.dateRetour.required = isReturnDateRequiredForManualStatus(form.elements.statutManuel?.value || "");
   form.elements.statutManuel.required = true;
+  form.elements.dateRemplacement.required = isReplacementDateRequiredForManualStatus(
+    form.elements.statutManuel?.value || ""
+  );
   updateEffectRequiredHighlights(form);
 }
 
@@ -8082,7 +8939,13 @@ function getReplacementCostValue(typeEffet, causeRemplacement, designation = "")
   const matchingEntry = (state.data?.listes?.coutsRemplacement || []).find(
     (entry) =>
       normalizePricingKey(entry?.typeEffet) === normalizedType &&
-      normalizePricingKey(entry?.cause, { cause: true }) === normalizedCause
+      normalizePricingKey(entry?.cause, { cause: true }) === normalizedCause &&
+      normalizePricingKey(entry?.designation || "") === normalizePricingKey(designation || "")
+  ) || (state.data?.listes?.coutsRemplacement || []).find(
+    (entry) =>
+      normalizePricingKey(entry?.typeEffet) === normalizedType &&
+      normalizePricingKey(entry?.cause, { cause: true }) === normalizedCause &&
+      !normalizePricingKey(entry?.designation || "")
   );
 
   if (!matchingEntry) {
@@ -8098,6 +8961,10 @@ function getReplacementCostValue(typeEffet, causeRemplacement, designation = "")
 
   if (normalizedType === "CLE") {
     return isCesKeyDesignation(designation) ? 50 : 5;
+  }
+
+  if (normalizedType === "VENTILATEUR") {
+    return normalizePricingKey(designation) === "VENTILATEUR SUR PIED" ? 35 : 30;
   }
 
   const rawAmount = String(matchingEntry.montant ?? "").trim();
@@ -8142,6 +9009,14 @@ function getEffectUnitValue(effect) {
 
   if (normalizedType === "CARTE TURBOSELF") {
     return 10;
+  }
+
+  if (normalizedType === "VENTILATEUR") {
+    return normalizePricingKey(effect?.designation || "") === "VENTILATEUR SUR PIED" ? 35 : 30;
+  }
+
+  if (normalizedType === "RADIATEUR APPOINT") {
+    return 45;
   }
 
   return 0;
@@ -8549,8 +9424,8 @@ function syncReferenceSitesSelector() {
   }
 }
 
-function getReplacementCostKey(typeEffet, cause) {
-  return `${normalizeText(typeEffet)}__${normalizeText(cause)}`;
+function getReplacementCostKey(typeEffet, cause, designation = "") {
+  return `${normalizeText(typeEffet)}__${normalizeText(cause)}__${normalizeText(designation)}`;
 }
 
 function bindReplacementCostForm() {
@@ -8580,12 +9455,17 @@ function bindReplacementCostForm() {
     const nextCostKey = getReplacementCostKey(typeEffet, cause);
     const lookupKey = state.editingReplacementCostKey || nextCostKey;
     const currentIndex = state.data.listes.coutsRemplacement.findIndex(
-      (entry) => getReplacementCostKey(entry.typeEffet, entry.cause) === lookupKey
+      (entry) => getReplacementCostKey(entry.typeEffet, entry.cause, entry.designation) === lookupKey
     );
 
     pushUndoSnapshot(currentIndex >= 0 ? "MODIFICATION COUT" : "AJOUT COUT");
     if (currentIndex >= 0) {
-      state.data.listes.coutsRemplacement[currentIndex] = { typeEffet, cause, montant };
+      state.data.listes.coutsRemplacement[currentIndex] = {
+        ...state.data.listes.coutsRemplacement[currentIndex],
+        typeEffet,
+        cause,
+        montant,
+      };
     } else {
       state.data.listes.coutsRemplacement.push({ typeEffet, cause, montant });
     }
@@ -9351,6 +10231,8 @@ function getDocumentViewStateSignature(docType, personId = "") {
       String(representative?.id || ""),
       String(representative?.nom || ""),
       String(representative?.fonction || ""),
+      String(getSignatureValue(activePerson, "arrival", "personnel") || ""),
+      String(getSignatureValue(activePerson, "arrival", "representant") || ""),
       String(getSignatureValidationDate(activePerson, "arrival", "personnel") || ""),
       String(getSignatureValidationDate(activePerson, "arrival", "representant") || ""),
       String(activeEffects.length),
@@ -9413,6 +10295,8 @@ function getDocumentViewStateSignature(docType, personId = "") {
     String(representative?.id || ""),
     String(representative?.nom || ""),
     String(representative?.fonction || ""),
+    String(getSignatureValue(activePerson, "exit", "personnel") || ""),
+    String(getSignatureValue(activePerson, "exit", "representant") || ""),
     String(getSignatureValidationDate(activePerson, "exit", "personnel") || ""),
     String(getSignatureValidationDate(activePerson, "exit", "representant") || ""),
     String(effects.length),
@@ -9467,7 +10351,7 @@ function renderPage() {
     pageRenderSignatureParts.push(`mobile|${signer}|${docType}|${String(request?.token || "")}|${String(request?.status || "")}|${String(request?.signer || "")}`);
   } else if (page === "documents-archives") {
     pageRenderSignatureParts.push(
-      `archive|${String(state.tableSorts?.documentsArchives?.key || "")}|${String(state.tableSorts?.documentsArchives?.dir || "")}`
+      `archive|${String(state.tableSorts?.documentsArchives?.key || "")}|${String(state.tableSorts?.documentsArchives?.dir || "")}|${getArchiveFilterSignatureFromDom()}`
     );
   } else if (page === "reference-bases") {
     pageRenderSignatureParts.push(
@@ -9576,10 +10460,10 @@ function renderPage() {
       state.documentViewRenderCache.arrival = nextArrivalViewSignature;
       const didRenderArrivalDocument = renderArrivalDocument(currentPersonId);
       if (didRenderArrivalDocument) {
-        refreshDocumentSignatureCanvases("arrival");
         scheduleMobileSignatureRenderSync();
       }
     }
+    refreshDocumentSignatureCanvases("arrival");
   }
 
   if (page === "exit-document") {
@@ -9588,10 +10472,10 @@ function renderPage() {
       state.documentViewRenderCache.exit = nextExitViewSignature;
       const didRenderExitDocument = renderExitDocument(currentPersonId);
       if (didRenderExitDocument) {
-        refreshDocumentSignatureCanvases("exit");
         scheduleMobileSignatureRenderSync();
       }
     }
+    refreshDocumentSignatureCanvases("exit");
   }
 
   if (page === "reference-bases") {
@@ -9678,6 +10562,36 @@ function renderEffectsChart(nodeId, persons) {
     totalFacturable += replacementCost;
   });
 
+  const configuredTypes = Array.from(
+    new Set(
+      [
+        ...(state.data?.listes?.typesEffets || []),
+        ...(state.data?.listes?.referencesEffets || []).map((reference) => reference?.typeEffet),
+        ...(state.data?.listes?.coutsRemplacement || []).map((cost) => cost?.typeEffet),
+      ]
+        .map((typeEffet) => normalizeText(typeEffet))
+        .filter(Boolean)
+    )
+  );
+  configuredTypes.forEach((type) => {
+    if (filters.typeEffet && type !== filters.typeEffet) {
+      return;
+    }
+    if (!counts.has(type)) {
+      counts.set(type, {
+        total: 0,
+        segments: {
+          actif: 0,
+          nonRendu: 0,
+          restitue: 0,
+          perdu: 0,
+          vole: 0,
+          hs: 0,
+        },
+      });
+    }
+  });
+
   const rows = Array.from(counts.entries())
     .sort((left, right) => {
       const typeOrder = left[0].localeCompare(right[0], "fr");
@@ -9704,7 +10618,7 @@ function renderEffectsChart(nodeId, persons) {
     </div>`;
   const rowsMarkup = rows
     .map(([type, row]) => {
-      const width = Math.max(8, Math.round((row.total / maxValue) * 100));
+      const width = row.total > 0 ? Math.max(8, Math.round((row.total / maxValue) * 100)) : 0;
       const segmentMarkup = [
         ["actif", "ACTIF"],
         ["nonRendu", "NON RENDU"],
@@ -9917,16 +10831,32 @@ function getDocumentLatestSignatureTimestampMs(person, docType) {
   return Math.max(personnelMs, representantMs);
 }
 
-function hasCurrentSignedPdfForDocumentType(person, docType) {
+function getDocumentSignatureProgress(person, docType) {
+  const hasPersonnelSignature =
+    Boolean(getSignatureValue(person, docType, "personnel")) &&
+    Boolean(getSignatureValidationDate(person, docType, "personnel"));
+  const hasRepresentativeSignature =
+    Boolean(getSignatureValue(person, docType, "representant")) &&
+    Boolean(getSignatureValidationDate(person, docType, "representant"));
+  const count = (hasPersonnelSignature ? 1 : 0) + (hasRepresentativeSignature ? 1 : 0);
+  return {
+    hasPersonnelSignature,
+    hasRepresentativeSignature,
+    count,
+    isFullySigned: hasPersonnelSignature && hasRepresentativeSignature,
+  };
+}
+
+function getSignedPdfStateForDocumentType(person, docType) {
   const normalizedDocType = normalizeText(docType);
   if (!state.data || !person) {
-    return false;
+    return "MISSING";
   }
   const normalizedFingerprintType = normalizedDocType === "SORTIE" || normalizedDocType === "EXIT" ? "exit" : "arrival";
   const typeLabel = getDocumentTypeLabel(normalizedFingerprintType);
   const fingerprint = getDocumentFingerprint(person, normalizedFingerprintType);
   if (!typeLabel) {
-    return false;
+    return "MISSING";
   }
   const archives = (state.data.documentsArchives || []).filter((entry) => {
     if (String(entry?.personId || "") !== String(person.id || "")) {
@@ -9942,14 +10872,14 @@ function hasCurrentSignedPdfForDocumentType(person, docType) {
   });
 
   if (!archives.length) {
-    return false;
+    return "MISSING";
   }
 
   const hasFingerprintMatch = archives.some(
     (entry) => String(entry?.fingerprint || "").trim() && String(entry.fingerprint || "").trim() === fingerprint
   );
   if (hasFingerprintMatch) {
-    return true;
+    return "UP_TO_DATE";
   }
 
   const latestSignatureMs = getDocumentLatestSignatureTimestampMs(person, normalizedFingerprintType);
@@ -9964,50 +10894,61 @@ function hasCurrentSignedPdfForDocumentType(person, docType) {
     return archivedMs >= latestSignatureMs;
   });
   if (hasSignedArchiveAfterSignature) {
-    return true;
+    return "UP_TO_DATE";
   }
 
-  return false;
+  const hasAnySignedArchive = archives.some((entry) => normalizeText(entry?.statutSignature) === "SIGNE");
+  return hasAnySignedArchive ? "OUTDATED" : "MISSING";
+}
+
+function hasCurrentSignedPdfForDocumentType(person, docType) {
+  return getSignedPdfStateForDocumentType(person, docType) === "UP_TO_DATE";
 }
 
 function getSignaturePdfPendingAlerts(person) {
   const alerts = [];
   const currentEffectsCount = getCurrentAssignedEffects(person).length;
-  const missingArrivalSignatures =
-    currentEffectsCount > 0 && !isDocumentFullySigned(person, "arrival");
-  const missingArrivalPdf =
-    isDocumentFullySigned(person, "arrival") && !hasCurrentSignedPdfForDocumentType(person, "arrival");
-  const missingExitPdf =
-    isDocumentFullySigned(person, "exit") && !hasCurrentSignedPdfForDocumentType(person, "exit");
+  const documentContexts = [
+    { label: "d'entrée", key: "arrival", active: currentEffectsCount > 0 },
+    { label: "de sortie", key: "exit", active: getDossierStatus(person) === "SORTI" },
+  ];
 
-  if (missingArrivalSignatures) {
-    alerts.push({
-      docType: "ARRIVEE",
-      message:
-        "ALERTE : EFFET(S) ATTRIBUE(S) MAIS DOCUMENT D'ARRIVEE NON SIGNE (PERSONNEL + REPRESENTANT OBLIGATOIRES).",
-      type: "signaturePdf",
-    });
-  }
-
-  if (missingArrivalPdf) {
-    alerts.push({
-      docType: "ARRIVEE",
-      message:
-        "ALERTE : ARRIVEE SIGNEE (2 SIGNATURES), MAIS PDF ABSENT OU NON MIS A JOUR POUR CETTE VERSION. " +
-        "RE-SIGNEZ LES DEUX PARTIES PUIS CLIQUEZ SUR \"GENERER LE PDF\".",
-      type: "signaturePdf",
-    });
-  }
-
-  if (missingExitPdf) {
-    alerts.push({
-      docType: "SORTIE",
-      message:
-        "ALERTE : SORTIE SIGNEE (2 SIGNATURES), MAIS PDF ABSENT OU NON MIS A JOUR POUR CETTE VERSION. " +
-        "RE-SIGNEZ LES DEUX PARTIES PUIS CLIQUEZ SUR \"GENERER LE PDF\".",
-      type: "signaturePdf",
-    });
-  }
+  documentContexts.forEach((context) => {
+    if (!context.active) return;
+    const signatureProgress = getDocumentSignatureProgress(person, context.key);
+    if (signatureProgress.count === 0) {
+      alerts.push({
+        docType: context.key === "exit" ? "SORTIE" : "ARRIVEE",
+        message: `Le document ${context.label} n'est pas encore signe.`,
+        type: "signaturePdf",
+      });
+      return;
+    }
+    if (!signatureProgress.isFullySigned) {
+      alerts.push({
+        docType: context.key === "exit" ? "SORTIE" : "ARRIVEE",
+        message: `Le document ${context.label} doit encore etre signe par l'autre partie.`,
+        type: "signaturePdf",
+      });
+      return;
+    }
+    const pdfState = getSignedPdfStateForDocumentType(person, context.key);
+    if (pdfState === "MISSING") {
+      alerts.push({
+        docType: context.key === "exit" ? "SORTIE" : "ARRIVEE",
+        message: `Les deux signatures sont presentes. Le PDF ${context.label} doit etre genere.`,
+        type: "signaturePdf",
+      });
+      return;
+    }
+    if (pdfState === "OUTDATED") {
+      alerts.push({
+        docType: context.key === "exit" ? "SORTIE" : "ARRIVEE",
+        message: `Les deux signatures sont presentes. Le PDF ${context.label} doit etre mis a jour.`,
+        type: "signaturePdf",
+      });
+    }
+  });
 
   return alerts.map((item) => ({
     id: person.id,
@@ -10305,6 +11246,14 @@ function validateDateFieldFormat(value, label) {
       message: `${label} INVALIDE (FORMAT ATTENDU : AAAA-MM-JJ)`,
     };
   }
+  const year = Number(raw.slice(0, 4));
+  const currentYear = new Date().getFullYear();
+  if (!Number.isFinite(year) || year < 1900 || year > currentYear + 20) {
+    return {
+      ok: false,
+      message: `${label} INVALIDE (ANNEE INCOHERENTE)`,
+    };
+  }
   return { ok: true, message: "" };
 }
 
@@ -10590,6 +11539,8 @@ function getArchivePreferredOpenPath(entry) {
 function normalizePdfQualityStatus(value) {
   const normalized = normalizeText(value);
   if (normalized === "VALID") return "VALID";
+  if (normalized === "LEGACY_ONLY") return "LEGACY_ONLY";
+  if (normalized === "MISSING_ACTIVE_FILE") return "INVALID_MISSING_FILE";
   if (normalized.startsWith("INVALID_LOGIN")) return "INVALID_LOGIN";
   if (normalized.startsWith("INVALID_TOO_SMALL")) return "INVALID_TOO_SMALL";
   if (normalized.startsWith("INVALID_BLANK")) return "INVALID_BLANK";
@@ -10622,10 +11573,11 @@ function resolveArchiveOpenTarget(entry) {
 
 function handleArchiveOpenClick(archive, fallbackEntry = null) {
   const resolved = resolveArchiveOpenTarget(archive || fallbackEntry || {});
-  if (!resolved.url) {
+  const pdfUrl = normalizeDirectPdfOpenUrl(resolved.url);
+  if (!pdfUrl) {
     return false;
   }
-  window.open(resolved.url, "_blank", "noopener");
+  window.open(pdfUrl, "_blank", "noopener");
   return true;
 }
 
@@ -10670,6 +11622,10 @@ function buildDocumentArchiveEntry(person, docType, pdfPath, metadataPath, archi
   const documentMode = normalizeText(archiveMode || "STANDARD");
   const baseId = `DOC-${getDocumentTypeLabel(docType)}-${person?.id || ""}`;
   const locations = resolveArchivePdfLocations(pdfPath, existingEntry || {});
+  const nextPdfQualityStatus =
+    archiveDetails && !Object.prototype.hasOwnProperty.call(archiveDetails, "pdfQualityStatus")
+      ? "VALID"
+      : archiveDetails?.pdfQualityStatus || existingEntry?.pdfQualityStatus || "VALID";
   return {
     id: baseId,
     personId: String(person?.id || ""),
@@ -10696,9 +11652,7 @@ function buildDocumentArchiveEntry(person, docType, pdfPath, metadataPath, archi
     publicUrl: String(archiveDetails?.publicUrl || locations.publicUrl || ""),
     openRemoteUrl: String(archiveDetails?.openRemoteUrl || locations.openRemoteUrl || ""),
     storageStatus: String(archiveDetails?.storageStatus || existingEntry?.storageStatus || ""),
-    pdfQualityStatus: normalizePdfQualityStatus(
-      archiveDetails?.pdfQualityStatus || existingEntry?.pdfQualityStatus || "VALID"
-    ),
+    pdfQualityStatus: normalizePdfQualityStatus(nextPdfQualityStatus),
     metadataPath: String(metadataPath || ""),
     dateArchivage: getCurrentSignatureTimestamp(),
   };
@@ -10726,6 +11680,51 @@ function findReusableArchivedDocument(person, docType) {
     );
   }
   return archives.find((entry) => String(entry.fingerprint || "") === fingerprint) || null;
+}
+
+function findActiveArchiveEntry(personId, docType) {
+  if (!state.data || !Array.isArray(state.data.documentsArchives)) {
+    return null;
+  }
+  const typeLabel = getDocumentTypeLabel(docType);
+  const expectedId = `DOC-${typeLabel}-${personId}`;
+  const byId = state.data.documentsArchives.find((entry) => String(entry?.id || "") === expectedId);
+  if (byId) {
+    return byId;
+  }
+  return (
+    state.data.documentsArchives.find(
+      (entry) =>
+        String(entry?.personId || "") === String(personId || "") &&
+        normalizeText(entry?.typeDocument) === typeLabel
+    ) || null
+  );
+}
+
+async function verifyActiveArchiveOpenable(personId, docType) {
+  const entry = findActiveArchiveEntry(personId, docType);
+  if (!entry) {
+    return { ok: false, reason: "ARCHIVE_ENTRY_NOT_FOUND" };
+  }
+  const resolved = resolveArchiveOpenTarget(entry);
+  const targetUrl = String(resolved?.url || "").trim();
+  if (!targetUrl) {
+    return { ok: false, reason: "ARCHIVE_OPEN_URL_EMPTY" };
+  }
+  if (normalizePdfQualityStatus(entry?.pdfQualityStatus) !== "VALID") {
+    return { ok: false, reason: "ARCHIVE_QUALITY_NOT_VALID" };
+  }
+  if (/^\/api\/pdf-file\?/i.test(targetUrl)) {
+    try {
+      const response = await fetch(targetUrl, { method: "HEAD", cache: "no-store" });
+      if (!response.ok) {
+        return { ok: false, reason: `ARCHIVE_FILE_HEAD_${response.status}` };
+      }
+    } catch (error) {
+      return { ok: false, reason: "ARCHIVE_FILE_HEAD_FAILED" };
+    }
+  }
+  return { ok: true, reason: "OK" };
 }
 
 function upsertDocumentArchiveEntry(entry) {
@@ -10760,13 +11759,14 @@ async function registerArchivedDocument(person, docType, pdfPath, metadataPath, 
   if (!state.data || !person || !pdfPath) {
     return;
   }
-  if (normalizeText(docType) === "EXIT" && getDossierStatus(person) !== "SORTI") {
+  const existingTypeArchive = findActiveArchiveEntry(person.id, docType);
+  if (normalizeText(docType) === "EXIT" && getDossierStatus(person) !== "SORTI" && !existingTypeArchive) {
     return;
   }
   if (!isDocumentFullySigned(person, docType)) {
     return;
   }
-  const existingEntry = findReusableArchivedDocument(person, docType);
+  const existingEntry = findReusableArchivedDocument(person, docType) || existingTypeArchive;
   upsertDocumentArchiveEntry(buildDocumentArchiveEntry(person, docType, pdfPath, metadataPath, archiveMode, existingEntry, archiveDetails));
   markDirty();
   await saveDataToFile({
@@ -10797,7 +11797,9 @@ function renderDocumentsArchivePage() {
   const lockedPerson = lockedPersonId
     ? (state.data?.personnes || []).find((person) => String(person?.id || "") === lockedPersonId) || null
     : null;
-  const archiveSearchField = filterForm?.elements?.archiveSearch;
+  const getArchiveFilterField = (fieldName) =>
+    filterForm ? filterForm.querySelector(`[name="${fieldName}"]`) : null;
+  const archiveSearchField = getArchiveFilterField("archiveSearch");
   if (archiveSearchField instanceof HTMLInputElement && lockedPerson && !String(archiveSearchField.value || "").trim()) {
     const label = `${lockedPerson.nom || ""} ${lockedPerson.prenom || ""}`.trim();
     archiveSearchField.value = label;
@@ -10810,10 +11812,12 @@ function renderDocumentsArchivePage() {
         .map((token) => normalizeText(token))
         .filter(Boolean)
     : [];
-  const typeDocument = normalizeText(filterForm?.elements?.archiveTypeDocument?.value);
-  const site = normalizeText(filterForm?.elements?.archiveSite?.value);
-  const statutSignature = normalizeText(filterForm?.elements?.archiveStatutSignature?.value);
-  const archiveSiteSelect = filterForm?.elements?.archiveSite;
+  const typeDocumentField = getArchiveFilterField("archiveTypeDocument");
+  const archiveSiteSelect = getArchiveFilterField("archiveSite");
+  const statutSignatureField = getArchiveFilterField("archiveStatutSignature");
+  const typeDocument = normalizeText(typeDocumentField?.value);
+  const site = normalizeText(archiveSiteSelect?.value);
+  const statutSignature = normalizeText(statutSignatureField?.value);
   syncSelectOptions(archiveSiteSelect, state.data?.listes?.sites || [], "TOUS");
 
   let totalArchives = 0;
@@ -11262,8 +12266,17 @@ function getRepresentativeInfo(person, docType) {
   if (!person?.representants?.[docType]) {
     return { id: "", nom: "", fonction: "" };
   }
+  const representativeId = String(person.representants[docType].id || "");
+  const linkedRepresentative = representativeId ? findRepresentativeById(representativeId) : null;
+  if (linkedRepresentative) {
+    return {
+      id: String(linkedRepresentative.id || ""),
+      nom: String(linkedRepresentative.nom || person.representants[docType].nom || ""),
+      fonction: String(linkedRepresentative.fonction || person.representants[docType].fonction || ""),
+    };
+  }
   return {
-    id: String(person.representants[docType].id || ""),
+    id: representativeId,
     nom: String(person.representants[docType].nom || ""),
     fonction: String(person.representants[docType].fonction || ""),
   };
@@ -11373,7 +12386,13 @@ function populateRepresentativeSelect(select, selectedId = "") {
   }
   const currentValue = String(selectedId || "");
   const representatives = (state.data?.listes?.representantsSignataires || []).slice();
+  const hasCurrentValue = !currentValue || representatives.some((entry) => String(entry.id || "") === currentValue);
+  const fallbackOption =
+    currentValue && !hasCurrentValue
+      ? [`<option value="${escapeHtml(currentValue)}">${escapeHtml(currentValue)}</option>`]
+      : [];
   select.innerHTML = ['<option value="">SELECTIONNER</option>']
+    .concat(fallbackOption)
     .concat(
       representatives.map(
         (entry) =>
@@ -11387,12 +12406,42 @@ function populateRepresentativeSelect(select, selectedId = "") {
 function hasRepresentativeIdentityForDocument(docType) {
   const nameInput = document.getElementById(`${docType}-signature-representant-name-input`);
   const functionInput = document.getElementById(`${docType}-signature-representant-function-input`);
+  const person = getCurrentPerson();
+  const representative = getRepresentativeInfo(person, docType);
+  const storedIdentityReady = Boolean(normalizeText(representative.nom) && normalizeText(representative.fonction));
+  if (storedIdentityReady) {
+    return true;
+  }
   return Boolean(
     nameInput instanceof HTMLSelectElement &&
       functionInput instanceof HTMLInputElement &&
       normalizeText(nameInput.value) &&
       normalizeText(functionInput.value)
   );
+}
+
+function captureRepresentativeIdentityDraftToState(docType, person = getCurrentPerson()) {
+  if (!person) {
+    return false;
+  }
+  const nameInput = document.getElementById(`${docType}-signature-representant-name-input`);
+  const functionInput = document.getElementById(`${docType}-signature-representant-function-input`);
+  if (!(nameInput instanceof HTMLSelectElement) || !(functionInput instanceof HTMLInputElement)) {
+    return false;
+  }
+  const selectedRepresentative = findRepresentativeById(nameInput.value);
+  const nextNom = normalizeText(selectedRepresentative?.nom || nameInput.options[nameInput.selectedIndex]?.text || nameInput.value || "");
+  const nextFonction = normalizeText(selectedRepresentative?.fonction || functionInput.value || "");
+  if (!nextNom || !nextFonction) {
+    return false;
+  }
+  const current = getRepresentativeInfo(person, docType);
+  if (normalizeText(current.nom) === nextNom && normalizeText(current.fonction) === nextFonction) {
+    return false;
+  }
+  setRepresentativeInfo(person, docType, { nom: nextNom, fonction: nextFonction });
+  markDirty();
+  return true;
 }
 
 function updateRepresentativeSignatureActionState(docType) {
@@ -11412,7 +12461,16 @@ function getSignatureValidationDate(person, docType, signer) {
   if (!person?.signatures?.[docType]) {
     return "";
   }
-  return String(person.signatures[docType][signer]?.validatedAt || "");
+  const entry = person.signatures[docType][signer] || {};
+  const hasSignatureImage = Boolean(
+    String(entry.image || "").trim() ||
+      String(entry.storageRef || "").trim() ||
+      String(entry.storagePublicUrl || "").trim()
+  );
+  if (!hasSignatureImage) {
+    return "";
+  }
+  return String(entry.validatedAt || "");
 }
 
 function getSignatureStorageRef(person, docType, signer) {
@@ -11671,20 +12729,6 @@ function bindRepresentativeFields() {
         nom: representative?.nom || "",
         fonction: representative?.fonction || "",
       });
-      if (representative) {
-        const currentSignature = person.signatures?.[docType]?.representant || {};
-        if (!String(currentSignature.validatedAt || "")) {
-          setSignatureValue(
-            person,
-            docType,
-            "representant",
-            String(currentSignature.image || ""),
-            getCurrentSignatureTimestamp(),
-            String(currentSignature.storageRef || ""),
-            String(currentSignature.storagePublicUrl || "")
-          );
-        }
-      }
       const representantNameNode = document.getElementById(`${docType}-signature-representant-name`);
       const representantFunctionNode = document.getElementById(`${docType}-signature-representant-function`);
       const signatureRepresentantDateNode = document.getElementById(`${docType}-signature-representant-date`);
@@ -12031,7 +13075,7 @@ function getCurrentMobileSignatureRequest() {
     return null;
   }
   cleanupExpiredMobileSignatureRequests();
-  return findMobileSignatureRequestByToken(token) || buildFallbackMobileSignatureRequestFromUrl(token);
+  return applyMobileSignatureIdentityFromUrl(findMobileSignatureRequestByToken(token)) || buildFallbackMobileSignatureRequestFromUrl(token);
 }
 
 function getMobileSignatureTargetPerson() {
@@ -12046,8 +13090,62 @@ function getMobileSignatureTargetPerson() {
 
   return (
     state.data.personnes.find((entry) => String(entry?.id || "") === targetPersonId) ||
+    buildMobileSignaturePersonFromRequest(request, targetPersonId) ||
     getCurrentPerson()
   );
+}
+
+function buildMobileSignaturePersonFromRequest(request, personId = "") {
+  if (!request) {
+    return null;
+  }
+  const normalizedPersonId = String(personId || request.personId || "").trim();
+  const nom = normalizeText(request.personNom || "");
+  const prenom = normalizeText(request.personPrenom || "");
+  if (!normalizedPersonId || (!nom && !prenom)) {
+    return null;
+  }
+  return {
+    id: normalizedPersonId,
+    nom,
+    prenom,
+    site: normalizeText(request.personSite || ""),
+    typePersonnel: normalizeText(request.personTypePersonnel || ""),
+    typeContrat: normalizeText(request.personTypeContrat || ""),
+    effetsConfies: [],
+    signatures: {
+      arrival: {
+        personnel: { image: "", validatedAt: "", storageRef: "", storagePublicUrl: "" },
+        representant: { image: "", validatedAt: "", storageRef: "", storagePublicUrl: "" },
+      },
+      exit: {
+        personnel: { image: "", validatedAt: "", storageRef: "", storagePublicUrl: "" },
+        representant: { image: "", validatedAt: "", storageRef: "", storagePublicUrl: "" },
+      },
+    },
+    representants: {
+      arrival: {
+        nom: normalizeText(request.representativeNom || ""),
+        fonction: normalizeText(request.representativeFonction || ""),
+      },
+      exit: {
+        nom: normalizeText(request.representativeNom || ""),
+        fonction: normalizeText(request.representativeFonction || ""),
+      },
+    },
+    __mobileSignatureFallback: true,
+  };
+}
+
+function getMobileSignatureRepresentativeInfo(person, docType, request = null) {
+  const stored = person ? getRepresentativeInfo(person, docType) : { id: "", nom: "", fonction: "" };
+  const requestNom = normalizeText(request?.representativeNom || "");
+  const requestFonction = normalizeText(request?.representativeFonction || "");
+  return {
+    id: String(stored.id || ""),
+    nom: normalizeText(stored.nom || requestNom),
+    fonction: normalizeText(stored.fonction || requestFonction),
+  };
 }
 
 function isMobileSignatureRequestValid(request) {
@@ -12078,7 +13176,7 @@ function renderMobileSignaturePage() {
   const signer = request ? signerFromRequest : signerFromUrl;
   const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
   const docLabel = normalizedDocType === "exit" ? "DOCUMENT DE SORTIE" : "DOCUMENT D'ARRIVEE";
-  const representative = person ? getRepresentativeInfo(person, normalizedDocType) : null;
+  const representative = getMobileSignatureRepresentativeInfo(person, normalizedDocType, request);
   const representativeReady =
     signer !== "representant" || Boolean(normalizeText(representative?.nom) && normalizeText(representative?.fonction));
   const signatureValidationDate = String(getSignatureValidationDate(person, normalizedDocType, signer) || "");
@@ -12546,8 +13644,12 @@ function matchesFilters(person, filters) {
   if (filters.typePersonnel && normalizeText(person.typePersonnel) !== filters.typePersonnel) return false;
   if (filters.typeContrat && normalizeText(person.typeContrat) !== filters.typeContrat) return false;
   if (filters.statutDossier && dossierStatus !== filters.statutDossier) return false;
-  if (filters.typeEffet && !effects.some((effect) => normalizeText(effect.typeEffet) === filters.typeEffet)) return false;
-  if (filters.statutObjet && !effects.some((effect) => effect.statutAffiche === filters.statutObjet)) return false;
+  if (
+    (filters.typeEffet || filters.statutObjet) &&
+    !effects.some((effect) => effectMatchesActiveObjectFilters(person, effect, filters))
+  ) {
+    return false;
+  }
   if (state.urgentMode && !hasUrgencyCondition(person)) return false;
   if (!filters.search) return true;
 
@@ -12589,8 +13691,8 @@ function renderOverview(persons) {
     const overviewSortConfig = state.tableSorts?.overviewPersons || {};
     const overviewRowsSignature = `overview|${String(overviewSortConfig.key || "")}|${String(overviewSortConfig.dir || "")}|${sortedPersons
       .map((person) => {
-        const allEffects = person?.effetsConfies || [];
-        const assignedEffects = allEffects.filter((effect) => isCurrentAssignedEffect(person, effect));
+        const allEffects = getEffectsForActiveFilters(person);
+        const assignedEffects = getCurrentAssignedEffectsForActiveFilters(person);
         const totalCosts = assignedEffects.reduce(
           (sum, effect) => sum + getEffectReplacementCost(person, effect),
           0
@@ -12680,8 +13782,8 @@ function renderOverview(persons) {
           (alert) => `<button type="button" class="overview-alert-item overview-alert-item--${alert.type || "dateSortiePrevue"} js-open-person-alert" data-person-id="${alert.id}">
             <span class="overview-alert-item__icon overview-alert-item__icon--${alert.type || "dateSortiePrevue"}" aria-hidden="true">${alert.type === "signaturePdf" ? "✎" : alert.type === "dateSortieReelle" ? "✕" : "!"}</span>
             <span class="overview-alert-item__content">
-              <strong>${escapeHtml(`${alert.nom} ${alert.prenom}`.trim())}</strong>
-              <span>${escapeHtml(alert.message)}</span>
+              <strong>${escapeHtml(`${alert.nom} ${alert.prenom}`.trim().toUpperCase())}</strong>
+              <span>${escapeHtml(String(alert.message || "").toUpperCase())}</span>
             </span>
           </button>`
         )
@@ -12697,7 +13799,7 @@ function buildOverviewRows(persons) {
   }
   return persons
     .map((person) => {
-      const currentEffects = getCurrentAssignedEffects(person);
+      const currentEffects = getCurrentAssignedEffectsForActiveFilters(person);
       const totalEffects = currentEffects.length;
       const totalCosts = currentEffects.reduce(
         (sum, effect) => sum + getEffectReplacementCost(person, effect),
@@ -12706,7 +13808,7 @@ function buildOverviewRows(persons) {
       const nonRendus = currentEffects.filter(
         (effect) => getEffectStatus(person, effect) === "NON RENDU"
       ).length;
-      const movementMap = getArrivalComplementMovementMap(person, person.effetsConfies || []);
+      const movementMap = getArrivalComplementMovementMap(person, getEffectsForActiveFilters(person));
       const movementCounts = {
         AJOUTE: 0,
         MODIFIE: 0,
@@ -12770,7 +13872,7 @@ function renderGlobalTable(persons) {
 
   const globalRowsSignature = `global|${persons
     .map((person) => {
-      const currentEffects = getCurrentAssignedEffects(person);
+      const currentEffects = getCurrentAssignedEffectsForActiveFilters(person);
       const totalEffects = currentEffects.length;
       const totalCosts = currentEffects.reduce(
         (sum, effect) => sum + getEffectReplacementCost(person, effect),
@@ -12779,7 +13881,7 @@ function renderGlobalTable(persons) {
       const nonRendus = currentEffects.filter(
         (effect) => getEffectStatus(person, effect) === "NON RENDU"
       ).length;
-      const movementMap = getArrivalComplementMovementMap(person, person.effetsConfies || []);
+      const movementMap = getArrivalComplementMovementMap(person, getEffectsForActiveFilters(person));
       const movementCounts = {
         AJOUTE: 0,
         MODIFIE: 0,
@@ -12825,7 +13927,7 @@ function renderGlobalTable(persons) {
 
   const rowsHtml = persons
     .map((person) => {
-      const currentEffects = getCurrentAssignedEffects(person);
+      const currentEffects = getCurrentAssignedEffectsForActiveFilters(person);
       const totalEffects = currentEffects.length;
       const totalCosts = currentEffects.reduce(
         (sum, effect) => sum + getEffectReplacementCost(person, effect),
@@ -12834,7 +13936,7 @@ function renderGlobalTable(persons) {
       const nonRendus = currentEffects.filter(
         (effect) => getEffectStatus(person, effect) === "NON RENDU"
       ).length;
-      const movementMap = getArrivalComplementMovementMap(person, person.effetsConfies || []);
+      const movementMap = getArrivalComplementMovementMap(person, getEffectsForActiveFilters(person));
       const movementCounts = {
         AJOUTE: 0,
         MODIFIE: 0,
@@ -13000,6 +14102,12 @@ function getSheetEffectTypeIconVariant(typeEffet) {
   if (normalizedType === "CARTE TURBOSELF") {
     return "carte";
   }
+  if (normalizedType === "RADIATEUR APPOINT") {
+    return "radiateur";
+  }
+  if (normalizedType === "VENTILATEUR") {
+    return "ventilateur";
+  }
   if (normalizedType === "CLE" || normalizedType === "CLE CES") {
     return "cle";
   }
@@ -13019,6 +14127,12 @@ function getSheetEffectTypeIconSvg(typeEffet) {
   }
   if (variant === "carte") {
     return '<img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/icone-carte.png" alt="" loading="lazy">';
+  }
+  if (variant === "radiateur") {
+    return '<img src="assets/effects/icone-radiateur-appoint.png" alt="" loading="lazy">';
+  }
+  if (variant === "ventilateur") {
+    return '<img src="assets/effects/icone-ventilateur.png" alt="" loading="lazy">';
   }
   if (variant === "cle") {
     return '<img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/icone-cle.png" alt="" loading="lazy">';
@@ -13358,6 +14472,10 @@ function fillSheetForm(person) {
     const typeContrat = normalizeText(form.elements.sheetTypeContrat?.value || "");
     const dateEntree = String(form.elements.sheetDateEntree?.value || "").trim();
     const dateSortiePrevueValue = String(form.elements.sheetDateSortiePrevue?.value || "").trim();
+    const dateSortieReelleValue = String(form.elements.sheetDateSortieReelle?.value || "").trim();
+    const dateEntreeValidation = validateDateFieldFormat(dateEntree, "DATE D'ENTREE");
+    const dateSortiePrevueValidation = validateDateFieldFormat(dateSortiePrevueValue, "DATE DE SORTIE PREVUE");
+    const dateSortieReelleValidation = validateDateFieldFormat(dateSortieReelleValue, "DATE DE SORTIE REELLE");
     const dateSortiePrevueField = form.elements.sheetDateSortiePrevue;
     const dateSortiePrevueNode = dateSortiePrevueField instanceof HTMLElement
       ? dateSortiePrevueField.closest(".field")
@@ -13369,7 +14487,7 @@ function fillSheetForm(person) {
       dateSortiePrevueNode.classList.toggle("field--key", needsExpectedExitDate);
       dateSortiePrevueNode.classList.toggle(
         "field--missing",
-        needsExpectedExitDate && !dateSortiePrevueValue
+        (needsExpectedExitDate && !dateSortiePrevueValue) || !dateSortiePrevueValidation.ok
       );
     }
     form.elements.sheetNom?.closest(".field")?.classList.toggle("field--missing", !nom);
@@ -13377,7 +14495,14 @@ function fillSheetForm(person) {
     form.elements.sheetFonction?.closest(".field")?.classList.toggle("field--missing", !fonction);
     form.elements.sheetTypePersonnel?.closest(".field")?.classList.toggle("field--missing", !typePersonnel);
     form.elements.sheetTypeContrat?.closest(".field")?.classList.toggle("field--missing", !typeContrat);
-    form.elements.sheetDateEntree?.closest(".field")?.classList.toggle("field--missing", !dateEntree);
+    form.elements.sheetDateEntree?.closest(".field")?.classList.toggle(
+      "field--missing",
+      !dateEntree || !dateEntreeValidation.ok
+    );
+    form.elements.sheetDateSortieReelle?.closest(".field")?.classList.toggle(
+      "field--missing",
+      !dateSortieReelleValidation.ok
+    );
     const siteField = form.querySelector("#sheet-site-selector")?.closest(".field");
     if (siteField) {
       siteField.classList.toggle("field--missing", readSelectedSites(form, "sheet").length === 0);
@@ -13662,20 +14787,46 @@ function getArrivalCostDesignation(typeEffet) {
   return normalizeText(typeEffet) === "CLE CES" ? "CES-PG" : "";
 }
 
+function getDocumentCostRows() {
+  const effectTypes = getArrivalCostTypes();
+  const rows = [];
+  effectTypes.forEach((typeEffet) => {
+    const normalizedType = normalizeText(typeEffet);
+    if (normalizedType === "VENTILATEUR") {
+      rows.push({
+        typeEffet: normalizedType,
+        designation: "VENTILATEUR BUREAU",
+        label: "VENTILATEUR BUREAU",
+      });
+      rows.push({
+        typeEffet: normalizedType,
+        designation: "VENTILATEUR SUR PIED",
+        label: "VENTILATEUR SUR PIED",
+      });
+      return;
+    }
+    rows.push({
+      typeEffet: normalizedType,
+      designation: getArrivalCostDesignation(normalizedType),
+      label: normalizedType,
+    });
+  });
+  return rows;
+}
+
 function renderDocumentCostsTable(docType, headNode, bodyNode) {
   const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
   const causes = getArrivalCostCauses();
-  const effectTypes = getArrivalCostTypes();
-  const costRows = effectTypes
-    .map((typeEffet) => {
-      const values = causes.map((cause) => getReplacementCostValue(typeEffet, cause, getArrivalCostDesignation(typeEffet)));
-      return `${String(typeEffet)}|||${values.join("||")}`;
+  const costRowDefinitions = getDocumentCostRows();
+  const costRows = costRowDefinitions
+    .map((row) => {
+      const values = causes.map((cause) => getReplacementCostValue(row.typeEffet, cause, row.designation));
+      return `${String(row.label)}|||${String(row.typeEffet)}|||${String(row.designation)}|||${values.join("||")}`;
     })
     .join(";;");
   const nextCostSignature = [
     normalizedDocType,
     String(causes.join("||")),
-    String(effectTypes.join("||")),
     String(costRows),
   ].join("##");
 
@@ -13689,17 +14840,17 @@ function renderDocumentCostsTable(docType, headNode, bodyNode) {
     ${causes.map((cause) => `<th>${escapeHtml(cause)}</th>`).join("")}
   </tr>`;
 
-  if (!effectTypes.length) {
+  if (!costRowDefinitions.length) {
     bodyNode.innerHTML = buildEmptyTableRow(bodyNode, "AUCUN COUT A AFFICHER", causes.length + 1);
     return;
   }
 
-  bodyNode.innerHTML = effectTypes
+  bodyNode.innerHTML = costRowDefinitions
     .map(
-      (typeEffet) => `<tr>
-        <td>${escapeHtml(typeEffet)}</td>
+      (row) => `<tr>
+        <td>${escapeHtml(row.label)}</td>
         ${causes
-          .map((cause) => `<td>${formatAmountWithEuro(getReplacementCostValue(typeEffet, cause, getArrivalCostDesignation(typeEffet)))}</td>`)
+          .map((cause) => `<td>${formatAmountWithEuro(getReplacementCostValue(row.typeEffet, cause, row.designation))}</td>`)
           .join("")}
       </tr>`
     )
@@ -14260,6 +15411,9 @@ function hydrateEffectReferenceSiteSelect(person, selectedSite = "", typeEffet =
   if (typeUsesReferenceCatalog(normalizedType)) {
     sites = getReferenceSitesForType(normalizedType);
   }
+  if (normalizedType === "VENTILATEUR") {
+    sites = getAvailableReferenceSites(person);
+  }
   if (normalizedType === "CARTE TURBOSELF") {
     sites = Array.from(new Set([ALL_SITES_VALUE, ...sites.filter((site) => site !== ALL_SITES_VALUE)]));
   }
@@ -14290,7 +15444,7 @@ function hydrateReferenceSelect(siteSource, typeEffet = "", selectedId = "", ref
       if (!isReferenceEffectActive(reference)) {
         return false;
       }
-      if (normalizedReferenceSite && !referenceHasSite(reference, normalizedReferenceSite)) {
+      if (normalizedTypeEffet !== "VENTILATEUR" && normalizedReferenceSite && !referenceHasSite(reference, normalizedReferenceSite)) {
         return false;
       }
       if (normalizedTypeEffet && !referenceMatchesType(reference, normalizedTypeEffet)) {
@@ -14613,6 +15767,25 @@ function getAllEffects(persons) {
   );
 }
 
+function effectMatchesActiveObjectFilters(person, effect, filters = state.filters || DEFAULT_FILTERS) {
+  if (filters.site && !effectMatchesSiteFilter(person, effect, filters.site)) {
+    return false;
+  }
+  if (filters.typeEffet && normalizeText(effect?.typeEffet) !== filters.typeEffet) {
+    return false;
+  }
+  if (filters.statutObjet && getEffectStatus(person, effect) !== filters.statutObjet) {
+    return false;
+  }
+  return true;
+}
+
+function getEffectsForActiveFilters(person, filters = state.filters || DEFAULT_FILTERS) {
+  return (person?.effetsConfies || []).filter((effect) =>
+    effectMatchesActiveObjectFilters(person, effect, filters)
+  );
+}
+
 function isCurrentAssignedEffect(person, effect) {
   const status = normalizeText(getEffectStatus(person, effect));
   return !["RESTITUE", "PERDU", "HS", "DETRUIT", "VOL"].includes(status);
@@ -14620,6 +15793,12 @@ function isCurrentAssignedEffect(person, effect) {
 
 function getCurrentAssignedEffects(person) {
   return (person?.effetsConfies || []).filter((effect) => isCurrentAssignedEffect(person, effect));
+}
+
+function getCurrentAssignedEffectsForActiveFilters(person, filters = state.filters || DEFAULT_FILTERS) {
+  return getCurrentAssignedEffects(person).filter((effect) =>
+    effectMatchesActiveObjectFilters(person, effect, filters)
+  );
 }
 
 function getEffectChartCategory(person, effect) {
@@ -15295,8 +16474,19 @@ function renderReferenceEffectsTable(renderContext = null) {
     }
     return true;
   });
+  const referenceLessTypes = (state.data?.listes?.typesEffets || [])
+    .map(normalizeText)
+    .filter((typeEffet) => EFFECT_TYPES_WITHOUT_REFERENCE_DESIGNATION.includes(typeEffet))
+    .filter((typeEffet) => !filterTypeEffet || typeEffet === filterTypeEffet)
+    .filter((typeEffet) => {
+      if (!filterSearch) {
+        return true;
+      }
+      return `${typeEffet} SANS DESIGNATION PAS DE REFERENCE`.includes(filterSearch);
+    })
+    .filter((typeEffet) => !state.data.listes.referencesEffets.some((reference) => normalizeText(reference?.typeEffet) === typeEffet));
   const sortedReferences = sortReferencesForTable(references, "referenceEffects", renderContext);
-  if (!references.length) {
+  if (!references.length && !referenceLessTypes.length) {
     body.innerHTML = buildEmptyTableRow(body, "AUCUNE REFERENCE", 5);
     return;
   }
@@ -15315,7 +16505,19 @@ function renderReferenceEffectsTable(renderContext = null) {
           <button type="button" class="table-link js-hard-delete-reference-effect" data-reference-id="${reference.id}">SUPPRIMER</button>
         </td>
       </tr>`;
-    });
+    })
+    .concat(
+      referenceLessTypes.map((typeEffet) => {
+        const usage = renderContext?.simpleUsage?.typesEffets?.get(typeEffet) || 0;
+        return `<tr class="js-reference-effect-row">
+          <td>${escapeHtml(ALL_SITES_VALUE)}</td>
+          <td>${escapeHtml(typeEffet)}</td>
+          <td>${escapeHtml(STOCK_EMPTY_DESIGNATION_LABEL)} <span class="table-muted">(PAS DE REFERENCE)</span></td>
+          <td>${usage}</td>
+          <td><span class="table-muted">TYPE SANS DESIGNATION</span></td>
+        </tr>`;
+      })
+    );
 
   renderTableRowsProgressively(body, rowsHtml, buildEmptyTableRow(body, "AUCUNE REFERENCE", 5), 24);
   updateSortableHeaders("referenceEffects");
@@ -15332,8 +16534,8 @@ function renderReplacementCostsTable() {
   const entries = state.data.listes.coutsRemplacement
     .slice()
     .sort((left, right) => {
-      const leftLabel = `${normalizeText(left.typeEffet)} ${normalizeText(left.cause)}`;
-      const rightLabel = `${normalizeText(right.typeEffet)} ${normalizeText(right.cause)}`;
+      const leftLabel = `${normalizeText(left.typeEffet)} ${normalizeText(left.designation)} ${normalizeText(left.cause)}`;
+      const rightLabel = `${normalizeText(right.typeEffet)} ${normalizeText(right.designation)} ${normalizeText(right.cause)}`;
       return leftLabel.localeCompare(rightLabel, "fr");
     });
 
@@ -15344,9 +16546,10 @@ function renderReplacementCostsTable() {
 
   const rowsHtml = entries
     .map((entry) => {
-      const key = getReplacementCostKey(entry.typeEffet, entry.cause);
+      const key = getReplacementCostKey(entry.typeEffet, entry.cause, entry.designation);
+      const typeLabel = entry.designation ? `${entry.typeEffet} / ${entry.designation}` : entry.typeEffet;
       return `<tr class="js-replacement-cost-row" data-cost-key="${key}">
-        <td>${escapeHtml(entry.typeEffet)}</td>
+        <td>${escapeHtml(typeLabel)}</td>
         <td>${escapeHtml(entry.cause)}</td>
         <td>${formatAmountWithEuro(entry.montant)}</td>
         <td>
@@ -15992,7 +17195,7 @@ function startEditReplacementCost(costKey) {
   }
 
   const entry = state.data.listes.coutsRemplacement.find(
-    (item) => getReplacementCostKey(item.typeEffet, item.cause) === costKey
+    (item) => getReplacementCostKey(item.typeEffet, item.cause, item.designation) === costKey
   );
   if (!entry) {
     return;
@@ -16015,7 +17218,7 @@ function deleteReplacementCost(costKey) {
     return;
   }
   const entry = state.data.listes.coutsRemplacement.find(
-    (item) => getReplacementCostKey(item.typeEffet, item.cause) === costKey
+    (item) => getReplacementCostKey(item.typeEffet, item.cause, item.designation) === costKey
   );
   if (!entry) {
     return;
@@ -16025,7 +17228,7 @@ function deleteReplacementCost(costKey) {
   }
   pushUndoSnapshot("SUPPRESSION COUT");
   state.data.listes.coutsRemplacement = state.data.listes.coutsRemplacement.filter(
-    (item) => getReplacementCostKey(item.typeEffet, item.cause) !== costKey
+    (item) => getReplacementCostKey(item.typeEffet, item.cause, item.designation) !== costKey
   );
   if (state.editingReplacementCostKey === costKey) {
     state.editingReplacementCostKey = "";
@@ -16681,6 +17884,50 @@ function appendSaveAuditEntry(entry) {
   }
 }
 
+function computeDataPersistenceSignature(data) {
+  try {
+    return JSON.stringify(data ?? null);
+  } catch (error) {
+    return "";
+  }
+}
+
+async function runHostedLocalControlAfterSave() {
+  if (getDataBackendMode() !== "LOCAL_API") {
+    return false;
+  }
+  try {
+    state.hostedSyncState = "checking";
+    state.hostedSyncDetails = "";
+    renderHostedSyncUi();
+    const response = await fetch("/api/local/check-before-send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok && payload?.ok) {
+      state.hostedSyncState = "pending";
+      state.hostedSyncDetails = "";
+      showDataStatus("SAUVEGARDE LOCALE OK - CONTROLE LOCAL OK");
+      return true;
+    }
+    const localOk = Boolean(payload?.localOk);
+    const pdfOk = Boolean(payload?.pdfIntegrityOk);
+    const supabaseOk = payload?.supabaseReachable !== false;
+    state.hostedSyncState = supabaseOk && (!localOk || !pdfOk) ? "blocked" : "inaccessible";
+    state.hostedSyncDetails = JSON.stringify(payload?.technicalDetails || payload || {}, null, 2);
+    showDataStatus("SAUVEGARDE LOCALE OK - CONTROLE LOCAL A CORRIGER");
+    return false;
+  } catch (error) {
+    state.hostedSyncState = "inaccessible";
+    state.hostedSyncDetails = String(error?.message || error || "");
+    showDataStatus("SAUVEGARDE LOCALE OK - CONTROLE LOCAL INDISPONIBLE");
+    return false;
+  } finally {
+    renderHostedSyncUi();
+  }
+}
+
 async function saveDataToFile(options = {}) {
   if (!state.data) {
     showDataStatus("AUCUNE DONNEE A SAUVEGARDER");
@@ -16702,12 +17949,36 @@ async function saveDataToFile(options = {}) {
     promptDownload = !silent,
     reloadOnConflict = true,
     throwOnConflict = false,
+    autoPushHosted = getDataBackendMode() === "LOCAL_API",
   } = resolvedOptions;
   const shouldReloadAfter =
     typeof reloadAfter === "boolean" ? reloadAfter : getDataBackendMode() !== "SUPABASE";
 
   if (state.saveInFlight) {
     showDataStatus("SAUVEGARDE EN COURS...");
+    return;
+  }
+
+  const currentDataSignature = computeDataPersistenceSignature(state.data);
+  const persistedSignatureKnown =
+    typeof state.lastPersistedDataSignature === "string" && state.lastPersistedDataSignature.length > 0;
+  const hasEffectiveChange = persistedSignatureKnown
+    ? currentDataSignature !== state.lastPersistedDataSignature
+    : Boolean(state.isDirty);
+  if (!hasEffectiveChange) {
+    state.isDirty = false;
+    state.saveButtonLatchedDirty = false;
+    renderDirtyState();
+    showDataStatus("AUCUNE MODIFICATION DETECTEE. RIEN A SAUVEGARDER.");
+    if (getDataBackendMode() === "LOCAL_API") renderHostedSyncUi();
+    appendSaveAuditEntry({
+      outcome: "noop",
+      source: "NO_CHANGE",
+      mode: getDataBackendMode(),
+    });
+    if (getDataBackendMode() === "LOCAL_API" && autoPushHosted) {
+      await runHostedSyncPushFromUi({ confirmBeforeSend: false, silent: true });
+    }
     return;
   }
 
@@ -16758,9 +18029,10 @@ async function saveDataToFile(options = {}) {
         if (!response.ok) {
           throw new Error("Sauvegarde locale impossible");
         }
-        saveStatusText = "DONNEES SAUVEGARDEES VIA BACKEND LOCAL";
-        saveAlertText = alertText || "DONNEES MISES A JOUR VIA BACKEND LOCAL";
+        saveStatusText = "DONNEES SAUVEGARDEES EN LOCAL UNIQUEMENT";
+        saveAlertText = alertText || "DONNEES SAUVEGARDEES EN LOCAL UNIQUEMENT";
         saveSource = "BACKEND LOCAL";
+        state.hostedSyncState = "pending";
       } else {
       throw new Error("SUPABASE NON CONFIGURE");
     }
@@ -16773,8 +18045,17 @@ async function saveDataToFile(options = {}) {
       at: getCurrentSignatureTimestamp(),
       source: saveSource,
     };
+    state.lastPersistedDataSignature = computeDataPersistenceSignature(state.data);
     const saveConfirmation = `SAUVEGARDEE LE ${formatCurrentUiTimestamp()} - SOURCE: ${saveSource}`;
     showDataStatus(saveConfirmation);
+    if (mode === "LOCAL_API") {
+      showDataStatus("DONNEES SAUVEGARDEES EN LOCAL - CONTROLE LOCAL EN COURS...");
+      renderHostedSyncUi();
+      const localControlOk = await runHostedLocalControlAfterSave();
+      if (localControlOk && autoPushHosted) {
+        await runHostedSyncPushFromUi({ confirmBeforeSend: false, silent: true });
+      }
+    }
     appendSaveAuditEntry({
       outcome: "ok",
       source: saveSource,
@@ -16913,6 +18194,679 @@ function resetUiWithoutData() {
   });
 
   renderPersonSheet("");
+}
+
+function getHostedSyncSimpleText() {
+  if (state.hostedSyncInFlight) {
+    return "Synchronisation en cours...";
+  }
+  switch (String(state.hostedSyncState || "")) {
+    case "up_to_date":
+      return "Heberge a jour";
+    case "pending":
+      return "Modifications locales non envoyees";
+    case "inaccessible":
+      return "Heberge inaccessible";
+    case "blocked":
+      return "Controle local necessaire";
+    default:
+      return "Statut heberge inconnu";
+  }
+}
+
+function ensureHostedSyncUi() {
+  if (getDataBackendMode() !== "LOCAL_API") return;
+  if (isPdfRenderMode()) return;
+  let node = document.getElementById("dotations-sync-banner");
+  if (!node) {
+    node = document.createElement("div");
+    node.id = "dotations-sync-banner";
+    node.style.cssText = "margin:10px 0;padding:10px 12px;border:1px solid #c7d2fe;background:#eef2ff;border-radius:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;";
+    node.innerHTML = [
+      '<strong style="margin-right:8px;">Etat Dotations</strong>',
+      '<span id="dotations-sync-local">Local : -</span>',
+      '<span id="dotations-sync-remote" class="dotations-sync-remote">Heberge : -</span>',
+      '<button id="dotations-sync-refresh-btn" class="button button--secondary" type="button" style="height:28px;min-height:28px;padding:0 10px;border-radius:999px;font-size:11px;display:inline-flex;align-items:center;line-height:1;">Reverifier heberge</button>',
+      '<button id="dotations-sync-push-btn" class="button button--secondary" type="button" style="height:28px;min-height:28px;padding:0 10px;border-radius:999px;font-size:11px;display:inline-flex;align-items:center;line-height:1;">Envoyer vers l\'heberge</button>',
+      '<button id="dotations-sync-help-btn" class="button button--secondary" type="button" style="display:none;height:28px;min-height:28px;padding:0 10px;border-radius:999px;font-size:11px;align-items:center;line-height:1;">Voir ce qu\'il faut faire</button>',
+      '<button id="dotations-close-btn" class="button button--secondary" type="button" style="height:28px;min-height:28px;padding:0 10px;border-radius:999px;font-size:11px;display:inline-flex;align-items:center;line-height:1;">Fermer Dotations</button>',
+      '<details id="dotations-sync-details" style="width:100%;margin-top:6px;display:none;"><summary>Details techniques</summary><pre id="dotations-sync-details-text" style="white-space:pre-wrap;margin:8px 0 0 0;"></pre></details>'
+    ].join("");
+    const header = document.querySelector(".page-header");
+    if (header && header.parentElement) {
+      header.parentElement.insertBefore(node, header.nextSibling);
+    } else {
+      document.body.insertBefore(node, document.body.firstChild);
+    }
+  }
+  const refreshBtn = document.getElementById("dotations-sync-refresh-btn");
+  if (refreshBtn && !refreshBtn.dataset.bound) {
+    refreshBtn.dataset.bound = "1";
+    refreshBtn.addEventListener("click", () => {
+      void refreshHostedSyncStatusOnLocalOpen();
+    });
+  }
+  const pushBtn = document.getElementById("dotations-sync-push-btn");
+  if (pushBtn && !pushBtn.dataset.bound) {
+    pushBtn.dataset.bound = "1";
+    pushBtn.addEventListener("click", () => runHostedSyncPushFromUi());
+  }
+  const helpBtn = document.getElementById("dotations-sync-help-btn");
+  if (helpBtn && !helpBtn.dataset.bound) {
+    helpBtn.dataset.bound = "1";
+    helpBtn.addEventListener("click", () => openRescueActionModal());
+  }
+  const closeBtn = document.getElementById("dotations-close-btn");
+  if (closeBtn && !closeBtn.dataset.bound) {
+    closeBtn.dataset.bound = "1";
+    closeBtn.addEventListener("click", () => openCloseDotationsModal());
+  }
+}
+
+function ensureRescueModalUi() {
+  let modal = document.getElementById("dotations-rescue-modal");
+  if (modal) return modal;
+  modal = document.createElement("div");
+  modal.id = "dotations-rescue-modal";
+  modal.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px;";
+  modal.innerHTML = [
+    '<div role="dialog" aria-modal="true" aria-labelledby="dotations-rescue-title" style="width:min(760px,100%);max-height:90vh;overflow:auto;background:#f8fbff;border:1px solid #dbe6f5;border-radius:14px;box-shadow:0 12px 36px rgba(15,23,42,.18);padding:18px 18px 14px 18px;">',
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">',
+    '<h3 id="dotations-rescue-title" style="margin:0;font-size:20px;line-height:1.2;color:#0f172a;">Une action est necessaire</h3>',
+    '<button id="dotations-rescue-close" type="button" class="button button--secondary" style="height:30px;padding:0 12px;border-radius:10px;font-size:12px;">Fermer</button>',
+    "</div>",
+    '<p id="dotations-rescue-summary" style="margin:8px 0 12px 0;color:#334155;"></p>',
+    '<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:12px;">',
+    '<strong style="display:block;color:#0f172a;">Ce que vous devez faire</strong>',
+    '<ol id="dotations-rescue-steps" style="margin:8px 0 0 18px;padding:0;color:#334155;"></ol>',
+    "</div>",
+    '<div style="margin-top:12px;">',
+    '<strong style="display:block;color:#0f172a;margin-bottom:8px;">Action recommandee</strong>',
+    '<button id="dotations-rescue-primary" type="button" class="button button--primary" style="height:34px;padding:0 14px;border-radius:10px;font-weight:600;">Reessayer</button>',
+    '<span id="dotations-rescue-primary-status" style="margin-left:10px;color:#334155;font-size:12px;"></span>',
+    "</div>",
+    '<div style="margin-top:12px;">',
+    '<strong style="display:block;color:#0f172a;margin-bottom:8px;">Autres actions</strong>',
+    '<div id="dotations-rescue-secondary-actions" style="display:flex;gap:8px;flex-wrap:wrap;"></div>',
+    "</div>",
+    '<p style="margin:12px 0 0 0;color:#64748b;font-size:12px;">Ne pas envoyer vers l\'heberge tant que le controle local n\'est pas repasse OK.</p>',
+    '<details id="dotations-rescue-details" style="margin-top:10px;">',
+    "<summary>Details techniques</summary>",
+    '<pre id="dotations-rescue-details-text" style="margin-top:8px;white-space:pre-wrap;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:12px;"></pre>',
+    "</details>",
+    '<div id="dotations-rescue-run-result" style="margin-top:10px;font-size:12px;color:#334155;"></div>',
+    '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">',
+    '<button id="dotations-rescue-reload" type="button" class="button button--primary" style="display:none;height:32px;padding:0 12px;border-radius:10px;">Recharger Dotations</button>',
+    '<button id="dotations-rescue-close-secondary" type="button" class="button button--secondary" style="height:32px;padding:0 12px;border-radius:10px;">Fermer</button>',
+    "</div>",
+    "</div>",
+  ].join("");
+  document.body.appendChild(modal);
+  const closeBtn = document.getElementById("dotations-rescue-close");
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      modal.style.display = "none";
+    });
+  }
+  const closeSecondaryBtn = document.getElementById("dotations-rescue-close-secondary");
+  if (closeSecondaryBtn) {
+    closeSecondaryBtn.addEventListener("click", () => {
+      modal.style.display = "none";
+    });
+  }
+  const reloadBtn = document.getElementById("dotations-rescue-reload");
+  if (reloadBtn) {
+    reloadBtn.addEventListener("click", () => {
+      window.location.assign(`${window.location.origin}/`);
+    });
+  }
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) {
+      modal.style.display = "none";
+    }
+  });
+  return modal;
+}
+
+function parseHostedSyncDetails(rawOverride = null) {
+  const raw = rawOverride == null ? String(state.hostedSyncDetails || "").trim() : String(rawOverride || "").trim();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    return { raw };
+  }
+}
+
+function buildRescuePlanFromState(rawDetailsOverride = null, stateOverride = null) {
+  const details = parseHostedSyncDetails(rawDetailsOverride);
+  const hostedState = String(stateOverride || state.hostedSyncState || "");
+  const hasMissingPdf =
+    Number(details?.missingActiveFiles || 0) > 0 ||
+    /ACTIVE_FILE_MISSING|MISSING_ACTIVE_FILE/i.test(String(details?.errors || ""));
+  const hasOrphans = Number(details?.orphansOutsideQuarantine || 0) > 0;
+  const supabaseDown =
+    hostedState === "inaccessible" ||
+    /heberge.*inaccessible|supabase.*inaccessible|fetch failed/i.test(String(details?.raw || state.hostedSyncDetails || ""));
+  const hasOpenableIssue = /ARCHIVE_NOT_OPENABLE|VALID_WITHOUT_LOCALPATH|VALID_WITHOUT_ENRICHED_FIELDS/i.test(
+    String(details?.errors || state.hostedSyncDetails || "")
+  );
+
+  if (hasMissingPdf) {
+    return {
+      title: "Des documents doivent etre verifies",
+      summary: "Certains documents existent dans les donnees, mais leurs PDF ne sont pas disponibles en local.",
+      steps: [
+        "Restaurer les PDF depuis les sauvegardes locales.",
+        "Relancer le controle local.",
+        "Envoyer vers l'heberge seulement quand le controle est OK.",
+      ],
+      primary: { label: "Restaurer les PDF", kind: "repair", action: "repair_missing_pdf" },
+    };
+  }
+  if (hasOrphans) {
+    return {
+      title: "Des fichiers doivent etre ranges",
+      summary: "Des PDF non rattaches ont ete detectes hors quarantaine.",
+      steps: [
+        "Mettre les orphelins en quarantaine.",
+        "Relancer le controle local.",
+        "Verifier que l'envoi n'est plus bloque.",
+      ],
+      primary: { label: "Mettre en quarantaine", kind: "repair", action: "repair_orphans_quarantine" },
+    };
+  }
+  if (hasOpenableIssue) {
+    return {
+      title: "Le local doit etre corrige avant l'envoi",
+      summary: "Certains documents doivent etre repares avant d'envoyer vers l'heberge.",
+      steps: [
+        "Lancer la reparation proposee.",
+        "Relancer le controle local.",
+        "Revenir a l'envoi quand le statut est OK.",
+      ],
+      primary: { label: "Reparer les archives", kind: "repair", action: "repair_archive_not_openable" },
+    };
+  }
+  if (supabaseDown) {
+    return {
+      title: "L'heberge n'est pas accessible",
+      summary: "Le local est sauvegarde, mais la connexion a l'heberge est temporairement indisponible.",
+      steps: [
+        "Reessayer la connexion.",
+        "Continuer en local sans envoyer.",
+        "Envoyer plus tard quand l'heberge repond.",
+      ],
+      primary: { label: "Reessayer la connexion", kind: "repair", action: "repair_retry_supabase_check" },
+    };
+  }
+  return {
+    title: "Une action est necessaire",
+    summary: "Le local doit etre verifie avant l'envoi vers l'heberge.",
+    steps: [
+      "Relancer le controle local.",
+      "Corriger les points signales.",
+      "Envoyer vers l'heberge seulement apres controle OK.",
+    ],
+    primary: { label: "Reessayer", kind: "preflight" },
+  };
+}
+
+async function runRescueRepairAction(action, buttonNode, statusNode, resultNode) {
+  if (!action) return;
+  const previous = buttonNode.textContent;
+  buttonNode.disabled = true;
+  buttonNode.textContent = "Action en cours...";
+  if (statusNode) statusNode.textContent = "Action en cours...";
+  try {
+    const response = await fetch("/api/rescue/run-repair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    const ok = Boolean(response.ok && payload?.ok && Number(payload?.exitCode) === 0);
+    if (statusNode) statusNode.textContent = ok ? "Action terminee." : "L'action n'a pas pu etre terminee.";
+    if (resultNode) {
+      resultNode.innerHTML = ok
+        ? "<strong>Action terminee.</strong> Relancez le controle."
+        : `<strong>Action en erreur.</strong> ${escapeHtml(String(payload?.error || "Erreur inconnue"))}`;
+    }
+    if (ok) {
+      await runRescuePreflight(statusNode, resultNode, { afterRepairSuccess: true });
+    }
+  } catch (error) {
+    if (statusNode) statusNode.textContent = "L'action n'a pas pu etre terminee.";
+    if (resultNode) {
+      resultNode.textContent = `Impossible d'appeler l'API locale: ${String(error?.message || error || "")}`;
+    }
+  } finally {
+    buttonNode.disabled = false;
+    buttonNode.textContent = previous;
+  }
+}
+
+function setRescueReloadAvailability(isAvailable) {
+  const reloadBtn = document.getElementById("dotations-rescue-reload");
+  if (!reloadBtn) return;
+  reloadBtn.style.display = isAvailable ? "" : "none";
+}
+
+async function runRescuePreflight(statusNode, resultNode, { afterRepairSuccess = false } = {}) {
+  if (statusNode) statusNode.textContent = "Action en cours...";
+  setRescueReloadAvailability(false);
+  try {
+    const response = await fetch("/api/local/check-before-send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (payload?.ok) {
+      state.hostedSyncState = "pending";
+      state.hostedSyncDetails = "";
+      if (statusNode) statusNode.textContent = afterRepairSuccess ? "Correction terminee. Le local est maintenant correct." : "Le controle est revenu OK.";
+      if (resultNode) {
+        resultNode.innerHTML = afterRepairSuccess
+          ? "<strong>Correction terminee. Dotations peut etre recharge.</strong>"
+          : "<strong>Le controle est revenu OK.</strong>";
+      }
+      setRescueReloadAvailability(true);
+    } else {
+      const localOk = Boolean(payload?.localOk);
+      const pdfOk = Boolean(payload?.pdfIntegrityOk);
+      const supabaseOk = Boolean(payload?.supabaseReachable);
+      if (!supabaseOk) {
+        state.hostedSyncState = "inaccessible";
+      } else if (!localOk || !pdfOk) {
+        state.hostedSyncState = "blocked";
+      }
+      state.hostedSyncDetails = JSON.stringify(payload?.technicalDetails || {}, null, 2);
+      if (statusNode) statusNode.textContent = "Le controle est toujours bloque.";
+      if (resultNode) resultNode.innerHTML = "<strong>Le controle est toujours bloque.</strong>";
+      setRescueReloadAvailability(false);
+    }
+  } catch (error) {
+    if (statusNode) statusNode.textContent = "L'action n'a pas pu etre terminee.";
+    if (resultNode) resultNode.textContent = `Erreur reseau: ${String(error?.message || error || "")}`;
+    setRescueReloadAvailability(false);
+  } finally {
+    renderHostedSyncUi();
+  }
+}
+
+function openRescueActionModal(options = {}) {
+  const rawDetailsOverride = options && Object.prototype.hasOwnProperty.call(options, "detailsRaw")
+    ? String(options.detailsRaw || "")
+    : null;
+  const stateOverride = options && Object.prototype.hasOwnProperty.call(options, "hostedState")
+    ? String(options.hostedState || "")
+    : null;
+  const modal = ensureRescueModalUi();
+  const plan = buildRescuePlanFromState(rawDetailsOverride, stateOverride);
+  const titleNode = document.getElementById("dotations-rescue-title");
+  const summaryNode = document.getElementById("dotations-rescue-summary");
+  const stepsNode = document.getElementById("dotations-rescue-steps");
+  const primaryButton = document.getElementById("dotations-rescue-primary");
+  const primaryStatusNode = document.getElementById("dotations-rescue-primary-status");
+  const secondaryWrap = document.getElementById("dotations-rescue-secondary-actions");
+  const detailsText = document.getElementById("dotations-rescue-details-text");
+  const resultNode = document.getElementById("dotations-rescue-run-result");
+
+  if (titleNode) titleNode.textContent = plan.title;
+  if (summaryNode) summaryNode.textContent = plan.summary;
+  if (stepsNode) {
+    stepsNode.innerHTML = (plan.steps || []).map((step) => `<li>${escapeHtml(String(step || ""))}</li>`).join("");
+  }
+  if (detailsText) {
+    detailsText.textContent = String(rawDetailsOverride == null ? (state.hostedSyncDetails || "Aucun detail technique.") : rawDetailsOverride || "Aucun detail technique.");
+  }
+  if (resultNode) resultNode.textContent = "";
+  if (primaryStatusNode) primaryStatusNode.textContent = "";
+  setRescueReloadAvailability(false);
+
+  if (primaryButton) {
+    primaryButton.textContent = plan.primary?.label || "Reessayer";
+    primaryButton.onclick = async () => {
+      if (plan.primary?.kind === "repair") {
+        await runRescueRepairAction(plan.primary.action, primaryButton, primaryStatusNode, resultNode);
+      } else {
+        await runRescuePreflight(primaryStatusNode, resultNode);
+      }
+    };
+  }
+
+  if (secondaryWrap) {
+    const secondaryActions = [
+      { label: "Reessayer le controle", kind: "preflight" },
+      { label: "Reessayer la connexion", kind: "repair", action: "repair_retry_supabase_check" },
+      { label: "Mettre en quarantaine", kind: "repair", action: "repair_orphans_quarantine" },
+      { label: "Restaurer les PDF", kind: "repair", action: "repair_missing_pdf" },
+    ];
+    secondaryWrap.innerHTML = "";
+    secondaryActions.forEach((item) => {
+      const btn = document.createElement("button");
+      btn.textContent = item.label;
+      btn.className = "button button--secondary";
+      btn.style.cssText = "height:30px;padding:0 12px;border-radius:10px;font-size:12px;opacity:.95;";
+      btn.type = "button";
+      btn.addEventListener("click", async () => {
+        if (item.kind === "repair") {
+          await runRescueRepairAction(item.action, btn, primaryStatusNode, resultNode);
+        } else {
+          await runRescuePreflight(primaryStatusNode, resultNode);
+        }
+      });
+      secondaryWrap.appendChild(btn);
+    });
+  }
+  modal.style.display = "flex";
+}
+
+function renderHostedSyncUi() {
+  if (getDataBackendMode() !== "LOCAL_API") return;
+  ensureHostedSyncUi();
+  const localNode = document.getElementById("dotations-sync-local");
+  const remoteNode = document.getElementById("dotations-sync-remote");
+  const pushBtn = document.getElementById("dotations-sync-push-btn");
+  const helpBtn = document.getElementById("dotations-sync-help-btn");
+  const detailsNode = document.getElementById("dotations-sync-details");
+  const detailsTextNode = document.getElementById("dotations-sync-details-text");
+  if (localNode) {
+    localNode.textContent = state.isDirty ? "Local : non sauvegarde" : "Local : sauvegarde";
+  }
+  if (remoteNode) {
+    const isChecking = Boolean(state.hostedSyncInFlight);
+    const isUpToDate = !isChecking && String(state.hostedSyncState || "") === "up_to_date";
+    remoteNode.textContent = `Heberge : ${getHostedSyncSimpleText()}`;
+    remoteNode.classList.toggle("is-checking", isChecking);
+    remoteNode.classList.toggle("is-ok", isUpToDate);
+    remoteNode.classList.toggle("is-alert", !isChecking && !isUpToDate);
+    remoteNode.setAttribute("aria-busy", isChecking ? "true" : "false");
+  }
+  if (pushBtn) {
+    pushBtn.disabled = Boolean(state.hostedSyncInFlight);
+  }
+  if (helpBtn) {
+    helpBtn.style.display = state.hostedSyncState === "blocked" ? "" : "none";
+  }
+  if (detailsNode && detailsTextNode) {
+    const details = String(state.hostedSyncDetails || "").trim();
+    detailsNode.style.display = details ? "" : "none";
+    detailsTextNode.textContent = details;
+  }
+}
+
+function maybeOpenRescueModalPreview() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    if (params.get("demoRescueModal") !== "1") return;
+    const demoDetails = JSON.stringify(
+      {
+        missingActiveFiles: 2,
+        errors: ["ACTIVE_FILE_MISSING[DOC-EXEMPLE-1]", "ACTIVE_FILE_MISSING[DOC-EXEMPLE-2]"],
+        supabaseReachable: true,
+      },
+      null,
+      2
+    );
+    ensureHostedSyncUi();
+    renderHostedSyncUi();
+    openRescueActionModal({ detailsRaw: demoDetails, hostedState: "blocked" });
+  } catch (error) {
+    // ignore preview errors
+  }
+}
+
+function ensureCloseDotationsModalUi() {
+  let modal = document.getElementById("dotations-close-modal");
+  if (modal) return modal;
+  modal = document.createElement("div");
+  modal.id = "dotations-close-modal";
+  modal.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:10000;padding:16px;";
+  modal.innerHTML = [
+    '<div role="dialog" aria-modal="true" aria-labelledby="dotations-close-title" style="width:min(640px,100%);background:#f8fbff;border:1px solid #dbe6f5;border-radius:14px;box-shadow:0 12px 36px rgba(15,23,42,.18);padding:18px;">',
+    '<h3 id="dotations-close-title" style="margin:0 0 8px 0;color:#0f172a;">Confirmation de fermeture</h3>',
+    '<p id="dotations-close-summary" style="margin:0 0 10px 0;color:#334155;"></p>',
+    '<div id="dotations-close-actions" style="display:flex;gap:8px;flex-wrap:wrap;"></div>',
+    '<details style="margin-top:10px;"><summary>Details techniques</summary><pre id="dotations-close-details" style="white-space:pre-wrap;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px;"></pre></details>',
+    '<p id="dotations-close-result" style="margin:10px 0 0 0;color:#334155;font-size:12px;"></p>',
+    "</div>",
+  ].join("");
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) modal.style.display = "none";
+  });
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function isHostedNotSentState() {
+  const s = String(state.hostedSyncState || "");
+  return s === "pending" || s === "blocked" || s === "inaccessible";
+}
+
+function getCloseModalScenario() {
+  const hostedState = String(state.hostedSyncState || "unknown");
+  if (state.isDirty) {
+    return {
+      key: "UNSAVED",
+      summary: "Des modifications ne sont pas encore sauvegardees.",
+      actions: [
+        { label: "Retourner sauvegarder", kind: "closeModal", primary: true },
+        { label: "Fermer sans sauvegarder", kind: "shutdown" },
+      ],
+    };
+  }
+  if (String(state.hostedSyncState || "") === "pending") {
+    return {
+      key: "LOCAL_ONLY",
+      summary: "Les donnees sont sauvegardees en local, mais l'heberge n'est pas encore mis a jour.",
+      actions: [
+        { label: "Rester", kind: "closeModal", primary: true },
+        { label: "Envoyer vers l'heberge", kind: "sendHosted" },
+        { label: "Fermer quand meme", kind: "shutdown" },
+      ],
+    };
+  }
+  if (String(state.hostedSyncState || "") === "inaccessible") {
+    return {
+      key: "HOSTED_DOWN",
+      summary: "L'heberge n'est pas accessible pour l'instant. Vos donnees restent sauvegardees en local.",
+      actions: [
+        { label: "Rester", kind: "closeModal", primary: true },
+        { label: "Fermer Dotations", kind: "shutdown" },
+      ],
+    };
+  }
+  if (hostedState === "unknown") {
+    return {
+      key: "SAFE_UNKNOWN",
+      summary: "Dotations peut etre ferme. Aucune modification locale non sauvegardee n'a ete detectee. L'etat heberge n'a pas ete verifie.",
+      actions: [
+        { label: "Non, rester", kind: "closeModal", primary: true },
+        { label: "Oui, fermer Dotations", kind: "shutdown" },
+      ],
+    };
+  }
+  return {
+    key: "SAFE",
+    summary: "Dotations peut etre ferme.",
+    actions: [
+      { label: "Non, rester", kind: "closeModal", primary: true },
+      { label: "Oui, fermer Dotations", kind: "shutdown" },
+    ],
+  };
+}
+
+async function shutdownDotationsFromUi(resultNode, triggerBtn) {
+  if (triggerBtn) triggerBtn.disabled = true;
+  if (resultNode) resultNode.textContent = "Fermeture en cours...";
+  try {
+    const response = await fetch("/api/local/shutdown", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok && payload?.ok) {
+      if (resultNode) resultNode.textContent = "Dotations est ferme. Vous pouvez fermer cet onglet.";
+      try { window.close(); } catch {}
+      window.setTimeout(() => {
+        try {
+          document.body.innerHTML = "<main style='font-family:Arial,sans-serif;padding:24px'><h2>Dotations est ferme.</h2><p>Vous pouvez fermer cet onglet.</p></main>";
+        } catch {}
+      }, 300);
+      return;
+    }
+    if (resultNode) resultNode.textContent = "La fermeture automatique a echoue. Vous pouvez fermer cet onglet manuellement.";
+  } catch (error) {
+    if (resultNode) resultNode.textContent = "La fermeture automatique a echoue. Vous pouvez fermer cet onglet manuellement.";
+  } finally {
+    if (triggerBtn) triggerBtn.disabled = false;
+  }
+}
+
+function openCloseDotationsModal() {
+  const modal = ensureCloseDotationsModalUi();
+  const summaryNode = document.getElementById("dotations-close-summary");
+  const actionsNode = document.getElementById("dotations-close-actions");
+  const detailsNode = document.getElementById("dotations-close-details");
+  const detailsWrapNode = detailsNode ? detailsNode.closest("details") : null;
+  const resultNode = document.getElementById("dotations-close-result");
+  const scenario = getCloseModalScenario();
+  if (summaryNode) summaryNode.textContent = scenario.summary;
+  if (detailsNode) {
+    detailsNode.textContent = JSON.stringify({
+      isDirty: Boolean(state.isDirty),
+      hostedSyncState: String(state.hostedSyncState || "unknown"),
+      hostedSyncDetails: String(state.hostedSyncDetails || ""),
+    }, null, 2);
+  }
+  if (detailsWrapNode) {
+    detailsWrapNode.open = false;
+  }
+  if (resultNode) resultNode.textContent = "";
+  if (actionsNode) {
+    actionsNode.innerHTML = "";
+    scenario.actions.forEach((action) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = action.primary ? "button button--primary" : "button button--secondary";
+      btn.style.cssText = "height:32px;padding:0 12px;border-radius:10px;";
+      btn.textContent = action.label;
+      btn.addEventListener("click", async () => {
+        if (action.kind === "closeModal") {
+          modal.style.display = "none";
+          return;
+        }
+        if (action.kind === "sendHosted") {
+          modal.style.display = "none";
+          await runHostedSyncPushFromUi();
+          return;
+        }
+        if (action.kind === "shutdown") {
+          await shutdownDotationsFromUi(resultNode, btn);
+        }
+      });
+      actionsNode.appendChild(btn);
+    });
+  }
+  modal.style.display = "flex";
+}
+
+function bindBeforeUnloadGuard() {
+  if (window.__dotationsBeforeUnloadBound) return;
+  window.__dotationsBeforeUnloadBound = true;
+  window.addEventListener("beforeunload", (event) => {
+    if (!state.isDirty) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+}
+
+async function runHostedSyncPushFromUi(options = {}) {
+  const {
+    confirmBeforeSend = true,
+    silent = false,
+  } = options || {};
+  if (state.hostedSyncInFlight) return false;
+  state.hostedSyncInFlight = true;
+  renderHostedSyncUi();
+  try {
+    const preflightResponse = await fetch("/api/local/check-before-send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const preflight = await preflightResponse.json().catch(() => ({}));
+    if (!preflightResponse.ok || !preflight?.ok) {
+      const localOk = Boolean(preflight?.localOk);
+      const pdfOk = Boolean(preflight?.pdfIntegrityOk);
+      const supabaseOk = Boolean(preflight?.supabaseReachable);
+      if (!supabaseOk) {
+        state.hostedSyncState = "inaccessible";
+        if (!silent) showDataStatus("L'heberge n'est pas accessible pour l'instant. Vos modifications restent sauvegardees en local. Reessayez plus tard.");
+      } else if (!localOk || !pdfOk) {
+        state.hostedSyncState = "blocked";
+        if (!silent) showDataStatus("L'envoi est bloque. Le local doit d'abord etre corrige.");
+      } else {
+        state.hostedSyncState = "blocked";
+        if (!silent) showDataStatus("Controle local necessaire avant envoi.");
+      }
+      state.hostedSyncDetails = JSON.stringify(preflight?.technicalDetails || {}, null, 2);
+      renderHostedSyncUi();
+      return false;
+    }
+    if (confirmBeforeSend) {
+      const confirmed = window.confirm("Cette action va envoyer les donnees locales vers l'heberge.\nA utiliser uniquement si les donnees locales sont correctes.\nContinuer ?");
+      if (!confirmed) {
+        renderHostedSyncUi();
+        return false;
+      }
+    }
+    const pushResponse = await fetch("/api/sync/send-to-hosted", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const payload = await pushResponse.json().catch(() => ({}));
+    if (pushResponse.ok && payload?.ok) {
+      state.hostedSyncState = "up_to_date";
+      showDataStatus(silent ? "SAUVEGARDE LOCALE ET HEBERGEE OK" : "Heberge mis a jour.");
+      state.hostedSyncDetails = "";
+      renderHostedSyncUi();
+      return true;
+    }
+    if (payload?.blocked) {
+      const localMsg = String(payload?.userMessage || "");
+      if (/heberge/i.test(localMsg)) {
+        state.hostedSyncState = "inaccessible";
+      } else {
+        state.hostedSyncState = "blocked";
+      }
+      if (!silent) showDataStatus(localMsg || "L'envoi est bloque. Le local doit d'abord etre corrige.");
+      state.hostedSyncDetails = JSON.stringify(payload?.technicalDetails || {}, null, 2);
+      renderHostedSyncUi();
+      return false;
+    }
+    if (payload?.error === "PUSH_BLOCKED_PDF_INTEGRITY_FAILED") {
+      state.hostedSyncState = "blocked";
+      if (!silent) showDataStatus("L'envoi est bloque. Le local doit d'abord etre corrige.");
+      state.hostedSyncDetails = JSON.stringify(payload || {}, null, 2);
+      renderHostedSyncUi();
+      return false;
+    }
+    state.hostedSyncState = "inaccessible";
+    if (!silent) showDataStatus("L'envoi vers l'heberge a echoue. Vos donnees restent sauvegardees en local.");
+    state.hostedSyncDetails = JSON.stringify(payload || {}, null, 2);
+    renderHostedSyncUi();
+    return false;
+  } catch (error) {
+    state.hostedSyncState = "inaccessible";
+    if (!silent) showDataStatus("L'heberge n'est pas accessible pour l'instant. Reessayez plus tard.");
+    state.hostedSyncDetails = String(error?.message || error || "");
+    renderHostedSyncUi();
+    return false;
+  } finally {
+    state.hostedSyncInFlight = false;
+    renderHostedSyncUi();
+  }
 }
 
 function showDataStatus(text) {
@@ -17182,9 +19136,7 @@ function markDirty() {
   state.localMutationTick = Number(state.localMutationTick || 0) + 1;
   saveWorkingData();
   renderDirtyState();
-  if ((document.body?.dataset?.page || "") !== "reference-bases") {
-    scheduleBackgroundAutoSave();
-  }
+  scheduleBackgroundAutoSave();
 }
 
 function renderDirtyState() {
@@ -17218,6 +19170,7 @@ function renderDirtyState() {
     button.classList.toggle("button--primary", saveButtonActive);
     button.classList.toggle("button--secondary", !saveButtonActive);
   });
+  renderHostedSyncUi();
 }
 
 window.dotationsGetNetworkDebug = getNetworkDebugReport;
