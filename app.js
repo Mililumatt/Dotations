@@ -468,6 +468,9 @@ function getFallbackNonRenduCost(typeEffet, designation = "") {
   if (normalizedType === "CLE") {
     return isCesKeyDesignation(designation) ? 50 : 5;
   }
+  if (normalizedType === "CLE DE SECURITE") {
+    return 45;
+  }
   if (normalizedType === "VENTILATEUR") {
     return normalizedDesignation === "VENTILATEUR SUR PIED" ? 35 : 30;
   }
@@ -9085,6 +9088,10 @@ function getEffectUnitValue(effect) {
 
   if (normalizedType === "CLE") {
     return isCesKeyDesignation(effect?.designation || "") ? 50 : 5;
+  }
+
+  if (normalizedType === "CLE DE SECURITE") {
+    return 45;
   }
 
   if (normalizedType === "BADGE INTRUSION") {
