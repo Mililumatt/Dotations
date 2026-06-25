@@ -5665,12 +5665,31 @@ async function pollMobileSignatureRequest() {
     const requests = Array.isArray(json?.demandesSignatureMobile) ? json.demandesSignatureMobile : [];
     const mobilePollRequestCache =
       state.mobileSignaturePollRequestCache || (state.mobileSignaturePollRequestCache = new Map());
-    const pollContextCacheKey = `${String(state.supabaseRevision || "")}|${String(state.localMutationTick || 0)}|${String(state.latestDataEtag || "")}|${String(personId || "")}|${normalizedDocType}|${requests.length}`;
+    const relevantRequestsSignature = requests
+      .filter((entry) => {
+        return (
+          String(entry?.personId || "") === String(personId || "") &&
+          normalizeText(entry?.docType || "") === normalizedDocType
+        );
+      })
+      .map((entry) =>
+        [
+          String(entry?.token || ""),
+          normalizeMobileSignatureSigner(entry?.signer || ""),
+          String(entry?.status || ""),
+          String(entry?.validatedAt || ""),
+          String(entry?.expiresAt || ""),
+        ].join(":")
+      )
+      .sort()
+      .join(";");
+    const pollContextCacheKey = `${String(state.supabaseRevision || "")}|${String(state.localMutationTick || 0)}|${String(state.latestDataEtag || "")}|${String(personId || "")}|${normalizedDocType}|${relevantRequestsSignature}`;
 
     const cachedPollContext = mobilePollRequestCache.get(pollContextCacheKey);
     let trackedPersonnelRequest = cachedPollContext?.trackedPersonnelRequest || null;
     let trackedRepresentativeRequest = cachedPollContext?.trackedRepresentativeRequest || null;
     let activeServerRequests = cachedPollContext?.activeServerRequests || [];
+    let matchingServerRequests = cachedPollContext?.matchingServerRequests || [];
     let trackedRequestsLength = cachedPollContext?.trackedRequestsLength || 0;
     let nextRequestsByToken = cachedPollContext?.nextRequestsByToken || new Map();
     let requestStateSignature = cachedPollContext?.requestStateSignature || "";
@@ -5678,6 +5697,7 @@ async function pollMobileSignatureRequest() {
 
     if (!cachedPollContext) {
       activeServerRequests = [];
+      matchingServerRequests = [];
       for (const entry of requests) {
         const isSamePerson = String(entry?.personId || "") === String(personId || "");
         const isSameDocType = normalizeText(entry?.docType || "") === normalizedDocType;
@@ -5685,6 +5705,7 @@ async function pollMobileSignatureRequest() {
         if (!isSamePerson || !isSameDocType || !signer || !entry) {
           continue;
         }
+        matchingServerRequests.push(entry);
         if (entry?.status === "EN ATTENTE" && Date.parse(entry?.expiresAt || "") > pollNow) {
           activeServerRequests.push(entry);
           if (signer === "personnel" && !trackedPersonnelRequest) {
@@ -5704,6 +5725,12 @@ async function pollMobileSignatureRequest() {
         }
       });
       activeServerRequests.forEach((request) => {
+        const token = String(request?.token || "").trim();
+        if (token) {
+          allTrackedRequests.set(token, request);
+        }
+      });
+      matchingServerRequests.forEach((request) => {
         const token = String(request?.token || "").trim();
         if (token) {
           allTrackedRequests.set(token, request);
@@ -5733,6 +5760,7 @@ async function pollMobileSignatureRequest() {
         trackedPersonnelRequest,
         trackedRepresentativeRequest,
         activeServerRequests,
+        matchingServerRequests,
         nextRequestsByToken,
         requestStateSignature,
         anyPending,
@@ -5772,8 +5800,9 @@ async function pollMobileSignatureRequest() {
     ].join("|");
 
     if (state.mobileSignaturePollStateSignature === pollStateSignature) {
-      if (!anyPending && trackedRequestsLength === 0 && activeServerRequests.length === 0) {
+      if (!anyPending && trackedRequestsLength === 0 && activeServerRequests.length === 0 && nextRequestsByToken.size === 0) {
         hideMobileSignatureRecoveryModal();
+        setMobileSignaturePollStatus("");
         return;
       }
       if (!anyPending) {
@@ -5787,14 +5816,16 @@ async function pollMobileSignatureRequest() {
     state.data = json;
     migrateDataModel({ suppressDirty: true });
 
-    if (!anyPending && trackedRequestsLength === 0 && activeServerRequests.length === 0) {
+    if (!anyPending && trackedRequestsLength === 0 && activeServerRequests.length === 0 && nextRequestsByToken.size === 0) {
       hideMobileSignatureRecoveryModal();
+      setMobileSignaturePollStatus("");
       return;
     }
 
     if (!anyPending) {
       renderMobileSignatureLink(docType, "personnel", "");
       renderMobileSignatureLink(docType, "representant", "");
+      setMobileSignaturePollStatus("");
     }
 
     schedulePageRender();
@@ -6639,7 +6670,10 @@ function normalizeDirectPdfOpenUrl(value) {
   const pathname = parsed.pathname.toLowerCase();
   const isPdfApi = pathname.endsWith("/api/pdf-file");
   const isPdfFile = pathname.endsWith(".pdf");
-  return isPdfApi || isPdfFile ? parsed.href : "";
+  const isHostedPdfRender =
+    (pathname.endsWith("/document-arrivee.html") || pathname.endsWith("/document-sortie.html")) &&
+    parsed.searchParams.get("pdf") === "1";
+  return isPdfApi || isPdfFile || isHostedPdfRender ? parsed.href : "";
 }
 
 function openPdfUrlInBrowserWindow(popup, value) {
@@ -8382,7 +8416,6 @@ function bindArchiveFilterValueWatcher() {
   };
   document.addEventListener("input", checkArchiveFilterValues, true);
   document.addEventListener("change", checkArchiveFilterValues, true);
-  window.setInterval(checkArchiveFilterValues, 300);
   window.__documentsArchiveFilterWatcherBound = true;
 }
 
@@ -11573,7 +11606,9 @@ function resolveArchiveOpenTarget(entry) {
 
 function handleArchiveOpenClick(archive, fallbackEntry = null) {
   const resolved = resolveArchiveOpenTarget(archive || fallbackEntry || {});
-  const pdfUrl = normalizeDirectPdfOpenUrl(resolved.url);
+  const pdfUrl =
+    normalizeDirectPdfOpenUrl(resolved.url) ||
+    normalizeDirectPdfOpenUrl(fallbackEntry?.directOpenUrl || "");
   if (!pdfUrl) {
     return false;
   }
@@ -12094,7 +12129,8 @@ function renderDocumentsArchivePage() {
         const openResolution = resolveArchiveOpenTarget(entry);
         const openPath = String(openResolution.url || "");
         const legacyOpenPath = getDocumentArchiveOpenPath(entry);
-        const hasPdf = Boolean(openPath || legacyOpenPath);
+        const openHref = normalizeDirectPdfOpenUrl(openPath) || normalizeDirectPdfOpenUrl(legacyOpenPath);
+        const hasPdf = Boolean(openHref);
         const typeLabel = normalizeText(entry.typeDocument || "");
         const typeIcon = typeLabel === "SORTIE" ? "🔴" : typeLabel === "ARRIVEE" ? "🟢" : "⚪";
         const typeTitle = typeLabel || "TYPE INCONNU";
@@ -12105,7 +12141,7 @@ function renderDocumentsArchivePage() {
         const localPathInfo = String(entry?.localPath || "").trim();
         const targetAttributes = 'target="_blank" rel="noopener"';
         const openButton = hasPdf
-          ? `<a class="archive-pdf-button js-open-archive-pdf" href="#" ${targetAttributes} aria-label="OUVRIR PDF" data-archive-id="${escapeHtml(String(entry?.id || ""))}" data-local-url="${escapeHtml(openLocalUrl)}" data-remote-url="${escapeHtml(openRemoteUrl)}" data-public-url="${escapeHtml(publicUrl)}" data-legacy-url="${escapeHtml(legacyOpenPath)}" data-filename="${escapeHtml(filename)}"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>`
+          ? `<a class="archive-pdf-button js-open-archive-pdf" href="${escapeHtml(openHref)}" ${targetAttributes} aria-label="OUVRIR PDF" data-archive-id="${escapeHtml(String(entry?.id || ""))}" data-open-url="${escapeHtml(openHref)}" data-local-url="${escapeHtml(openLocalUrl)}" data-remote-url="${escapeHtml(openRemoteUrl)}" data-public-url="${escapeHtml(publicUrl)}" data-legacy-url="${escapeHtml(legacyOpenPath)}" data-filename="${escapeHtml(filename)}"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>`
           : "-";
         const deleteButton = hasPdf && !entry?.__isWorkflowSynthetic
           ? `<button type="button" class="table-link js-delete-archive-row" data-archive-id="${escapeHtml(String(entry.id || ""))}">SUPPRIMER</button>`
@@ -12215,6 +12251,7 @@ function bindArchiveRowActions() {
         ? state.data.documentsArchives.find((entry) => String(entry?.id || "") === archiveId)
         : null;
       const fallbackEntry = {
+        directOpenUrl: String(openPdfLink.dataset.openUrl || openPdfLink.href || "").trim(),
         openLocalUrl: String(openPdfLink.dataset.localUrl || "").trim(),
         openRemoteUrl: String(openPdfLink.dataset.remoteUrl || "").trim(),
         publicUrl: String(openPdfLink.dataset.publicUrl || "").trim(),
@@ -19196,6 +19233,8 @@ window.resetNetworkDebug = () => {
 };
 
 loadData();
+
+
 
 
 
