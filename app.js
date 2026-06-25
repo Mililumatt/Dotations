@@ -11490,6 +11490,11 @@ function getDocumentFingerprint(person, docType) {
     if (normalizedDocType === "ARRIVAL") {
       return {
         ...baseEffect,
+        dateRetour: String(effect.dateRetour || ""),
+        statut: normalizeText(getEffectStatus(person, effect)),
+        mouvement: normalizeText(getEffectMovementLabel(person, effect)),
+        cause: normalizeText(getEffectReplacementCause(person, effect)),
+        dateRemplacement: String(effect.dateRemplacement || ""),
         cout: normalizeAmount(getEffectUnitValue(effect)),
       };
     }
@@ -19307,5 +19312,4 @@ window.resetNetworkDebug = () => {
 };
 
 loadData();
-
 
