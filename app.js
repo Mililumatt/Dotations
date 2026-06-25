@@ -11523,6 +11523,13 @@ function getDocumentArchiveOpenPath(entry) {
     return "";
   }
   if (/^https?:\/\//i.test(raw)) {
+    if (isHostedPdfDocumentPath(raw)) {
+      try {
+        return resolveHostedRelativeUrl(raw).href;
+      } catch {
+        return "";
+      }
+    }
     return isSafeArchiveHttpUrl(raw) ? normalizeHttpUrl(raw) : "";
   }
   const storageRef = parseStorageSchemePath(raw);
@@ -11566,12 +11573,28 @@ function resolveArchivePdfLocations(pdfPath, existing = {}) {
       publicUrl = resolvedPublicUrl;
       openRemoteUrl = resolvedPublicUrl;
     }
-  } else if (/^https?:\/\//i.test(raw) && isSafeArchiveHttpUrl(raw)) {
-    const safeUrl = normalizeHttpUrl(raw) || "";
+  } else if (/^https?:\/\//i.test(raw) && (isSafeArchiveHttpUrl(raw) || isHostedPdfDocumentPath(raw))) {
+    const safeUrl = isHostedPdfDocumentPath(raw)
+      ? (() => {
+          try {
+            return resolveHostedRelativeUrl(raw).href;
+          } catch {
+            return "";
+          }
+        })()
+      : normalizeHttpUrl(raw) || "";
     if (safeUrl) {
-      publicUrl = safeUrl;
+      publicUrl = isHostedPdfDocumentPath(raw) ? publicUrl : safeUrl;
       openRemoteUrl = safeUrl;
     }
+  } else if (isHostedPdfDocumentPath(raw)) {
+    openRemoteUrl = (() => {
+      try {
+        return resolveHostedRelativeUrl(raw).href;
+      } catch {
+        return "";
+      }
+    })();
   } else if (/\.pdf(?:$|\?)/i.test(raw) && isSafeArchiveRelativePath(raw)) {
     localPath = raw.replace(/^\/+/, "").split("?")[0];
     if (localPath.toLowerCase().startsWith("data/pdf/")) {
@@ -19265,6 +19288,7 @@ window.resetNetworkDebug = () => {
 };
 
 loadData();
+
 
 
 
