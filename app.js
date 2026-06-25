@@ -6652,6 +6652,38 @@ function getHostedPdfDocumentPath(docType, personId, mode = "STANDARD") {
   return `${pagePath}?personId=${encodeURIComponent(personId)}&pdf=1&mode=${encodeURIComponent(normalizeText(mode || "STANDARD"))}`;
 }
 
+function getCurrentHostedAppBasePath() {
+  const pathname = String(window.location.pathname || "/");
+  const segments = pathname.split("/").filter(Boolean);
+  if (!segments.length) {
+    return "/";
+  }
+  const firstSegment = segments[0];
+  const host = String(window.location.hostname || "").toLowerCase();
+  if (host.endsWith(".github.io")) {
+    return `/${firstSegment}/`;
+  }
+  return pathname.includes("/Dotations/") || firstSegment === "Dotations" ? "/Dotations/" : "/";
+}
+
+function resolveHostedRelativeUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) {
+    return null;
+  }
+  const base = new URL(window.location.href || "./", window.location.origin);
+  if (/^\/(document-(arrivee|sortie)\.html(?:\?|$))/i.test(value)) {
+    return new URL(value.replace(/^\/+/, getCurrentHostedAppBasePath()), window.location.origin);
+  }
+  const parsed = new URL(value, base);
+  const host = String(parsed.hostname || "").toLowerCase();
+  const isHostedDocument = /\/document-(arrivee|sortie)\.html$/i.test(parsed.pathname);
+  if (isHostedDocument && host.endsWith(".github.io") && !parsed.pathname.startsWith(getCurrentHostedAppBasePath())) {
+    parsed.pathname = `${getCurrentHostedAppBasePath()}${parsed.pathname.replace(/^\/+/, "")}`;
+  }
+  return parsed;
+}
+
 function normalizeDirectPdfOpenUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -6663,7 +6695,7 @@ function normalizeDirectPdfOpenUrl(value) {
   }
   let parsed = null;
   try {
-    parsed = new URL(raw, window.location.origin);
+    parsed = resolveHostedRelativeUrl(raw);
   } catch {
     return "";
   }
@@ -19233,6 +19265,7 @@ window.resetNetworkDebug = () => {
 };
 
 loadData();
+
 
 
 
