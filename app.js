@@ -5254,7 +5254,8 @@ function migrateDataModel(options = {}) {
       effect.designation = normalizeText(effect.designation);
       effect.numeroIdentification = normalizeText(effect.numeroIdentification);
       effect.vehiculeImmatriculation = normalizeText(effect.vehiculeImmatriculation);
-      effect.statutManuel = normalizeText(effect.statutManuel);
+      effect.dateRetour = String(effect.dateRetour || "");
+      effect.statutManuel = getStoredManualStatusForEffect(effect.statutManuel, effect.dateRetour);
       const legacyCause = normalizeText(effect.causeRemplacement);
       if (!normalizeEffectCause(effect.cause) && legacyCause) {
         effect.cause = legacyCause;
@@ -8013,8 +8014,10 @@ function bindEffectForm() {
         ? normalizeText(referenceSite || (availableReferenceSites.length === 1 ? availableReferenceSites[0] : ""))
         : "";
     const dateRemplacement = String(formData.get("dateRemplacement") || "");
+    const dateRetour = String(formData.get("dateRetour") || "");
     const coutRemplacement = normalizeAmount(formData.get("coutRemplacement"));
     const manualStatus = normalizeText(formData.get("statutManuel"));
+    const storedManualStatus = getStoredManualStatusForEffect(manualStatus, dateRetour);
 
     if (!typeEffet) {
       showDataStatus("SELECTIONNER UN TYPE D'EFFET");
@@ -8028,7 +8031,7 @@ function bindEffectForm() {
       return;
     }
 
-    if (!manualStatus) {
+    if (!manualStatus && !dateRetour) {
       showDataStatus("SELECTIONNER LE STATUT MANUEL");
       form.elements.statutManuel?.focus();
       return;
@@ -8052,8 +8055,8 @@ function bindEffectForm() {
         numeroIdentification: normalizeText(formData.get("numeroIdentification")),
         vehiculeImmatriculation,
       dateRemise: String(formData.get("dateRemise") || ""),
-      dateRetour: String(formData.get("dateRetour") || ""),
-      statutManuel: manualStatus === "CASSE" ? "DETRUIT" : manualStatus,
+      dateRetour,
+      statutManuel: storedManualStatus,
       cause: "",
       dateRemplacement,
       coutRemplacement,
@@ -8481,6 +8484,20 @@ function isReturnDateRequiredForManualStatus(value) {
   return ["RENDU", "RESTITUE"].includes(normalizeText(value));
 }
 
+function getStoredManualStatusForEffect(manualStatus, dateRetour) {
+  if (String(dateRetour || "").trim()) {
+    return "RESTITUE";
+  }
+  const normalizedStatus = normalizeText(manualStatus);
+  if (normalizedStatus === "CASSE") {
+    return "DETRUIT";
+  }
+  if (["RENDU", "RESTITUE"].includes(normalizedStatus)) {
+    return "ACTIF";
+  }
+  return normalizedStatus;
+}
+
 function isReplacementDateRequiredForManualStatus(value) {
   return ["PERDU", "VOL", "HS", "DETRUIT", "CASSE", "NON RENDU"].includes(normalizeText(value));
 }
@@ -8714,7 +8731,7 @@ function validateEffectFormContext(form, options = {}) {
     referenceEffet: Boolean(context.usesReferenceCatalog && !context.referenceEffetId),
     dateRemise: !context.dateRemise,
     dateRetour: Boolean(context.returnDateRequired && !context.dateRetour),
-    statutManuel: !context.statutManuel,
+    statutManuel: !context.statutManuel && !context.dateRetour,
     dateRemplacement: Boolean(context.replacementDateRequired && !context.dateRemplacement),
   };
   const dateValidations = {
@@ -14325,8 +14342,9 @@ function renderPersonSheet(personId) {
 
   const effects = person.effetsConfies || [];
   const currentEffects = getCurrentAssignedEffects(person);
-  const sortedEffects = sortEffectsForTable(person, currentEffects, "sheetEffects");
-  const movementMap = getArrivalComplementMovementMap(person, currentEffects);
+  const displayedEffects = effects;
+  const sortedEffects = sortEffectsForTable(person, displayedEffects, "sheetEffects");
+  const movementMap = getArrivalComplementMovementMap(person, displayedEffects);
   const returned = effects.filter((effect) => getEffectStatus(person, effect) === "RESTITUE").length;
   const missing = currentEffects.filter((effect) => getEffectStatus(person, effect) === "NON RENDU").length;
   const totalCost = currentEffects.reduce((sum, effect) => sum + getEffectReplacementCost(person, effect), 0);
@@ -14344,7 +14362,7 @@ function renderPersonSheet(personId) {
       : null;
   const rowFlashSignature = rowFlash ? `${String(rowFlash.kind || "")}:${String(rowFlash.effectId || "")}` : "";
   const effectTableFlashSignature = effectTableFlash ? `${String(effectTableFlash.kind || "")}:${String(effectTableFlash.personId || "")}` : "";
-  const sheetRowsSignature = `sheet|${String(person.id || "")}|${normalizeText(person.nom || "")}|${normalizeText(person.prenom || "")}|${normalizeText(person.typePersonnel || "")}|${normalizeText(person.typeContrat || "")}|${String(person.dateEntree || "")}|${String(person.dateSortiePrevue || "")}|${String(person.dateSortieReelle || "")}|${String(getDossierStatus(person))}|${String(overdueMessage || "")}|${String(currentEffects.length)}|${String(returned)}|${String(missing)}|${String(totalCost)}|${String(totalEffectsUnitValue)}|${rowFlashSignature}|${effectTableFlashSignature}|${sortedEffects
+  const sheetRowsSignature = `sheet|${String(person.id || "")}|${normalizeText(person.nom || "")}|${normalizeText(person.prenom || "")}|${normalizeText(person.typePersonnel || "")}|${normalizeText(person.typeContrat || "")}|${String(person.dateEntree || "")}|${String(person.dateSortiePrevue || "")}|${String(person.dateSortieReelle || "")}|${String(getDossierStatus(person))}|${String(overdueMessage || "")}|${String(currentEffects.length)}|${String(displayedEffects.length)}|${String(returned)}|${String(missing)}|${String(totalCost)}|${String(totalEffectsUnitValue)}|${rowFlashSignature}|${effectTableFlashSignature}|${sortedEffects
     .map((effect) => {
       const effectStatus = getEffectStatus(person, effect);
       const effectDesignation = getEffectDisplayDesignation(effect);
@@ -15354,6 +15372,7 @@ function bindExitReturnTodayToggles() {
     }
     const wasReturned = Boolean(String(effect.dateRetour || "").trim());
     effect.dateRetour = target.checked ? getTodayIsoDate() : "";
+    effect.statutManuel = getStoredManualStatusForEffect(effect.statutManuel, effect.dateRetour);
     const isReturned = Boolean(String(effect.dateRetour || "").trim());
     if (isReturned !== wasReturned) {
     addAutoStockMovement(person, effect, isReturned ? "ENTREE" : "SORTIE", isReturned ? "RETOUR" : "ANNULATION_RETOUR");
@@ -19288,10 +19307,5 @@ window.resetNetworkDebug = () => {
 };
 
 loadData();
-
-
-
-
-
 
 
