@@ -151,6 +151,7 @@ const NON_RENDU_REFERENCE_COSTS = {
   "CARTE TURBOSELF": 10,
   CLE: 5,
   "CLE CES": 50,
+  "CLE DE SECURITE": 45,
   "RADIATEUR APPOINT": 45,
   "TELECOMMANDE URMET": 40,
   VENTILATEUR: 30,
@@ -3565,7 +3566,7 @@ function formatCurrentUiTimestamp() {
 }
 
 function typeUsesReferenceCatalog(typeEffet) {
-  return ["CLE", "CLE CES", "VENTILATEUR"].includes(normalizeText(typeEffet));
+  return ["CLE", "CLE CES", "CLE DE SECURITE", "VENTILATEUR"].includes(normalizeText(typeEffet));
 }
 
 function getReferenceCatalogType(typeEffet) {
@@ -8599,7 +8600,7 @@ function getEffectKeyFieldSequence(typeEffet) {
   if (normalizedType === "BADGE INTRUSION" || normalizedType === "CARTE TURBOSELF") {
     return ["typeEffet", "referenceSite", "numeroIdentification", "dateRemise", "statutManuel"];
   }
-  if (normalizedType === "CLE" || normalizedType === "CLE CES") {
+  if (["CLE", "CLE CES", "CLE DE SECURITE"].includes(normalizedType)) {
     return ["typeEffet", "referenceSite", "referenceEffet", "numeroIdentification", "dateRemise", "statutManuel"];
   }
   return ["typeEffet", "numeroIdentification", "dateRemise", "statutManuel"];
@@ -8854,7 +8855,7 @@ function updateEffectFormMode(typeEffet) {
   let showVehicle = false;
   let keyFields = normalizedType ? getEffectKeyFieldSequence(normalizedType) : ["typeEffet"];
 
-  if (["CLE", "CLE CES"].includes(normalizedType)) {
+  if (["CLE", "CLE CES", "CLE DE SECURITE"].includes(normalizedType)) {
     showReferenceSite = true;
     referenceSiteLabel.textContent = "SITE DE LA CLE";
     referenceLabel.textContent = "NOM EXISTANT DE LA CLE";
@@ -8866,6 +8867,11 @@ function updateEffectFormMode(typeEffet) {
         availableReferenceSites.length > 1
           ? "POUR UNE CLE CES : CHOISIR D'ABORD LE SITE, PUIS UNE CLE COMMENCANT PAR CES-"
           : "POUR UNE CLE CES : CHOISIR UNE CLE COMMENCANT PAR CES-";
+    } else if (normalizedType === "CLE DE SECURITE") {
+      helpNode.textContent =
+        availableReferenceSites.length > 1
+          ? "POUR UNE CLE DE SECURITE : CHOISIR D'ABORD LE SITE, PUIS LE NOM DE LA CLE"
+          : "POUR UNE CLE DE SECURITE : CHOISIR UN NOM DE CLE DU SITE";
     } else {
       helpNode.textContent =
         availableReferenceSites.length > 1
@@ -14222,7 +14228,7 @@ function getSheetEffectTypeIconVariant(typeEffet) {
   if (normalizedType === "VENTILATEUR") {
     return "ventilateur";
   }
-  if (normalizedType === "CLE" || normalizedType === "CLE CES") {
+  if (["CLE", "CLE CES", "CLE DE SECURITE"].includes(normalizedType)) {
     return "cle";
   }
   return "total";
