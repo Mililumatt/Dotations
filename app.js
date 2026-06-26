@@ -18334,11 +18334,11 @@ function getHostedSyncSimpleText() {
     case "up_to_date":
       return "Heberge a jour";
     case "pending":
-      return "Modifications locales non envoyees";
+      return "Envoi utile seulement si modification locale volontaire";
     case "inaccessible":
       return "Heberge inaccessible";
     case "blocked":
-      return "Controle local necessaire";
+      return "Controle local a corriger avant tout envoi";
     default:
       return "Statut heberge inconnu";
   }
