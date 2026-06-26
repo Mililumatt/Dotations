@@ -3066,7 +3066,7 @@ async function saveSupabasePayloadWithRetry(payload, maxAttempts = 3) {
     await saveSupabaseStateData(payload);
     return;
   }
-  let lastError = null;
+  void maxAttempts;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (!Number.isFinite(Number(state.supabaseRevision))) {
       await fetchSupabaseStateData();
@@ -3084,12 +3084,13 @@ async function saveSupabasePayloadWithRetry(payload, maxAttempts = 3) {
       if (!isSaveConflictError(error)) {
         throw error;
       }
-      lastError = error;
+      // Do not retry the same stale payload with a fresh revision: it can overwrite
+      // a mobile signature that was saved by another device between the two writes.
       await fetchSupabaseStateData();
-      await new Promise((resolve) => window.setTimeout(resolve, 80));
+      throw error;
     }
   }
-  throw lastError || buildSaveConflictError();
+  throw buildSaveConflictError();
 }
 
 async function forceSaveSupabaseStateData(payload) {
@@ -18488,7 +18489,7 @@ function buildRescuePlanFromState(rawDetailsOverride = null, stateOverride = nul
       steps: [
         "Restaurer les PDF depuis les sauvegardes locales.",
         "Relancer le controle local.",
-        "Envoyer vers l'heberge seulement quand le controle est OK.",
+        "Envoyer vers l'heberge uniquement si une vraie modification locale doit etre publiee.",
       ],
       primary: { label: "Restaurer les PDF", kind: "repair", action: "repair_missing_pdf" },
     };
@@ -18512,7 +18513,7 @@ function buildRescuePlanFromState(rawDetailsOverride = null, stateOverride = nul
       steps: [
         "Lancer la reparation proposee.",
         "Relancer le controle local.",
-        "Revenir a l'envoi quand le statut est OK.",
+        "Ne pas envoyer vers l'heberge si la reparation ne concerne que le local.",
       ],
       primary: { label: "Reparer les archives", kind: "repair", action: "repair_archive_not_openable" },
     };
@@ -18535,7 +18536,7 @@ function buildRescuePlanFromState(rawDetailsOverride = null, stateOverride = nul
     steps: [
       "Relancer le controle local.",
       "Corriger les points signales.",
-      "Envoyer vers l'heberge seulement apres controle OK.",
+      "Envoyer vers l'heberge uniquement si une vraie modification locale doit etre publiee.",
     ],
     primary: { label: "Reessayer", kind: "preflight" },
   };
@@ -18591,13 +18592,19 @@ async function runRescuePreflight(statusNode, resultNode, { afterRepairSuccess =
     });
     const payload = await response.json().catch(() => ({}));
     if (payload?.ok) {
-      state.hostedSyncState = "pending";
-      state.hostedSyncDetails = "";
+      state.hostedSyncState = afterRepairSuccess ? "unknown" : "pending";
+      state.hostedSyncDetails = afterRepairSuccess
+        ? "Controle local OK apres reparation locale. Aucun envoi vers l'heberge n'est necessaire sauf modification metier locale volontaire."
+        : "";
       if (statusNode) statusNode.textContent = afterRepairSuccess ? "Correction terminee. Le local est maintenant correct." : "Le controle est revenu OK.";
       if (resultNode) {
         resultNode.innerHTML = afterRepairSuccess
-          ? "<strong>Correction terminee. Dotations peut etre recharge.</strong>"
+          ? "<strong>Correction terminee. Dotations peut etre recharge.</strong> Aucun envoi vers l'heberge n'est necessaire sauf modification metier locale volontaire."
           : "<strong>Le controle est revenu OK.</strong>";
+      }
+      const detailsText = document.getElementById("dotations-rescue-details-text");
+      if (detailsText) {
+        detailsText.textContent = state.hostedSyncDetails || "Controle local OK.";
       }
       setRescueReloadAvailability(true);
     } else {
