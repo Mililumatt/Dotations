@@ -1,0 +1,61 @@
+-- DOTATIONS - Maintenance quota Supabase
+-- Objectif: empecher app_state_versions et audit_log de regonfler.
+-- A lancer dans Supabase SQL Editor apres sauvegarde / verification.
+
+begin;
+
+create or replace function public.prune_app_state_versions()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.app_state_versions
+  where created_at < now() - interval '7 days';
+
+  with ranked as (
+    select id,
+           row_number() over (partition by app_state_id order by created_at desc, id desc) as rn
+    from public.app_state_versions
+  )
+  delete from public.app_state_versions v
+  using ranked r
+  where v.id = r.id
+    and r.rn > 20;
+end;
+$$;
+
+create or replace function public.prune_audit_log()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.audit_log
+  where created_at < now() - interval '7 days';
+
+  with ranked as (
+    select id,
+           row_number() over (order by created_at desc, id desc) as rn
+    from public.audit_log
+  )
+  delete from public.audit_log a
+  using ranked r
+  where a.id = r.id
+    and r.rn > 5000;
+end;
+$$;
+
+select public.prune_app_state_versions();
+select public.prune_audit_log();
+
+commit;
+
+-- Optionnel si pg_cron est disponible:
+-- select cron.schedule(
+--   'dotations_quota_maintenance',
+--   '20 3 * * *',
+--   $$select public.prune_app_state_versions(); select public.prune_audit_log();$$
+-- );

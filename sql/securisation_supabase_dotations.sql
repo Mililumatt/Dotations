@@ -18,6 +18,33 @@ create table if not exists public.audit_log (
 
 alter table public.audit_log enable row level security;
 
+create index if not exists ix_audit_log_created_at
+  on public.audit_log(created_at desc);
+
+create or replace function public.prune_audit_log()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- Retention temps: 7 jours
+  delete from public.audit_log
+  where created_at < now() - interval '7 days';
+
+  -- Retention volume: max 5000 lignes recentes
+  with ranked as (
+    select id,
+           row_number() over (order by created_at desc, id desc) as rn
+    from public.audit_log
+  )
+  delete from public.audit_log a
+  using ranked r
+  where a.id = r.id
+    and r.rn > 5000;
+end;
+$$;
+
 drop policy if exists "audit_log_read_admin_only" on public.audit_log;
 create policy "audit_log_read_admin_only"
 on public.audit_log

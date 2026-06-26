@@ -18,6 +18,10 @@ let authContextCache = null;
 let authContextCacheTs = 0;
 const AUTH_CONTEXT_TTL_MS = 5000;
 let appStateSaveQueue = Promise.resolve();
+let appStateRowCache = null;
+let appStateRowCacheTs = 0;
+let appStateRowFetchPromise = null;
+const APP_STATE_READ_CACHE_TTL_MS = 8000;
 
 async function fetchAuthContext({ force = false } = {}) {
   const now = Date.now();
@@ -151,6 +155,24 @@ function safeJsonParse(raw) {
     }
   }
   return typeof raw === "object" ? raw : {};
+}
+
+function cloneJson(value) {
+  if (!value || typeof value !== "object") return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}
+
+function cloneAppStateRow(row) {
+  if (!row || typeof row !== "object") return row || null;
+  return {
+    id: row.id,
+    payload: cloneJson(row.payload || {}),
+    revision: Number(row.revision) || 0,
+  };
 }
 
 function extractPayloadFromEdgeData(raw) {
@@ -431,8 +453,7 @@ function applySignedDocumentCompletion(person, docType) {
   return false;
 }
 
-async function getAppStateRow() {
-  const ctx = await requireAuthenticated("Lecture app_state");
+async function fetchAppStateRowFresh(ctx) {
   try {
     const edgeRow = await getAppStateRowFromEdge(ctx?.session);
     if (edgeRow?.payload) return edgeRow;
@@ -449,6 +470,29 @@ async function getAppStateRow() {
     payload: safeJsonParse(row.payload),
     revision: Number.isFinite(revision) ? revision : 0,
   };
+}
+
+async function getAppStateRow({ forceFresh = false } = {}) {
+  const ctx = await requireAuthenticated("Lecture app_state");
+  const now = Date.now();
+  if (!forceFresh && appStateRowCache && now - appStateRowCacheTs <= APP_STATE_READ_CACHE_TTL_MS) {
+    return cloneAppStateRow(appStateRowCache);
+  }
+  if (!forceFresh && appStateRowFetchPromise) {
+    return cloneAppStateRow(await appStateRowFetchPromise);
+  }
+
+  appStateRowFetchPromise = fetchAppStateRowFresh(ctx)
+    .then((row) => {
+      appStateRowCache = cloneAppStateRow(row);
+      appStateRowCacheTs = Date.now();
+      return row;
+    })
+    .finally(() => {
+      appStateRowFetchPromise = null;
+    });
+
+  return cloneAppStateRow(await appStateRowFetchPromise);
 }
 
 async function getAppStateRowDirect() {
@@ -504,6 +548,8 @@ async function saveAppStatePayloadOnce(payload, expectedRevision, attempt = 0) {
     throw buildAppStateConflictError();
   }
   const nextRevision = Number(updated.revision);
+  appStateRowCache = cloneAppStateRow({ id: "main", payload: normalizedPayload, revision: nextRevision });
+  appStateRowCacheTs = Date.now();
   return Number.isFinite(nextRevision) ? nextRevision : revision + 1;
 }
 
@@ -533,7 +579,10 @@ async function forceSaveAppStatePayload(payload) {
   if (!updated?.id) {
     throw new Error("Mise a jour forcee app_state impossible: ligne introuvable");
   }
-  return Number(updated.revision) || nextRevision;
+  const persistedRevision = Number(updated.revision) || nextRevision;
+  appStateRowCache = cloneAppStateRow({ id: "main", payload: normalizedPayload, revision: persistedRevision });
+  appStateRowCacheTs = Date.now();
+  return persistedRevision;
 }
 
 async function getAppStatePayload() {
@@ -932,7 +981,7 @@ export const db = {
     async create(data) {
       await requireRole("Creation personne", WRITE_ROLES);
       ensureWritable('creation personne');
-      const row = await getAppStateRow();
+      const row = await getAppStateRow({ forceFresh: true });
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes)) {
         const raw = payload.personnes;
@@ -969,7 +1018,7 @@ export const db = {
     async update(id, data) {
       await requireRole("Mise a jour personne", WRITE_ROLES);
       ensureWritable('mise a jour personne');
-      const row = await getAppStateRow();
+      const row = await getAppStateRow({ forceFresh: true });
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes)) {
         const idx = payload.personnes.findIndex((p) => toString(p?.id) === toString(id));
@@ -989,7 +1038,7 @@ export const db = {
     async delete(id) {
       const ctx = await requireRole("Suppression personne", DELETE_ROLES);
       ensureWritable('suppression personne');
-      const row = await getAppStateRow();
+      const row = await getAppStateRow({ forceFresh: true });
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes)) {
         const index = payload.personnes.findIndex((p) => toString(p?.id) === toString(id));
@@ -1017,7 +1066,7 @@ export const db = {
     async create(data) {
       await requireRole("Creation effet", WRITE_ROLES);
       ensureWritable('creation effet');
-      const row = await getAppStateRow();
+      const row = await getAppStateRow({ forceFresh: true });
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes)) {
         const person = payload.personnes.find((p) => toString(p?.id) === toString(data?.personId));
@@ -1034,7 +1083,7 @@ export const db = {
     async update(id, data) {
       await requireRole("Mise a jour effet", WRITE_ROLES);
       ensureWritable('mise a jour effet');
-      const row = await getAppStateRow();
+      const row = await getAppStateRow({ forceFresh: true });
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes)) {
         for (const person of payload.personnes) {
@@ -1054,7 +1103,7 @@ export const db = {
     async delete(id) {
       const ctx = await requireRole("Suppression effet", DELETE_ROLES);
       ensureWritable('suppression effet');
-      const row = await getAppStateRow();
+      const row = await getAppStateRow({ forceFresh: true });
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes)) {
         for (const person of payload.personnes) {
@@ -1093,7 +1142,7 @@ export const db = {
       const docType = ensureValidDocType(data?.docType);
       const signer = ensureValidSigner(data?.signer);
       const signatureData = normalizeSignatureData(data?.signatureData);
-      const row = await getAppStateRow();
+      const row = await getAppStateRow({ forceFresh: true });
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes) && personId) {
         return saveLegacySignatureWithConflictRetry({
@@ -1114,7 +1163,7 @@ export const db = {
     async update(id, data) {
       await requireRole("Mise a jour signature", WRITE_ROLES);
       ensureWritable('mise a jour signature');
-      const row = await getAppStateRow();
+      const row = await getAppStateRow({ forceFresh: true });
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes) && isLegacySignatureId(id)) {
         const { personId, docType, signer } = parseLegacySignatureId(id);
@@ -1127,7 +1176,7 @@ export const db = {
     async delete(id) {
       await requireRole("Suppression signature", DELETE_ROLES);
       ensureWritable('suppression signature');
-      const row = await getAppStateRow();
+      const row = await getAppStateRow({ forceFresh: true });
       const payload = row?.payload;
       if (payload && Array.isArray(payload.personnes) && isLegacySignatureId(id)) {
         const { personId, docType, signer } = parseLegacySignatureId(id);

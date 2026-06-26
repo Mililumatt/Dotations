@@ -121,15 +121,15 @@ const state = {
   dirtyStateRenderSignature: "",
   pageRenderSignature: "",
 };
-const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 15000;
-const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 15000;
-const MOBILE_SIGNATURE_POLL_RESUME_DELAY_MS = 5000;
-const MOBILE_SIGNATURE_POLL_SYNC_MIN_GAP_MS = 2000;
-const MOBILE_SIGNATURE_POLL_RENDER_SYNC_DEBOUNCE_MS = 30000;
-const MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS = 30000;
+const MOBILE_SIGNATURE_POLL_INTERVAL_MS = 60000;
+const MOBILE_SIGNATURE_POLL_ERROR_BACKOFF_MS = 30000;
+const MOBILE_SIGNATURE_POLL_RESUME_DELAY_MS = 10000;
+const MOBILE_SIGNATURE_POLL_SYNC_MIN_GAP_MS = 10000;
+const MOBILE_SIGNATURE_POLL_RENDER_SYNC_DEBOUNCE_MS = 60000;
+const MOBILE_SIGNATURE_POLL_IDLE_INTERVAL_MS = 180000;
 const BROWSER_STORAGE_WARNING_RATIO = 0.8;
 const BROWSER_STORAGE_ALERT_RATIO = 0.9;
-const DATA_FETCH_DEBOUNCE_MS = 1200;
+const DATA_FETCH_DEBOUNCE_MS = 5000;
 const FILTER_INPUT_DEBOUNCE_MS = 140;
 const NETWORK_DEBUG_SAMPLE_LIMIT = 80;
 const NETWORK_DEBUG_STORAGE_KEY = "dotations-network-debug-v1";
@@ -1840,7 +1840,7 @@ async function openAdminUsersModal() {
       return;
     }
     const loadVersions = async (accessToken) => {
-      const endpoint = `${getSupabaseRestEndpoint().replace(/\/app_state$/i, "/app_state_versions")}?select=app_state_id,source_revision,created_at,reason&order=created_at.desc&limit=30`;
+      const endpoint = `${getSupabaseRestEndpoint().replace(/\/app_state$/i, "/app_state_versions")}?select=app_state_id,source_revision,created_at,reason&order=created_at.desc&limit=20`;
       return fetch(endpoint, {
         method: "GET",
         headers: getSupabaseHeaders(

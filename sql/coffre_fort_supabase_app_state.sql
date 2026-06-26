@@ -4,7 +4,7 @@
 -- - Checksum SHA-256
 -- - Journal minimal
 -- - Rollback par revision
--- - Retention: 30 jours + 200 snapshots max par app_state
+-- - Retention: 7 jours + 20 snapshots max par app_state
 
 begin;
 
@@ -164,11 +164,11 @@ security definer
 set search_path = public
 as $$
 begin
-  -- Retention temps: 30 jours
+  -- Retention temps: 7 jours
   delete from public.app_state_versions
-  where created_at < now() - interval '30 days';
+  where created_at < now() - interval '7 days';
 
-  -- Retention volume: max 200 snapshots par app_state_id
+  -- Retention volume: max 20 snapshots par app_state_id
   with ranked as (
     select id,
            row_number() over (partition by app_state_id order by created_at desc, id desc) as rn
@@ -177,7 +177,7 @@ begin
   delete from public.app_state_versions v
   using ranked r
   where v.id = r.id
-    and r.rn > 200;
+    and r.rn > 20;
 end;
 $$;
 
@@ -223,4 +223,3 @@ commit;
 --   '10 3 * * *',
 --   $$select public.prune_app_state_versions();$$
 -- );
-
