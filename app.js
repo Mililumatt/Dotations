@@ -157,6 +157,7 @@ const NON_RENDU_REFERENCE_COSTS = {
   VENTILATEUR: 30,
 };
 const MOBILE_SIGNATURE_REQUEST_TTL_MS = 10 * 60 * 1000;
+const AUTO_GENERATE_SIGNED_PDFS = false;
 const SUPABASE_PROJECT_URL = "https://dphrvdhqhgycmllietuk.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_2wYXnIDj4-c8daQZW8D5hA_2Py6k7z6";
 const SUPABASE_EDGE_API_URL = "https://dphrvdhqhgycmllietuk.supabase.co/functions/v1/dotations-api";
@@ -4815,6 +4816,7 @@ async function loadData() {
   bindHistoryNavigation();
   bindAutoSaveOnNavigation();
   bindGlobalResetSelectionClear();
+  bindFilterResetHighlights();
   bindGlobalShortcuts();
   bindArchiveFilterDelegation();
   bindArchiveFilterValueWatcher();
@@ -6932,6 +6934,10 @@ async function generatePdfArchiveSilently(person, docType) {
 }
 
 function queueAutoGenerateSignedDocumentsPdfIfMissing() {
+  if (!AUTO_GENERATE_SIGNED_PDFS) {
+    updateDocumentPdfButtonsState();
+    return;
+  }
   if (state.autoPdfGenerationInFlight) {
     return;
   }
@@ -7353,6 +7359,9 @@ function schedulePageRender() {
     }
     state.pageRenderRafId = 0;
     renderPage();
+    if (typeof updateAllFilterResetHighlights === "function") {
+      updateAllFilterResetHighlights();
+    }
   };
 
   state.pageRenderRafId = window.requestAnimationFrame(() => {
@@ -11578,6 +11587,26 @@ function getDocumentArchiveOpenPath(entry) {
   return raw.replace(/^\/+/, "");
 }
 
+function getCanonicalArchivePdfRemoteUrl(entry) {
+  if (getDataBackendMode() === "LOCAL_API") {
+    return "";
+  }
+  if (normalizePdfQualityStatus(entry?.pdfQualityStatus) === "LEGACY_ONLY") {
+    return "";
+  }
+  const personId = sanitizeFilePart(String(entry?.personId || ""));
+  const docType = getArchiveDocTypeKey(entry?.typeDocument);
+  if (!personId || !docType) {
+    return "";
+  }
+  const bucket = getStoragePdfBucketName();
+  if (!bucket) {
+    return "";
+  }
+  const folder = docType === "SORTIE" ? "sortie" : "arrivee";
+  return getSupabaseStoragePublicUrl(bucket, `${folder}/${personId}/COURANT.pdf`) || "";
+}
+
 function getArchiveFileNameFromPath(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -11674,6 +11703,7 @@ function normalizePdfQualityStatus(value) {
 
 function resolveArchiveOpenTarget(entry) {
   const localUrl = String(entry?.openLocalUrl || "").trim();
+  const canonicalRemoteUrl = getCanonicalArchivePdfRemoteUrl(entry);
   const remoteUrl = String(entry?.openRemoteUrl || entry?.publicUrl || "").trim();
   const legacyUrl = getDocumentArchiveOpenPath(entry);
   const pdfQualityStatus = normalizePdfQualityStatus(entry?.pdfQualityStatus);
@@ -11689,6 +11719,7 @@ function resolveArchiveOpenTarget(entry) {
     if (remoteUrl) return { url: remoteUrl, source: "remote", qualityIssue: pdfQualityStatus };
     return { url: legacyUrl || "", source: legacyUrl ? "legacy" : "", qualityIssue: pdfQualityStatus };
   }
+  if (canonicalRemoteUrl) return { url: canonicalRemoteUrl, source: "remote-current", qualityIssue: pdfQualityStatus };
   if (remoteUrl) return { url: remoteUrl, source: "remote", qualityIssue: pdfQualityStatus };
   if (legacyUrl) return { url: legacyUrl, source: "legacy", qualityIssue: pdfQualityStatus };
   if (localUrl) return { url: localUrl, source: "local", qualityIssue: pdfQualityStatus };
@@ -19265,6 +19296,75 @@ function bindGlobalResetSelectionClear() {
   );
   window.__dashboardResetSelectionBound = true;
 }
+
+function isNeutralFilterValue(value) {
+  const normalized = normalizeText(value);
+  return !normalized || normalized === "TOUS" || normalized === "TOUTES" || normalized === "ALL";
+}
+
+function isFilterControlActive(control) {
+  if (!(control instanceof HTMLElement) || control.disabled) {
+    return false;
+  }
+  if (control instanceof HTMLInputElement) {
+    const type = String(control.type || "text").toLowerCase();
+    if (["button", "submit", "reset", "hidden"].includes(type)) {
+      return false;
+    }
+    if (type === "checkbox" || type === "radio") {
+      return control.checked !== control.defaultChecked;
+    }
+    return !isNeutralFilterValue(control.value);
+  }
+  if (control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
+    return !isNeutralFilterValue(control.value);
+  }
+  return false;
+}
+
+function hasActiveFilterControls(form) {
+  if (!(form instanceof HTMLFormElement)) {
+    return false;
+  }
+  return Array.from(form.elements).some((control) => isFilterControlActive(control));
+}
+
+function getResetButtonsForForm(form) {
+  if (!(form instanceof HTMLFormElement)) {
+    return [];
+  }
+  return Array.from(form.querySelectorAll("button, input[type='reset']"))
+    .filter((button) => normalizeText(button.textContent || button.value || "") === "REINITIALISER");
+}
+
+function updateFilterResetHighlight(form) {
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+  const active = hasActiveFilterControls(form);
+  getResetButtonsForForm(form).forEach((button) => {
+    button.classList.toggle("filter-reset--active", active);
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function updateAllFilterResetHighlights() {
+  document.querySelectorAll("form").forEach((form) => updateFilterResetHighlight(form));
+}
+
+function bindFilterResetHighlights() {
+  if (window.__dashboardFilterResetHighlightsBound) {
+    return;
+  }
+  const scheduleUpdate = () => window.setTimeout(updateAllFilterResetHighlights, 0);
+  document.addEventListener("input", scheduleUpdate, true);
+  document.addEventListener("change", scheduleUpdate, true);
+  document.addEventListener("reset", scheduleUpdate, true);
+  window.__dashboardFilterResetHighlightsBound = true;
+  updateAllFilterResetHighlights();
+}
+
 
 function markDirty() {
   state.isDirty = true;
