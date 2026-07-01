@@ -7,6 +7,14 @@ const DEFAULT_FILTERS = {
   statutObjet: "",
   typeEffet: "",
 };
+const DEFAULT_TABLE_SORTS = {
+  sheetEffects: { key: "typeEffet", dir: "asc" },
+  arrivalEffects: { key: "typeEffet", dir: "asc" },
+  exitEffects: { key: "typeEffet", dir: "asc" },
+  overviewPersons: { key: "nom", dir: "asc" },
+  referenceEffects: { key: "site", dir: "asc" },
+  documentsArchives: { key: "nom", dir: "asc" },
+};
 
 const state = {
   data: null,
@@ -50,11 +58,11 @@ const state = {
   autoSaveTimerId: 0,
   actionAutoSaveTimerId: 0,
   tableSorts: {
-    sheetEffects: { key: "typeEffet", dir: "asc" },
-    arrivalEffects: { key: "typeEffet", dir: "asc" },
-    exitEffects: { key: "typeEffet", dir: "asc" },
-    overviewPersons: { key: "nom", dir: "asc" },
-    documentsArchives: { key: "nom", dir: "asc" },
+    sheetEffects: { ...DEFAULT_TABLE_SORTS.sheetEffects },
+    arrivalEffects: { ...DEFAULT_TABLE_SORTS.arrivalEffects },
+    exitEffects: { ...DEFAULT_TABLE_SORTS.exitEffects },
+    overviewPersons: { ...DEFAULT_TABLE_SORTS.overviewPersons },
+    documentsArchives: { ...DEFAULT_TABLE_SORTS.documentsArchives },
   },
   filters: { ...DEFAULT_FILTERS },
   referenceRenderContext: null,
@@ -6346,16 +6354,51 @@ function buildEmptyTableRow(target, text, fallback = 1) {
 }
 
 function getEffectTableSort(tableName) {
-  const defaults = {
-    sheetEffects: { key: "typeEffet", dir: "asc" },
-    arrivalEffects: { key: "typeEffet", dir: "asc" },
-    exitEffects: { key: "typeEffet", dir: "asc" },
-    overviewPersons: { key: "nom", dir: "asc" },
-    referenceEffects: { key: "site", dir: "asc" },
-    documentsArchives: { key: "nom", dir: "asc" },
-  };
   const current = state.tableSorts?.[tableName];
-  return current && current.key && current.dir ? current : (defaults[tableName] || { key: "nom", dir: "asc" });
+  return current && current.key && current.dir
+    ? current
+    : (DEFAULT_TABLE_SORTS[tableName] || { key: "nom", dir: "asc" });
+}
+
+function isTableSortModified(tableName) {
+  const defaults = DEFAULT_TABLE_SORTS[tableName];
+  if (!defaults) {
+    return false;
+  }
+  const current = getEffectTableSort(tableName);
+  return current.key !== defaults.key || current.dir !== defaults.dir;
+}
+
+function getSortTablesForCurrentPage() {
+  switch (String(document.body?.dataset?.page || "")) {
+    case "overview":
+      return ["overviewPersons"];
+    case "person-sheet":
+      return ["sheetEffects"];
+    case "arrival-document":
+      return ["arrivalEffects"];
+    case "exit-document":
+      return ["exitEffects"];
+    case "documents-archives":
+      return ["documentsArchives"];
+    case "reference-bases":
+      return ["referenceEffects"];
+    default:
+      return [];
+  }
+}
+
+function resetTableSortsForCurrentPage() {
+  getSortTablesForCurrentPage().forEach((tableName) => {
+    const defaults = DEFAULT_TABLE_SORTS[tableName];
+    if (defaults) {
+      state.tableSorts[tableName] = { ...defaults };
+    }
+  });
+}
+
+function hasActiveTableSortForCurrentPage() {
+  return getSortTablesForCurrentPage().some((tableName) => isTableSortModified(tableName));
 }
 
 function setEffectTableSort(tableName, key) {
@@ -6593,6 +6636,7 @@ function bindEffectTableSorting(tableName = "") {
         return;
       }
       setEffectTableSort(tableName, key);
+      updateAllFilterResetHighlights();
       schedulePageRender();
     };
     header.onclick = activate;
@@ -7299,6 +7343,7 @@ function bindFilterForms() {
       }
       state.filters = { ...DEFAULT_FILTERS };
       state.urgentMode = false;
+      resetTableSortsForCurrentPage();
       saveNavigationContext({ filters: state.filters, personId: "", urgentMode: false });
       setCurrentPersonId("", "replace");
       clearFormSearchFields(form);
@@ -12263,7 +12308,7 @@ function renderDocumentsArchivePage() {
         const localPathInfo = String(entry?.localPath || "").trim();
         const targetAttributes = 'target="_blank" rel="noopener"';
         const openButton = hasPdf
-          ? `<a class="archive-pdf-button js-open-archive-pdf" href="${escapeHtml(openHref)}" ${targetAttributes} aria-label="OUVRIR PDF" data-archive-id="${escapeHtml(String(entry?.id || ""))}" data-open-url="${escapeHtml(openHref)}" data-local-url="${escapeHtml(openLocalUrl)}" data-remote-url="${escapeHtml(openRemoteUrl)}" data-public-url="${escapeHtml(publicUrl)}" data-legacy-url="${escapeHtml(legacyOpenPath)}" data-filename="${escapeHtml(filename)}"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>`
+          ? `<a class="archive-pdf-button js-open-archive-pdf" href="${escapeHtml(openHref)}" ${targetAttributes} aria-label="OUVRIR PDF" data-archive-id="${escapeHtml(String(entry?.id || ""))}" data-open-url="${escapeHtml(openHref)}" data-local-url="${escapeHtml(openLocalUrl)}" data-remote-url="${escapeHtml(openRemoteUrl)}" data-public-url="${escapeHtml(publicUrl)}" data-legacy-url="${escapeHtml(legacyOpenPath)}" data-filename="${escapeHtml(filename)}"><span class="archive-pdf-button__icon" aria-hidden="true"><img src="assets/ui/icone-pdf.png" alt="" class="archive-pdf-button__image" /></span></a>`
           : "-";
         const deleteButton = hasPdf && !entry?.__isWorkflowSynthetic
           ? `<button type="button" class="table-link js-delete-archive-row" data-archive-id="${escapeHtml(String(entry.id || ""))}">SUPPRIMER</button>`
@@ -13621,6 +13666,7 @@ function renderPersonPicker() {
 
   const applyFullResetFromPicker = () => {
     state.filters = { ...DEFAULT_FILTERS };
+    resetTableSortsForCurrentPage();
     saveNavigationContext({ filters: state.filters, personId: "" });
     if (useDirectNavigation) {
       hideSuggestions();
@@ -14276,16 +14322,16 @@ function getSheetEffectTypeIconVariant(typeEffet) {
 function getSheetEffectTypeIconSvg(typeEffet) {
   const variant = getSheetEffectTypeIconVariant(typeEffet);
   if (variant === "cle-ces") {
-    return '<img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/icone-cle-ces.png" alt="" loading="lazy">';
+    return '<img src="assets/sidebar/icone-cle-ces.png" alt="" loading="lazy">';
   }
   if (variant === "badge") {
-    return '<img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/icone-badge.png" alt="" loading="lazy">';
+    return '<img src="assets/sidebar/icone-badge.png" alt="" loading="lazy">';
   }
   if (variant === "telecommande") {
-    return '<img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/icone-telecommande.png" alt="" loading="lazy">';
+    return '<img src="assets/sidebar/icone-telecommande.png" alt="" loading="lazy">';
   }
   if (variant === "carte") {
-    return '<img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/icone-carte.png" alt="" loading="lazy">';
+    return '<img src="assets/sidebar/icone-carte.png" alt="" loading="lazy">';
   }
   if (variant === "radiateur") {
     return '<img src="assets/effects/icone-radiateur-appoint.png" alt="" loading="lazy">';
@@ -14294,7 +14340,7 @@ function getSheetEffectTypeIconSvg(typeEffet) {
     return '<img src="assets/effects/icone-ventilateur.png" alt="" loading="lazy">';
   }
   if (variant === "cle") {
-    return '<img src="https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/sidebar/icone-cle.png" alt="" loading="lazy">';
+    return '<img src="assets/sidebar/icone-cle.png" alt="" loading="lazy">';
   }
   return `<svg viewBox="0 0 24 24" focusable="false">
     <rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor"></rect>
@@ -19341,7 +19387,7 @@ function updateFilterResetHighlight(form) {
   if (!(form instanceof HTMLFormElement)) {
     return;
   }
-  const active = hasActiveFilterControls(form);
+  const active = hasActiveFilterControls(form) || hasActiveTableSortForCurrentPage();
   getResetButtonsForForm(form).forEach((button) => {
     button.classList.toggle("filter-reset--active", active);
     button.classList.toggle("is-active", active);

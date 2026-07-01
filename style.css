@@ -69,7 +69,7 @@ textarea {
   width: 100%;
   height: auto;
   margin: 0;
-  border-radius: 9px;
+  border-radius: 0;
   object-fit: contain;
   object-position: left center;
 }
@@ -79,9 +79,9 @@ textarea {
   display: block;
   width: 100%;
   margin: 0 0 33px;
-  border-radius: 9px;
-  overflow: hidden;
-  box-shadow: 0 4px 10px rgba(43, 69, 82, 0.05);
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
   animation: logo-float 4.8s ease-in-out infinite;
   transform-origin: center;
 }
@@ -92,27 +92,7 @@ textarea {
 }
 
 .sidebar__brand-banner-wrap::after {
-  content: "";
-  position: absolute;
-  top: -4%;
-  left: -28%;
-  width: 42%;
-  height: 108%;
-  border-radius: 9px;
-  background:
-    linear-gradient(
-      105deg,
-      rgba(255, 255, 255, 0) 0%,
-      rgba(255, 255, 255, 0.04) 16%,
-      rgba(255, 255, 255, 0.18) 34%,
-      rgba(255, 255, 255, 0.08) 48%,
-      rgba(255, 255, 255, 0) 66%
-    );
-  pointer-events: none;
-  mix-blend-mode: screen;
-  filter: blur(1px);
-  transform: rotate(8deg) translateX(-185%);
-  animation: sidebarBrandGlassSweep 8.6s ease-in-out infinite;
+  content: none;
 }
 
 @keyframes sidebarBrandGlassSweep {
@@ -150,7 +130,7 @@ textarea {
   height: 34px;
   margin: 0 auto;
   object-fit: contain;
-  filter: drop-shadow(0 2px 5px rgba(31, 49, 59, 0.1));
+  filter: none;
 }
 
 .sidebar__eyebrow,
@@ -1850,7 +1830,7 @@ body[data-page="reference-bases"] .table-wrap--reference-large {
   height: 15px;
   transform: translateY(-50%);
   pointer-events: none;
-  background: url("https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-recherche.png") center / contain no-repeat;
+  background: url("assets/ui/icone-recherche.png") center / contain no-repeat;
   filter: drop-shadow(0 2px 4px rgba(79, 108, 122, 0.18));
 }
 
@@ -2614,7 +2594,7 @@ body[data-page="reference-bases"] .reference-cost-form--inline .form-actions {
 }
 
 .status-pill--sheet-active::before {
-  background-image: url("https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-statut-actif.png");
+  background-image: url("assets/ui/icone-statut-actif.png");
 }
 
 .status-pill--sheet-warning {
@@ -2622,7 +2602,7 @@ body[data-page="reference-bases"] .reference-cost-form--inline .form-actions {
 }
 
 .status-pill--sheet-warning::before {
-  background-image: url("https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-statut-sortie-prevue.png");
+  background-image: url("assets/ui/icone-statut-sortie-prevue.png");
 }
 
 .status-pill--sheet-exit {
@@ -2630,7 +2610,7 @@ body[data-page="reference-bases"] .reference-cost-form--inline .form-actions {
 }
 
 .status-pill--sheet-exit::before {
-  background-image: url("https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-statut-sorti.png");
+  background-image: url("assets/ui/icone-statut-sorti.png");
 }
 
 .status-pill--sheet-pending {
@@ -2638,7 +2618,7 @@ body[data-page="reference-bases"] .reference-cost-form--inline .form-actions {
 }
 
 .status-pill--sheet-pending::before {
-  background-image: url("https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-statut-sortie-prevue.png");
+  background-image: url("assets/ui/icone-statut-sortie-prevue.png");
   opacity: 0.42;
 }
 
@@ -2726,6 +2706,10 @@ body[data-page="reference-bases"] .reference-cost-form--inline .form-actions {
   justify-content: center;
   width: 24px;
   height: 24px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .effect-type-kpi__icon img,
@@ -2753,14 +2737,14 @@ body[data-page="reference-bases"] .reference-cost-form--inline .form-actions {
 }
 
 .effect-type-kpi__icon--radiateur {
-  border-radius: 999px;
-  background: rgba(54, 86, 97, 0.18);
+  border-radius: 0;
+  background: transparent;
 }
 
 .effect-type-kpi__icon--radiateur img {
   width: 28px;
   height: 28px;
-  filter: brightness(0.58) contrast(1.25) drop-shadow(0 1px 1px rgba(15, 23, 42, 0.32));
+  filter: none;
 }
 
 .effect-type-kpi__icon--ventilateur img {
@@ -3160,19 +3144,19 @@ body[data-page="overview"] .data-table td {
 }
 
 .status-icon-inline--active {
-  background-image: url("https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-statut-actif.png");
+  background-image: url("assets/ui/icone-statut-actif.png");
 }
 
 .status-icon-inline--warning {
-  background-image: url("https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-statut-sortie-prevue.png");
+  background-image: url("assets/ui/icone-statut-sortie-prevue.png");
 }
 
 .status-icon-inline--exit {
-  background-image: url("https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-statut-sorti.png");
+  background-image: url("assets/ui/icone-statut-sorti.png");
 }
 
 .status-icon-inline--pending {
-  background-image: url("https://dphrvdhqhgycmllietuk.supabase.co/storage/v1/object/public/ui-assets/ui/icone-statut-sortie-prevue.png");
+  background-image: url("assets/ui/icone-statut-sortie-prevue.png");
   opacity: 0.42;
 }
 

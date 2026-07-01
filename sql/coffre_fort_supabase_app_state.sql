@@ -87,6 +87,8 @@ begin
         'checksum_before', old_checksum
       )
     );
+
+    perform public.prune_app_state_versions();
   end if;
   return new;
 end;
@@ -164,11 +166,12 @@ security definer
 set search_path = public
 as $$
 begin
-  -- Retention temps: 7 jours
+  -- Retention temps: 48 heures. Le coffre-fort est une securite courte,
+  -- pas un stockage historique lourd.
   delete from public.app_state_versions
-  where created_at < now() - interval '7 days';
+  where created_at < now() - interval '48 hours';
 
-  -- Retention volume: max 20 snapshots par app_state_id
+  -- Retention volume: max 5 snapshots par app_state_id.
   with ranked as (
     select id,
            row_number() over (partition by app_state_id order by created_at desc, id desc) as rn
@@ -177,7 +180,7 @@ begin
   delete from public.app_state_versions v
   using ranked r
   where v.id = r.id
-    and r.rn > 20;
+    and r.rn > 5;
 end;
 $$;
 

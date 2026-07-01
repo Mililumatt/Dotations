@@ -12,7 +12,7 @@ set search_path = public
 as $$
 begin
   delete from public.app_state_versions
-  where created_at < now() - interval '7 days';
+  where created_at < now() - interval '48 hours';
 
   with ranked as (
     select id,
@@ -22,7 +22,7 @@ begin
   delete from public.app_state_versions v
   using ranked r
   where v.id = r.id
-    and r.rn > 20;
+    and r.rn > 5;
 end;
 $$;
 
@@ -33,8 +33,12 @@ security definer
 set search_path = public
 as $$
 begin
+  -- Ne jamais conserver les copies completes de public.app_state.
   delete from public.audit_log
-  where created_at < now() - interval '7 days';
+  where table_name = 'app_state';
+
+  delete from public.audit_log
+  where created_at < now() - interval '48 hours';
 
   with ranked as (
     select id,
@@ -44,7 +48,7 @@ begin
   delete from public.audit_log a
   using ranked r
   where a.id = r.id
-    and r.rn > 5000;
+    and r.rn > 1000;
 end;
 $$;
 

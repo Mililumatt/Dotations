@@ -100,21 +100,67 @@ set search_path = public
 as $$
 declare
   v_row_id text;
+  v_old_data jsonb;
+  v_new_data jsonb;
+  v_old_payload jsonb;
+  v_new_payload jsonb;
 begin
   if tg_op = 'INSERT' then
     v_row_id := coalesce((to_jsonb(new)->>'id'), '');
+    v_new_data := to_jsonb(new);
+    if tg_table_name = 'app_state' then
+      v_new_payload := coalesce(v_new_data->'payload', '{}'::jsonb);
+      v_new_data := jsonb_build_object(
+        'id', v_new_data->>'id',
+        'revision', v_new_data->>'revision',
+        'updated_at', v_new_data->>'updated_at',
+        'payload_bytes', length(v_new_payload::text),
+        'payload_checksum', public.jsonb_sha256(v_new_payload)
+      );
+    end if;
     insert into public.audit_log(table_name, action, row_id, actor_id, old_data, new_data)
-    values (tg_table_name, tg_op, v_row_id, auth.uid(), null, to_jsonb(new));
+    values (tg_table_name, tg_op, v_row_id, auth.uid(), null, v_new_data);
     return new;
   elsif tg_op = 'UPDATE' then
     v_row_id := coalesce((to_jsonb(new)->>'id'), (to_jsonb(old)->>'id'), '');
+    v_old_data := to_jsonb(old);
+    v_new_data := to_jsonb(new);
+    if tg_table_name = 'app_state' then
+      v_old_payload := coalesce(v_old_data->'payload', '{}'::jsonb);
+      v_new_payload := coalesce(v_new_data->'payload', '{}'::jsonb);
+      v_old_data := jsonb_build_object(
+        'id', v_old_data->>'id',
+        'revision', v_old_data->>'revision',
+        'updated_at', v_old_data->>'updated_at',
+        'payload_bytes', length(v_old_payload::text),
+        'payload_checksum', public.jsonb_sha256(v_old_payload)
+      );
+      v_new_data := jsonb_build_object(
+        'id', v_new_data->>'id',
+        'revision', v_new_data->>'revision',
+        'updated_at', v_new_data->>'updated_at',
+        'payload_bytes', length(v_new_payload::text),
+        'payload_checksum', public.jsonb_sha256(v_new_payload)
+      );
+    end if;
     insert into public.audit_log(table_name, action, row_id, actor_id, old_data, new_data)
-    values (tg_table_name, tg_op, v_row_id, auth.uid(), to_jsonb(old), to_jsonb(new));
+    values (tg_table_name, tg_op, v_row_id, auth.uid(), v_old_data, v_new_data);
     return new;
   elsif tg_op = 'DELETE' then
     v_row_id := coalesce((to_jsonb(old)->>'id'), '');
+    v_old_data := to_jsonb(old);
+    if tg_table_name = 'app_state' then
+      v_old_payload := coalesce(v_old_data->'payload', '{}'::jsonb);
+      v_old_data := jsonb_build_object(
+        'id', v_old_data->>'id',
+        'revision', v_old_data->>'revision',
+        'updated_at', v_old_data->>'updated_at',
+        'payload_bytes', length(v_old_payload::text),
+        'payload_checksum', public.jsonb_sha256(v_old_payload)
+      );
+    end if;
     insert into public.audit_log(table_name, action, row_id, actor_id, old_data, new_data)
-    values (tg_table_name, tg_op, v_row_id, auth.uid(), to_jsonb(old), null);
+    values (tg_table_name, tg_op, v_row_id, auth.uid(), v_old_data, null);
     return old;
   end if;
   return null;
