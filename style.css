@@ -2227,20 +2227,20 @@ input[type="reset"]:not(.button) {
 .button.filter-reset--active,
 button.filter-reset--active,
 input[type="reset"].filter-reset--active {
-  background: rgba(203, 70, 60, 0.16) !important;
-  color: #9f2f28 !important;
-  border-color: rgba(203, 70, 60, 0.72) !important;
-  box-shadow: 0 0 0 2px rgba(203, 70, 60, 0.14) !important;
+  background: #d64b3f !important;
+  color: #fff !important;
+  border-color: #b93d34 !important;
+  box-shadow: none !important;
 }
 
 .button.filter-reset--active::after,
 button.filter-reset--active::after {
   content: "";
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   margin-left: 7px;
   border-radius: 999px;
-  background: #cb463c;
+  background: #fff;
 }
 
 .button--save-ok {
@@ -3951,8 +3951,4 @@ button.btn-click-ack,
     background: transparent;
   }
 }
-
-
-
-
 

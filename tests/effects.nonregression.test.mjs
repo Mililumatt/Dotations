@@ -55,6 +55,7 @@ function loadPcBillingFns() {
     "getReplacementCostValue",
     "getTodayIsoDate",
     "isPastDate",
+    "normalizeDateString",
     "isExitDue",
     "getEffectReplacementCause",
     "getEffectReplacementCost",
@@ -237,4 +238,6 @@ test("Coût aligné PC/smartphone pour mêmes typeEffet + cause", () => {
     assert.equal(smCost, sample.expected);
   }
 });
+
+
 

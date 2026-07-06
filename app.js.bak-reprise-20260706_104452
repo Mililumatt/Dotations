@@ -2806,158 +2806,6 @@ async function uploadSignatureImageToSupabaseStorage(docType, person, signer, si
   };
 }
 
-async function saveMobileSignatureRecordToSupabase({
-  token = "",
-  personId = "",
-  docType = "",
-  signer = "",
-  person = null,
-  signatureValue = "",
-  validatedAt = "",
-  storageRef = "",
-  storagePublicUrl = "",
-} = {}) {
-  if (!isSupabaseConfigured() || !token || !personId || !signatureValue) {
-    return false;
-  }
-  const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
-  const normalizedSigner = normalizeMobileSignatureSigner(signer || "");
-  if (!normalizedDocType || !normalizedSigner) {
-    return false;
-  }
-  const representative = normalizedSigner === "representant" ? getRepresentativeInfo(person, normalizedDocType) : null;
-  const row = {
-    token: String(token || ""),
-    person_id: String(personId || ""),
-    doc_type: normalizedDocType,
-    signer: normalizedSigner,
-    status: "SIGNEE",
-    signature_data: String(signatureValue || ""),
-    storage_ref: String(storageRef || ""),
-    storage_public_url: String(storagePublicUrl || ""),
-    validated_at_text: String(validatedAt || ""),
-    signed_at: new Date().toISOString(),
-    person_nom: normalizeText(person?.nom || ""),
-    person_prenom: normalizeText(person?.prenom || ""),
-    signer_name: normalizeText(representative?.nom || ""),
-    signer_function: normalizeText(representative?.fonction || ""),
-    updated_at: new Date().toISOString(),
-  };
-  const endpoint = `${normalizeHttpUrl(SUPABASE_PROJECT_URL)}/rest/v1/signatures?on_conflict=token`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: getSupabaseHeaders({
-      "Content-Type": "application/json",
-      Prefer: "resolution=merge-duplicates,return=minimal",
-    }),
-    body: JSON.stringify(row),
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`SUPABASE_SIGNATURE_RECORD_FAILED:${response.status}:${detail.slice(0, 220)}`);
-  }
-  return true;
-}
-async function fetchSupabaseMobileSignatureRows(personId, docType) {
-  if (!isSupabaseConfigured()) return [];
-  const normalizedPersonId = String(personId || "").trim();
-  const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
-  if (!normalizedPersonId || !normalizedDocType) return [];
-  const endpoint = `${normalizeHttpUrl(SUPABASE_PROJECT_URL)}/rest/v1/signatures`;
-  const url = `${endpoint}?person_id=eq.${encodeURIComponent(normalizedPersonId)}&doc_type=eq.${encodeURIComponent(normalizedDocType)}&select=*&order=updated_at.desc,signed_at.desc&limit=30`;
-  const response = await fetch(url, {
-    method: "GET",
-    headers: getSupabaseHeaders(),
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`SUPABASE_SIGNATURE_ROWS_READ_FAILED:${response.status}:${detail.slice(0, 180)}`);
-  }
-  const rows = await response.json().catch(() => []);
-  return Array.isArray(rows) ? rows : [];
-}
-
-function getSupabaseSignatureRowField(row, ...names) {
-  for (const name of names) {
-    if (row && Object.prototype.hasOwnProperty.call(row, name)) {
-      const value = row[name];
-      if (value !== null && value !== undefined && String(value).trim()) {
-        return String(value).trim();
-      }
-    }
-  }
-  return "";
-}
-
-function mergeSupabaseMobileSignatureRows(data, rows, personId, docType) {
-  const normalizedPersonId = String(personId || "").trim();
-  const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
-  const person = Array.isArray(data?.personnes)
-    ? data.personnes.find((entry) => String(entry?.id || "") === normalizedPersonId) || null
-    : null;
-  if (!person || !Array.isArray(rows) || !rows.length) return false;
-
-  const latestBySigner = new Map();
-  for (const row of rows) {
-    const rowPersonId = getSupabaseSignatureRowField(row, "person_id", "personId");
-    const rowDocType = normalizeText(getSupabaseSignatureRowField(row, "doc_type", "docType")) === "EXIT" ? "exit" : "arrival";
-    const signer = normalizeMobileSignatureSigner(getSupabaseSignatureRowField(row, "signer"));
-    if (rowPersonId && rowPersonId !== normalizedPersonId) continue;
-    if (rowDocType !== normalizedDocType) continue;
-    if (signer !== "personnel" && signer !== "representant") continue;
-    const image = getSupabaseSignatureRowField(row, "signature_data", "signatureData", "image");
-    const storageRef = getSupabaseSignatureRowField(row, "storage_ref", "storageRef");
-    const storagePublicUrl = getSupabaseSignatureRowField(row, "storage_public_url", "storagePublicUrl");
-    const validatedAt = getSupabaseSignatureRowField(row, "validated_at_text", "validatedAt", "signed_at", "signedAt", "updated_at", "updatedAt");
-    const token = getSupabaseSignatureRowField(row, "token");
-    if (!(image || storageRef || storagePublicUrl) || !validatedAt) continue;
-    const rank = Date.parse(validatedAt) || Date.parse(getSupabaseSignatureRowField(row, "updated_at", "updatedAt")) || 0;
-    const previous = latestBySigner.get(signer);
-    if (!previous || rank >= previous.rank) {
-      latestBySigner.set(signer, { image, storageRef, storagePublicUrl, validatedAt, token, rank });
-    }
-  }
-
-  let changed = false;
-  for (const signer of ["personnel", "representant"]) {
-    const entry = latestBySigner.get(signer);
-    if (!entry) continue;
-    if (!person.signatures || typeof person.signatures !== "object") person.signatures = {};
-    if (!person.signatures[normalizedDocType] || typeof person.signatures[normalizedDocType] !== "object") {
-      person.signatures[normalizedDocType] = {};
-    }
-    const current = person.signatures[normalizedDocType][signer] || {};
-    const currentMs = Date.parse(current.validatedAt || "") || 0;
-    const nextMs = Date.parse(entry.validatedAt || "") || 0;
-    if ((!current.image || nextMs >= currentMs) && (current.image !== entry.image || current.validatedAt !== entry.validatedAt)) {
-      person.signatures[normalizedDocType][signer] = {
-        image: entry.image,
-        validatedAt: entry.validatedAt,
-        storageRef: entry.storageRef,
-        storagePublicUrl: entry.storagePublicUrl,
-      };
-      changed = true;
-    }
-    const requests = Array.isArray(data?.demandesSignatureMobile) ? data.demandesSignatureMobile : [];
-    for (const request of requests) {
-      if (!request || typeof request !== "object") continue;
-      const sameToken = entry.token && String(request.token || "") === String(entry.token || "");
-      const sameContext =
-        String(request.personId || "") === normalizedPersonId &&
-        normalizeText(request.docType || "") === normalizeText(normalizedDocType) &&
-        normalizeMobileSignatureSigner(request.signer || "") === signer;
-      if (!sameToken && !(sameContext && !entry.token)) continue;
-      if (request.status !== "SIGNEE" || String(request.validatedAt || "") !== String(entry.validatedAt || "")) {
-        request.status = "SIGNEE";
-        request.validatedAt = entry.validatedAt;
-        changed = true;
-      }
-    }
-  }
-  return changed;
-}
 async function fetchSupabaseStateData() {
   if (getDataBackendMode() === "LOCAL_API") {
     const response = await fetch(appendPdfTokenToUrl(`/api/state?ts=${Date.now()}`), { cache: "no-store" });
@@ -4036,11 +3884,11 @@ function capturePersonSheetDraftToState() {
     sitesAffectation: readSelectedSites(form, "sheet"),
     typePersonnel: normalizeText(formData.get("sheetTypePersonnel")),
     typeContrat: normalizeText(formData.get("sheetTypeContrat")),
-    dateEntree: normalizeDateString(formData.get("sheetDateEntree")),
+    dateEntree: String(formData.get("sheetDateEntree") || ""),
     email: String(formData.get("sheetEmail") || "").trim(),
     phoneMobile: String(formData.get("sheetPhoneMobile") || "").trim(),
-    dateSortiePrevue: normalizeDateString(formData.get("sheetDateSortiePrevue")),
-    dateSortieReelle: normalizeDateString(formData.get("sheetDateSortieReelle")),
+    dateSortiePrevue: String(formData.get("sheetDateSortiePrevue") || ""),
+    dateSortieReelle: String(formData.get("sheetDateSortieReelle") || ""),
   };
 
   const changed =
@@ -4849,14 +4697,19 @@ async function openMobileSignatureRequest(docType, personId, signer = "personnel
     if (state.isDirty) {
       await saveDataToFile({ silent: true, reloadAfter: false, autoPushHosted: false });
     }
-    await isLocalMobileSignatureMode();
-    if (!state.isDirty && !isLocalHostedSyncDisabled()) {
+    if (!state.isDirty) {
       try {
         await pushMobileSignatureRequestToHosted(request);
       } catch (error) {
         const message = String(error?.message || error || "MOBILE_SIGNATURE_REQUEST_PUSH_FAILED");
-        console.warn("Demande signature mobile non poussee dans app_state heberge", message);
-        showDataStatus("SIGNATURE MOBILE : OUVERTURE PAR LIEN DIRECT, SANS PUSH APP_STATE");
+        showDataStatus("SIGNATURE MOBILE BLOQUEE : HEBERGE NON MIS A JOUR");
+        hideMobileSignatureRecoveryModal();
+        try {
+          signatureWindow.document.body.textContent = `SIGNATURE MOBILE BLOQUEE : ${message}`;
+        } catch (writeError) {
+          // ignore blank-window write failures
+        }
+        return;
       }
     }
   }
@@ -5818,21 +5671,6 @@ async function pollMobileSignatureRequest() {
         console.warn("Lecture signature mobile hebergee indisponible", hostedError);
       }
     }
-    if (isSupabaseConfigured()) {
-      try {
-        const signatureRows = await fetchSupabaseMobileSignatureRows(personId, docType);
-        if (mergeSupabaseMobileSignatureRows(json, signatureRows, personId, docType)) {
-          state.data = json;
-          migrateDataModel({ suppressDirty: true });
-          state.isDirty = false;
-          state.lastPersistedDataSignature = computeDataPersistenceSignature(state.data);
-          clearUndoStack();
-          showDataStatus("SIGNATURE MOBILE HEBERGEE REPRISE");
-        }
-      } catch (signatureRowsError) {
-        console.warn("Lecture table signatures indisponible", signatureRowsError);
-      }
-    }
     const normalizedDocType = normalizeText(docType);
     const pollNow = Date.now();
     const requests = Array.isArray(json?.demandesSignatureMobile) ? json.demandesSignatureMobile : [];
@@ -6239,18 +6077,18 @@ function updateDocumentPdfButtonsState() {
   const person = getCurrentPerson();
   document.querySelectorAll(".js-open-pdf").forEach((button) => {
     const docType = String(button.getAttribute("data-doc-type") || "");
-    const canOpen = Boolean(person);
-    const fullySigned = Boolean(person && isDocumentFullySigned(person, docType));
+    const canOpen = Boolean(person && isDocumentFullySigned(person, docType));
     button.classList.toggle("is-disabled", !canOpen);
     button.setAttribute("aria-disabled", canOpen ? "false" : "true");
     button.setAttribute(
       "title",
       canOpen
-        ? (fullySigned ? "GENERER LE PDF SIGNE ET ARCHIVABLE" : "GENERER UN PDF DE TRAVAIL NON SIGNE")
-        : "INDISPONIBLE : AUCUNE PERSONNE SELECTIONNEE"
+        ? "GENERER LE PDF"
+        : "INDISPONIBLE : SIGNATURES PERSONNEL ET REPRESENTANT OBLIGATOIRES"
     );
   });
 }
+
 function bindMobileSignatureButtons() {
   document.querySelectorAll(".js-open-mobile-signature").forEach((button) => {
     button.onclick = async () => {
@@ -7937,11 +7775,11 @@ function bindPersonSheetForm() {
       site: "",
       typePersonnel: normalizeText(formData.get("sheetTypePersonnel")),
       typeContrat: normalizeText(formData.get("sheetTypeContrat")),
-      dateEntree: normalizeDateString(formData.get("sheetDateEntree")),
+      dateEntree: String(formData.get("sheetDateEntree") || ""),
       email: String(formData.get("sheetEmail") || "").trim(),
       phoneMobile: String(formData.get("sheetPhoneMobile") || "").trim(),
-      dateSortiePrevue: normalizeDateString(formData.get("sheetDateSortiePrevue")),
-      dateSortieReelle: normalizeDateString(formData.get("sheetDateSortieReelle")),
+      dateSortiePrevue: String(formData.get("sheetDateSortiePrevue") || ""),
+      dateSortieReelle: String(formData.get("sheetDateSortieReelle") || ""),
       effetsConfies: [],
     };
 
@@ -7977,11 +7815,11 @@ function bindPersonSheetForm() {
     person.site = getPersonSiteLabel(person);
     person.typePersonnel = normalizeText(formData.get("sheetTypePersonnel"));
     person.typeContrat = normalizeText(formData.get("sheetTypeContrat"));
-    person.dateEntree = normalizeDateString(formData.get("sheetDateEntree"));
+    person.dateEntree = String(formData.get("sheetDateEntree") || "");
     person.email = String(formData.get("sheetEmail") || "").trim();
     person.phoneMobile = String(formData.get("sheetPhoneMobile") || "").trim();
-    person.dateSortiePrevue = normalizeDateString(formData.get("sheetDateSortiePrevue"));
-    person.dateSortieReelle = normalizeDateString(formData.get("sheetDateSortieReelle"));
+    person.dateSortiePrevue = String(formData.get("sheetDateSortiePrevue") || "");
+    person.dateSortieReelle = String(formData.get("sheetDateSortieReelle") || "");
 
     markDirty();
     schedulePageRender();
@@ -8569,19 +8407,8 @@ function startEditEffect(personId, effectId) {
   form.elements.coutRemplacement.value = formatAmountWithEuro(effect.coutRemplacement);
   form.elements.commentaire.value = effect.commentaire || "";
   updateEffectFormMode(effect.typeEffet || "");
-  const selectedEffectReferenceSite = effect.siteReference || referenceSiteFromEffect(effect) || getDefaultEffectSiteReference(person, effect) || "";
-  hydrateEffectReferenceSiteSelect(person, selectedEffectReferenceSite, effect.typeEffet);
-  if (form.elements.referenceSite) {
-    form.elements.referenceSite.value = selectedEffectReferenceSite;
-  }
-  hydrateReferenceSelect(person, effect.typeEffet, effect.referenceEffetId, selectedEffectReferenceSite);
-  if (form.elements.referenceEffet) {
-    form.elements.referenceEffet.value = effect.referenceEffetId || "";
-  }
-  syncReplacementCostField();
   updateEffectActionButtons();
   updateEffectResetButtonState(form);
-  updateEffectRequiredHighlights(form);
   updateManualStatusCriticalState(form);
   form.scrollIntoView({ behavior: "smooth", block: "center" });
   if (usesReferenceCatalog) {
@@ -13247,16 +13074,15 @@ function bindSignatureCanvases() {
         markMobileSignatureRequestSigned(currentMobileRequest);
       }
       if (isMobileSignaturePage && getDataBackendMode() === "SUPABASE" && nextValue) {
-        await saveMobileSignatureRecordToSupabase({
-          token: String(currentMobileRequest?.token || getCurrentMobileSignatureToken() || ""),
+        await saveSupabaseSignatureWithRebase({
           personId: person.id,
           docType,
           signer,
-          person,
           signatureValue: nextValue,
           validatedAt,
           storageRef: signatureStorageRef,
           storagePublicUrl: signatureStoragePublicUrl,
+          mobileRequestToken: String(currentMobileRequest?.token || ""),
         });
         clearWorkingData();
         state.isDirty = false;
@@ -13285,9 +13111,31 @@ function bindSignatureCanvases() {
         );
       }
       if (document.body.dataset.page === "mobile-signature") {
-        renderMobileSignaturePage();
-        refreshDocumentSignatureCanvases(docType, person);
-        showDataStatus("SIGNATURE ENREGISTREE - VOUS POUVEZ FERMER CETTE PAGE");
+        const expectedPersonId = String(person?.id || "");
+        const expectedDocType = String(docType || "");
+        const expectedSigner = String(signer || "");
+        try {
+          const expectedValue = String(nextValue || "");
+          const latest = await fetchLatestDataSnapshot();
+          const latestPerson = Array.isArray(latest?.personnes)
+            ? latest.personnes.find((entry) => String(entry?.id || "") === expectedPersonId) || null
+            : null;
+          const latestSignatureValue = String(
+            getSignatureValue(latestPerson, expectedDocType, expectedSigner) || ""
+          );
+          const latestHasExpectedSignature = !expectedValue || latestSignatureValue === expectedValue;
+          // Avoid UI regression when backend read is temporarily stale right after save.
+          if (latestHasExpectedSignature) {
+            state.data = latest;
+    migrateDataModel({ suppressDirty: true });
+          }
+        } catch (error) {
+          console.error(error);
+        } finally {
+          renderMobileSignaturePage();
+          refreshDocumentSignatureCanvases(expectedDocType || docType, person);
+          showDataStatus("SIGNATURE ENREGISTREE");
+        }
       }
     };
 
@@ -14469,25 +14317,25 @@ function getSheetEffectTypeIconVariant(typeEffet) {
 function getSheetEffectTypeIconSvg(typeEffet) {
   const variant = getSheetEffectTypeIconVariant(typeEffet);
   if (variant === "cle-ces") {
-    return '<img src="assets/sidebar/icone-cle-ces.png?v=20260706-assets" alt="" loading="lazy">';
+    return '<img src="assets/sidebar/icone-cle-ces.png" alt="" loading="lazy">';
   }
   if (variant === "badge") {
-    return '<img src="assets/sidebar/icone-badge.png?v=20260706-assets" alt="" loading="lazy">';
+    return '<img src="assets/sidebar/icone-badge.png" alt="" loading="lazy">';
   }
   if (variant === "telecommande") {
-    return '<img src="assets/sidebar/icone-telecommande.png?v=20260706-assets" alt="" loading="lazy">';
+    return '<img src="assets/sidebar/icone-telecommande.png" alt="" loading="lazy">';
   }
   if (variant === "carte") {
-    return '<img src="assets/sidebar/icone-carte.png?v=20260706-assets" alt="" loading="lazy">';
+    return '<img src="assets/sidebar/icone-carte.png" alt="" loading="lazy">';
   }
   if (variant === "radiateur") {
-    return '<img src="assets/effects/icone-radiateur-appoint.png?v=20260706-assets" alt="" loading="lazy">';
+    return '<img src="assets/effects/icone-radiateur-appoint.png" alt="" loading="lazy">';
   }
   if (variant === "ventilateur") {
-    return '<img src="assets/effects/icone-ventilateur.png?v=20260706-assets" alt="" loading="lazy">';
+    return '<img src="assets/effects/icone-ventilateur.png" alt="" loading="lazy">';
   }
   if (variant === "cle") {
-    return '<img src="assets/sidebar/icone-cle.png?v=20260706-assets" alt="" loading="lazy">';
+    return '<img src="assets/sidebar/icone-cle.png" alt="" loading="lazy">';
   }
   return `<svg viewBox="0 0 24 24" focusable="false">
     <rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor"></rect>
@@ -19527,11 +19375,7 @@ function getResetButtonsForForm(form) {
     return [];
   }
   return Array.from(form.querySelectorAll("button, input[type='reset']"))
-    .filter((button) => {
-      const type = String(button.getAttribute("type") || "").toLowerCase();
-      if (type === "reset") return true;
-      return normalizeText(button.textContent || button.value || "").startsWith("REINITIALISER");
-    });
+    .filter((button) => normalizeText(button.textContent || button.value || "") === "REINITIALISER");
 }
 
 function updateFilterResetHighlight(form) {
@@ -19629,4 +19473,6 @@ window.resetNetworkDebug = () => {
 };
 
 loadData();
+
+
 

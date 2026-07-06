@@ -3,8 +3,6 @@
 
 begin;
 
-create extension if not exists pgcrypto;
-
 create table if not exists public.audit_log (
   id uuid primary key default gen_random_uuid(),
   table_name text not null,
@@ -304,3 +302,4 @@ from pg_policies
 where schemaname = 'public'
   and tablename in ('personnes','effetsConfies','signatures','app_state','audit_log')
 order by tablename, policyname;
+

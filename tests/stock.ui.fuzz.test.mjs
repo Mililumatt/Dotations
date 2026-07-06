@@ -63,6 +63,7 @@ function createStockContext() {
     "getEffectDisplaySite",
     "getTodayIsoDate",
     "isPastDate",
+    "normalizeDateString",
     "isExitDue",
     "getEffectStatus",
     "getAllEffects",
@@ -836,3 +837,5 @@ test("manual key stock movement remains visible while matching reference is acti
   assert.equal(row?.manuelDelta, 1);
   assert.equal(row?.stockCourant, 1);
 });
+
+

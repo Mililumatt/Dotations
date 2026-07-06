@@ -8,8 +8,6 @@
 
 begin;
 
-create extension if not exists pgcrypto;
-
 create table if not exists public.app_state_versions (
   id uuid primary key default gen_random_uuid(),
   app_state_id text not null,
@@ -44,7 +42,7 @@ returns text
 language sql
 immutable
 as $$
-  select encode(digest(convert_to(coalesce(input, '{}'::jsonb)::text, 'UTF8'), 'sha256'), 'hex')
+  select md5(coalesce(input, '{}'::jsonb)::text)
 $$;
 
 create or replace function public.snapshot_app_state_before_update()
@@ -226,3 +224,4 @@ commit;
 --   '10 3 * * *',
 --   $$select public.prune_app_state_versions();$$
 -- );
+

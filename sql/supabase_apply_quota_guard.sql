@@ -7,14 +7,12 @@
 
 begin;
 
-create extension if not exists pgcrypto;
-
 create or replace function public.jsonb_sha256(input jsonb)
 returns text
 language sql
 immutable
 as $$
-  select encode(digest(convert_to(coalesce(input, '{}'::jsonb)::text, 'UTF8'), 'sha256'), 'hex')
+  select md5(coalesce(input, '{}'::jsonb)::text)
 $$;
 
 create or replace function public.audit_row_change()
@@ -165,9 +163,4 @@ delete from public.audit_log
 where table_name = 'app_state';
 
 select public.prune_app_state_versions();
-
-commit;
-
-vacuum analyze public.audit_log;
-vacuum analyze public.app_state_versions;
 
