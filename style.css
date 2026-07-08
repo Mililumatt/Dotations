@@ -2055,6 +2055,12 @@ body[data-page="reference-bases"] .table-wrap--reference-large {
   font-size: 10px;
 }
 
+
+.field.field--missing .site-selector {
+  border-color: #d64b3f;
+  box-shadow: 0 0 0 1px rgba(214, 75, 63, 0.18);
+  background: rgba(214, 75, 63, 0.045);
+}
 .site-selector__item input {
   width: 14px;
   height: 14px;
@@ -3951,4 +3957,3 @@ button.btn-click-ack,
     background: transparent;
   }
 }
-

@@ -2826,6 +2826,7 @@ async function saveMobileSignatureRecordToSupabase({
     return false;
   }
   const representative = normalizedSigner === "representant" ? getRepresentativeInfo(person, normalizedDocType) : null;
+  const nowIso = new Date().toISOString();
   const row = {
     token: String(token || ""),
     person_id: String(personId || ""),
@@ -2836,43 +2837,90 @@ async function saveMobileSignatureRecordToSupabase({
     storage_ref: String(storageRef || ""),
     storage_public_url: String(storagePublicUrl || ""),
     validated_at_text: String(validatedAt || ""),
-    signed_at: new Date().toISOString(),
+    signed_at: nowIso,
     person_nom: normalizeText(person?.nom || ""),
     person_prenom: normalizeText(person?.prenom || ""),
     signer_name: normalizeText(representative?.nom || ""),
     signer_function: normalizeText(representative?.fonction || ""),
-    updated_at: new Date().toISOString(),
+    updated_at: nowIso,
+  };
+  const camelRow = {
+    token: row.token,
+    personId: row.person_id,
+    docType: row.doc_type,
+    signer: row.signer,
+    status: row.status,
+    signatureData: row.signature_data,
+    storageRef: row.storage_ref,
+    storagePublicUrl: row.storage_public_url,
+    validatedAt: row.validated_at_text,
+    signedAt: row.signed_at,
+    personNom: row.person_nom,
+    personPrenom: row.person_prenom,
+    signerName: row.signer_name,
+    signerFunction: row.signer_function,
+    updatedAt: row.updated_at,
   };
   const endpoint = `${normalizeHttpUrl(SUPABASE_PROJECT_URL)}/rest/v1/signatures?on_conflict=token`;
-  const response = await fetch(endpoint, {
+  const requestOptions = (payload) => ({
     method: "POST",
     headers: getSupabaseHeaders({
       "Content-Type": "application/json",
       Prefer: "resolution=merge-duplicates,return=minimal",
     }),
-    body: JSON.stringify(row),
+    body: JSON.stringify(payload),
     cache: "no-store",
   });
+  let response = await fetch(endpoint, requestOptions(row));
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    if (isSupabaseSignatureSchemaMismatch(detail)) {
+      response = await fetch(endpoint, requestOptions(camelRow));
+      if (response.ok) {
+        return true;
+      }
+      const camelDetail = await response.text().catch(() => "");
+      throw new Error(`SUPABASE_SIGNATURE_RECORD_FAILED:${response.status}:${camelDetail.slice(0, 220)}`);
+    }
     throw new Error(`SUPABASE_SIGNATURE_RECORD_FAILED:${response.status}:${detail.slice(0, 220)}`);
   }
   return true;
 }
+
+function isSupabaseSignatureSchemaMismatch(detail) {
+  const text = String(detail || "");
+  return /42703|column .* does not exist|person_id|doc_type|signature_data|storage_ref|signed_at|updated_at/i.test(text);
+}
+
 async function fetchSupabaseMobileSignatureRows(personId, docType) {
   if (!isSupabaseConfigured()) return [];
   const normalizedPersonId = String(personId || "").trim();
   const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
   if (!normalizedPersonId || !normalizedDocType) return [];
   const endpoint = `${normalizeHttpUrl(SUPABASE_PROJECT_URL)}/rest/v1/signatures`;
-  const url = `${endpoint}?person_id=eq.${encodeURIComponent(normalizedPersonId)}&doc_type=eq.${encodeURIComponent(normalizedDocType)}&select=*&order=updated_at.desc,signed_at.desc&limit=30`;
-  const response = await fetch(url, {
+  const buildUrl = (schema = "snake") => {
+    if (schema === "camel") {
+      return `${endpoint}?personId=eq.${encodeURIComponent(normalizedPersonId)}&docType=eq.${encodeURIComponent(normalizedDocType)}&select=*&order=updatedAt.desc,signedAt.desc&limit=30`;
+    }
+    return `${endpoint}?person_id=eq.${encodeURIComponent(normalizedPersonId)}&doc_type=eq.${encodeURIComponent(normalizedDocType)}&select=*&order=updated_at.desc,signed_at.desc&limit=30`;
+  };
+  const requestOptions = {
     method: "GET",
     headers: getSupabaseHeaders(),
     cache: "no-store",
-  });
+  };
+  let response = await fetch(buildUrl("snake"), requestOptions);
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    if (isSupabaseSignatureSchemaMismatch(detail)) {
+      response = await fetch(buildUrl("camel"), requestOptions);
+      if (response.ok) {
+        const rows = await response.json().catch(() => []);
+        return Array.isArray(rows) ? rows : [];
+      }
+      const camelDetail = await response.text().catch(() => "");
+      throw new Error(`SUPABASE_SIGNATURE_ROWS_READ_FAILED:${response.status}:${camelDetail.slice(0, 180)}`);
+    }
     throw new Error(`SUPABASE_SIGNATURE_ROWS_READ_FAILED:${response.status}:${detail.slice(0, 180)}`);
   }
   const rows = await response.json().catch(() => []);
@@ -3857,6 +3905,15 @@ function referenceHasSite(reference, site) {
   }
   const sites = getReferenceSites(reference);
   return sites.includes(ALL_SITES_VALUE) || sites.includes(normalizedSite);
+}
+
+function resolveStockMovementSite(site, reference) {
+  const normalizedSite = normalizeText(site);
+  if (normalizedSite !== ALL_SITES_VALUE || !reference) {
+    return normalizedSite;
+  }
+  const referenceSites = getReferenceSites(reference).filter((entry) => normalizeText(entry) !== ALL_SITES_VALUE);
+  return referenceSites.length === 1 ? referenceSites[0] : normalizedSite;
 }
 
 function getComparableSites(value) {
@@ -4849,7 +4906,6 @@ async function openMobileSignatureRequest(docType, personId, signer = "personnel
     if (state.isDirty) {
       await saveDataToFile({ silent: true, reloadAfter: false, autoPushHosted: false });
     }
-    await isLocalMobileSignatureMode();
     if (!state.isDirty && !isLocalHostedSyncDisabled()) {
       try {
         await pushMobileSignatureRequestToHosted(request);
@@ -6226,10 +6282,6 @@ function bindPdfButtons() {
         showDataStatus("AUCUNE PERSONNE SELECTIONNEE");
         return;
       }
-      if (!isDocumentFullySigned(person, docType)) {
-        window.alert("GENERATION PDF IMPOSSIBLE : LE DOCUMENT DOIT ETRE SIGNE PAR LE PERSONNEL ET LE REPRESENTANT.");
-        return;
-      }
       openPdfDocument(docType, getCurrentPersonId());
     };
   });
@@ -6261,7 +6313,14 @@ function bindMobileSignatureButtons() {
         showDataStatus("AUCUNE PERSONNE SELECTIONNEE");
         return;
       }
-      await openMobileSignatureRequest(docType, personId, signer);
+      try {
+        await openMobileSignatureRequest(docType, personId, signer);
+      } catch (error) {
+        const message = String(error?.message || error || "ERREUR INCONNUE").slice(0, 180);
+        console.error("Ouverture signature mobile impossible", error);
+        showDataStatus(`SIGNATURE MOBILE IMPOSSIBLE : ${message}`);
+        window.alert(`SIGNATURE MOBILE IMPOSSIBLE : ${message}`);
+      }
     };
   });
 }
@@ -7664,6 +7723,20 @@ function bindAddPersonForm() {
       }
     };
     const selectedSites = readSelectedSites(form, "add");
+    const addSiteField = form.querySelector("#add-site-selector")?.closest(".field");
+    if (addSiteField) {
+      addSiteField.classList.toggle("field--missing", selectedSites.length === 0);
+    }
+    if (!selectedSites.length) {
+      const message = "AU MOINS UN SITE EST OBLIGATOIRE";
+      showDataStatus(message);
+      window.alert(message);
+      const firstSiteInput = form.querySelector('#add-site-selector input[name="addSites"]');
+      if (firstSiteInput instanceof HTMLElement) {
+        firstSiteInput.focus();
+      }
+      return;
+    }
     const person = {
       id: getNextId("P", state.data.personnes || []),
       nom: normalizeText(formData.get("nom")),
@@ -7672,9 +7745,9 @@ function bindAddPersonForm() {
       site: "",
       typePersonnel: normalizeText(formData.get("typePersonnel")),
       typeContrat: normalizeText(formData.get("typeContrat")),
-      dateEntree: String(formData.get("dateEntree") || ""),
-      dateSortiePrevue: String(formData.get("dateSortiePrevue") || ""),
-      dateSortieReelle: String(formData.get("dateSortieReelle") || ""),
+      dateEntree: normalizeDateString(formData.get("dateEntree")),
+      dateSortiePrevue: normalizeDateString(formData.get("dateSortiePrevue")),
+      dateSortieReelle: normalizeDateString(formData.get("dateSortieReelle")),
       effetsConfies: [],
     };
 
@@ -8363,7 +8436,8 @@ function bindEffectForm() {
   }
   if (resetFieldsButton) {
     resetFieldsButton.onclick = () => {
-      resetEffectFormFieldsExceptCost();
+      resetEffectForm();
+      showDataStatus("FORMULAIRE EFFET REINITIALISE");
     };
   }
 
@@ -8601,6 +8675,7 @@ function resetEffectForm() {
   if (!form) {
     return;
   }
+  state.editingEffectId = "";
   form.reset();
   hydrateEffectReferenceSiteSelect(getCurrentPerson(), "", "");
   hydrateReferenceSelect(getCurrentPerson() || "", "", "", "");
@@ -9835,6 +9910,8 @@ function bindStockAdjustmentForm() {
       const referenceEffetId = String(formData.get("stockReferenceId") || "");
       let syntheticReference = parseStockSyntheticReferenceValue(referenceEffetId);
       const reference = referenceEffetId === ALL_DESIGNATIONS_VALUE || syntheticReference ? null : findReferenceById(referenceEffetId);
+      const resolvedSite = reference ? resolveStockMovementSite(site, reference) : normalizeText(syntheticReference?.site || site);
+      const movementSite = resolvedSite || site;
       const effectiveTypeEffet = reference ? getReferenceEffectiveType(reference) : typeEffet;
       let designation = getStockGroupingDesignation(
         effectiveTypeEffet,
@@ -9862,7 +9939,7 @@ function bindStockAdjustmentForm() {
         }
       }
 
-      if (!typeEffet || !site || (!reference && !syntheticReference) || !action) {
+      if (!typeEffet || !movementSite || (!reference && !syntheticReference) || !action) {
         showStockAdjustmentStatus("TYPE, SITE ET MOUVEMENT OBLIGATOIRES", "error");
         return;
       }
@@ -9870,7 +9947,10 @@ function bindStockAdjustmentForm() {
       if (
         typeEffet === ALL_TYPES_VALUE ||
         referenceEffetId === ALL_DESIGNATIONS_VALUE ||
-        (site === ALL_SITES_VALUE && !isExactSyntheticStockRow && !referenceHasSite(reference, ALL_SITES_VALUE))
+        (site === ALL_SITES_VALUE &&
+          movementSite === ALL_SITES_VALUE &&
+          !isExactSyntheticStockRow &&
+          !referenceHasSite(reference, ALL_SITES_VALUE))
       ) {
         showStockAdjustmentStatus("POUR ENREGISTRER : CHOISIR SITE/TYPE/DESIGNATION PRECIS", "error");
         return;
@@ -9883,14 +9963,18 @@ function bindStockAdjustmentForm() {
         showStockAdjustmentStatus("TYPE D'EFFET ET DESIGNATION INCOHERENTS", "error");
         return;
       }
+      if (reference && !referenceHasSite(reference, movementSite)) {
+        showStockAdjustmentStatus("SITE ET DESIGNATION INCOHERENTS", "error");
+        return;
+      }
       if (!reference) {
-        if (syntheticReference.site !== site || syntheticReference.typeEffet !== typeEffet) {
+        if (syntheticReference.site !== movementSite || syntheticReference.typeEffet !== typeEffet) {
           showStockAdjustmentStatus("TYPE, SITE ET DESIGNATION STOCK INCOHERENTS", "error");
           return;
         }
         const stockRowExists = getStockSummaryRows().some(
           (row) =>
-            normalizeText(row.site) === site &&
+            normalizeText(row.site) === movementSite &&
             normalizeText(row.typeEffet) === typeEffet &&
             normalizeText(row.designation) === getStockGroupingDesignation(typeEffet, designation)
         );
@@ -9904,7 +9988,7 @@ function bindStockAdjustmentForm() {
       const movement = {
         id: getNextId("STKM", state.data.stocksEffetsManuels),
         typeEffet: effectiveTypeEffet,
-        site,
+        site: movementSite,
         referenceEffetId: reference ? String(reference.id || "") : "",
         designation,
         action,
@@ -9915,10 +9999,10 @@ function bindStockAdjustmentForm() {
         date: getTodayIsoDate(),
       };
       state.data.stocksEffetsManuels.push(movement);
-      state.stockHighlightKey = `${effectiveTypeEffet}__${site}__${designation}`;
+      state.stockHighlightKey = `${effectiveTypeEffet}__${movementSite}__${designation}`;
       markDirty();
       state.stockTableFilters = {
-        site,
+        site: movementSite,
         typeEffet: effectiveTypeEffet,
         referenceEffetId: reference ? String(reference.id || "") : referenceEffetId,
       };
@@ -12133,9 +12217,6 @@ async function registerArchivedDocument(person, docType, pdfPath, metadataPath, 
   if (normalizeText(docType) === "EXIT" && getDossierStatus(person) !== "SORTI" && !existingTypeArchive) {
     return;
   }
-  if (!isDocumentFullySigned(person, docType)) {
-    return;
-  }
   const existingEntry = findReusableArchivedDocument(person, docType) || existingTypeArchive;
   upsertDocumentArchiveEntry(buildDocumentArchiveEntry(person, docType, pdfPath, metadataPath, archiveMode, existingEntry, archiveDetails));
   markDirty();
@@ -12170,10 +12251,17 @@ function renderDocumentsArchivePage() {
   const getArchiveFilterField = (fieldName) =>
     filterForm ? filterForm.querySelector(`[name="${fieldName}"]`) : null;
   const archiveSearchField = getArchiveFilterField("archiveSearch");
-  if (archiveSearchField instanceof HTMLInputElement && lockedPerson && !String(archiveSearchField.value || "").trim()) {
+  if (archiveSearchField instanceof HTMLInputElement && lockedPerson) {
     const label = `${lockedPerson.nom || ""} ${lockedPerson.prenom || ""}`.trim();
-    archiveSearchField.value = label;
-    archiveSearchField.defaultValue = label;
+    const currentSearch = normalizeText(archiveSearchField.value || "");
+    const expectedTokens = normalizeText(label).split(/\s+/).filter(Boolean);
+    const matchesLockedPersonLabel = expectedTokens.length
+      ? expectedTokens.every((token) => currentSearch.includes(token))
+      : true;
+    if (!currentSearch || !matchesLockedPersonLabel) {
+      archiveSearchField.value = label;
+      archiveSearchField.defaultValue = label;
+    }
   }
   const search = normalizeText(archiveSearchField?.value);
   const searchTokens = search
@@ -13214,12 +13302,26 @@ function bindSignatureCanvases() {
         signatureStorageRef,
         signatureStoragePublicUrl
       );
-      if (docType === "arrival") {
-        renderArrivalDocument(person.id);
-      } else if (docType === "exit") {
-        renderExitDocument(person.id);
+      if (isMobileSignaturePage && nextValue) {
+        rememberMobileSignatureRuntimeSignature(
+          currentMobileRequest,
+          person,
+          docType,
+          signer,
+          nextValue,
+          validatedAt,
+          signatureStorageRef,
+          signatureStoragePublicUrl
+        );
       }
-      refreshDocumentSignatureCanvases(docType);
+      if (!isMobileSignaturePage) {
+        if (docType === "arrival") {
+          renderArrivalDocument(person.id);
+        } else if (docType === "exit") {
+          renderExitDocument(person.id);
+        }
+        refreshDocumentSignatureCanvases(docType);
+      }
       if (nextValue && docType === "exit") {
         applySignedExitCompletion(person);
       }
@@ -13307,7 +13409,13 @@ function bindSignatureCanvases() {
       canvas.setPointerCapture(event.pointerId);
       const point = getPoint(event);
       context.beginPath();
+      context.arc(point.x, point.y, 0.7, 0, Math.PI * 2);
+      context.fillStyle = "#233f4d";
+      context.fill();
+      context.beginPath();
       context.moveTo(point.x, point.y);
+      stateRef.moved = true;
+      storePendingSignature();
       event.preventDefault();
     });
 
@@ -13323,6 +13431,9 @@ function bindSignatureCanvases() {
       context.lineTo(point.x, point.y);
       context.stroke();
       stateRef.moved = true;
+      if (!isCanvasSignatureBlank(canvas)) {
+        storePendingSignature();
+      }
       event.preventDefault();
     });
 
@@ -13361,7 +13472,14 @@ function bindSignatureCanvases() {
         const currentSignerHasSignature = Boolean(getSignatureValue(person, docType, signer));
         const otherSigner = signer === "personnel" ? "representant" : "personnel";
         const otherSignerHasSignature = Boolean(getSignatureValue(person, docType, otherSigner));
-        const pendingValue = String(stateRef.pendingDataUrl || "");
+        const pendingValue = getCanvasSignaturePayload(canvas, stateRef);
+        stateRef.pendingDataUrl = pendingValue;
+        if (!pendingValue) {
+          const message = "AUCUNE SIGNATURE DETECTEE. SIGNEZ DANS LA ZONE AVANT DE VALIDER.";
+          showDataStatus(message);
+          window.alert(message);
+          return;
+        }
         const willFinalizeDocument = Boolean(pendingValue) && (otherSignerHasSignature || currentSignerHasSignature);
         if (
           signer === "representant" &&
@@ -13518,6 +13636,44 @@ function markMobileSignatureRequestSigned(request) {
   request.validatedAt = getCurrentSignatureTimestamp();
 }
 
+function getMobileSignatureRuntimeStore() {
+  if (!(state.mobileSignatureRuntimeCache instanceof Map)) {
+    state.mobileSignatureRuntimeCache = new Map();
+  }
+  return state.mobileSignatureRuntimeCache;
+}
+
+function getMobileSignatureRuntimeKey(request, person, docType, signer) {
+  const token = String(request?.token || getCurrentMobileSignatureToken() || "").trim();
+  const personId = String(person?.id || request?.personId || new URLSearchParams(window.location.search).get("personId") || "").trim();
+  const normalizedDocType = normalizeText(docType) === "EXIT" ? "exit" : "arrival";
+  const normalizedSigner = normalizeMobileSignatureSigner(signer || request?.signer || "");
+  if (!token || !personId || !normalizedDocType || !normalizedSigner) {
+    return "";
+  }
+  return [token, personId, normalizedDocType, normalizedSigner].join("|||");
+}
+
+function rememberMobileSignatureRuntimeSignature(request, person, docType, signer, image, validatedAt, storageRef = "", storagePublicUrl = "") {
+  const key = getMobileSignatureRuntimeKey(request, person, docType, signer);
+  if (!key || !image) {
+    return;
+  }
+  getMobileSignatureRuntimeStore().set(key, {
+    image: String(image || ""),
+    validatedAt: String(validatedAt || getCurrentSignatureTimestamp()),
+    storageRef: String(storageRef || ""),
+    storagePublicUrl: String(storagePublicUrl || ""),
+  });
+}
+
+function getMobileSignatureRuntimeSignature(request, person, docType, signer) {
+  const key = getMobileSignatureRuntimeKey(request, person, docType, signer);
+  if (!key) {
+    return null;
+  }
+  return getMobileSignatureRuntimeStore().get(key) || null;
+}
 function renderMobileSignaturePage() {
   const request = getCurrentMobileSignatureRequest();
   const person = getMobileSignatureTargetPerson();
@@ -13530,12 +13686,13 @@ function renderMobileSignaturePage() {
   const representative = getMobileSignatureRepresentativeInfo(person, normalizedDocType, request);
   const representativeReady =
     signer !== "representant" || Boolean(normalizeText(representative?.nom) && normalizeText(representative?.fonction));
-  const signatureValidationDate = String(getSignatureValidationDate(person, normalizedDocType, signer) || "");
-  const signatureValue = String(person?.signatures?.[normalizedDocType]?.[signer]?.image || "");
-  const signatureValidatedAt = String(person?.signatures?.[normalizedDocType]?.[signer]?.validatedAt || "");
-  const signatureStorageRef = String(person?.signatures?.[normalizedDocType]?.[signer]?.storageRef || "");
-  const signatureStoragePublicUrl = String(person?.signatures?.[normalizedDocType]?.[signer]?.storagePublicUrl || "");
-  const isAlreadySigned = Boolean(request && normalizeText(request.status) === "SIGNEE");
+  const runtimeSignature = getMobileSignatureRuntimeSignature(request, person, normalizedDocType, signer);
+  const signatureValidationDate = String(runtimeSignature?.validatedAt || getSignatureValidationDate(person, normalizedDocType, signer) || "");
+  const signatureValue = String(runtimeSignature?.image || person?.signatures?.[normalizedDocType]?.[signer]?.image || "");
+  const signatureValidatedAt = String(runtimeSignature?.validatedAt || person?.signatures?.[normalizedDocType]?.[signer]?.validatedAt || "");
+  const signatureStorageRef = String(runtimeSignature?.storageRef || person?.signatures?.[normalizedDocType]?.[signer]?.storageRef || "");
+  const signatureStoragePublicUrl = String(runtimeSignature?.storagePublicUrl || person?.signatures?.[normalizedDocType]?.[signer]?.storagePublicUrl || "");
+  const isAlreadySigned = Boolean((request && normalizeText(request.status) === "SIGNEE") || runtimeSignature?.image);
   const isRequestUsable = Boolean(
     request &&
       isMobileSignatureRequestValid(request) &&
@@ -14149,7 +14306,22 @@ function buildOverviewRows(persons) {
   if (!persons.length) {
     return buildEmptyTableRow("overview-table-body", "AUCUNE DONNEE A AFFICHER", 14);
   }
-  return persons
+  const totals = {
+    persons: persons.length,
+    inPost: 0,
+    effects: 0,
+    nonRendus: 0,
+    costs: 0,
+    movements: {
+      AJOUTE: 0,
+      MODIFIE: 0,
+      RENDU: 0,
+      PERDU: 0,
+      VOLE: 0,
+      HS: 0,
+    },
+  };
+  const rows = persons
     .map((person) => {
       const currentEffects = getCurrentAssignedEffectsForActiveFilters(person);
       const totalEffects = currentEffects.length;
@@ -14173,8 +14345,15 @@ function buildOverviewRows(persons) {
         const normalized = normalizeText(movement);
         if (Object.prototype.hasOwnProperty.call(movementCounts, normalized)) {
           movementCounts[normalized] += 1;
+          totals.movements[normalized] += 1;
         }
       });
+      if (getDossierStatus(person) === "EN POSTE") {
+        totals.inPost += 1;
+      }
+      totals.effects += totalEffects;
+      totals.nonRendus += nonRendus;
+      totals.costs += totalCosts;
       const movementMarkup = Object.entries(movementCounts)
         .filter(([, count]) => count > 0)
         .map(
@@ -14205,6 +14384,30 @@ function buildOverviewRows(persons) {
       </tr>`;
     })
     .join("");
+  const totalMovementMarkup = Object.entries(totals.movements)
+    .filter(([, count]) => count > 0)
+    .map(
+      ([movement, count]) =>
+        `<span class="movement-badge movement-badge--${getMovementBadgeVariant(movement)}">${movement} ${count}</span>`
+    )
+    .join(" ");
+  const totalRow = `<tr class="table-total-row table-total-row--overview">
+    <td>TOTAL FILTRE</td>
+    <td>${totals.persons} PERSONNE${totals.persons > 1 ? "S" : ""}</td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td>EN POSTE ${totals.inPost}</td>
+    <td>${totals.effects}</td>
+    <td>${totals.nonRendus}</td>
+    <td>${totals.costs > 0 ? formatAmountWithEuro(totals.costs) : "-"}</td>
+    <td>${totalMovementMarkup || "-"}</td>
+    <td></td>
+  </tr>`;
+  return `${rows}${totalRow}`;
 }
 
 function renderGlobalTable(persons) {
@@ -19004,6 +19207,14 @@ function isHostedNotSentState() {
   return s === "pending" || s === "blocked" || s === "inaccessible";
 }
 
+function isLocalHostedSyncDisabled() {
+  if (getDataBackendMode() !== "LOCAL_API") {
+    return true;
+  }
+  const hostedState = String(state.hostedSyncState || "");
+  return Boolean(state.hostedSyncInFlight || hostedState === "blocked" || hostedState === "inaccessible");
+}
+
 function getCloseModalScenario() {
   const hostedState = String(state.hostedSyncState || "unknown");
   if (state.isDirty) {
@@ -19470,6 +19681,14 @@ function bindHistoryNavigation() {
   window.__dashboardHistoryBound = true;
 }
 
+function isPersonFilterResetButton(button) {
+  if (!(button instanceof HTMLButtonElement)) {
+    return false;
+  }
+  const form = button.closest("form");
+  return form instanceof HTMLFormElement && form.matches(".js-filter-form, #documents-archives-filter-form");
+}
+
 function bindGlobalResetSelectionClear() {
   if (window.__dashboardResetSelectionBound) {
     return;
@@ -19482,7 +19701,8 @@ function bindGlobalResetSelectionClear() {
       const button = target.closest("button");
       if (!(button instanceof HTMLButtonElement)) return;
       const label = normalizeText(button.textContent || "");
-      if (label !== "REINITIALISER") return;
+      if (!label.startsWith("REINITIALISER")) return;
+      if (!isPersonFilterResetButton(button)) return;
       setCurrentPersonId("", "replace");
     },
     true
@@ -19629,4 +19849,3 @@ window.resetNetworkDebug = () => {
 };
 
 loadData();
-
