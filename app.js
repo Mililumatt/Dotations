@@ -13284,7 +13284,7 @@ function bindSignatureCanvases() {
         normalizeMobileSignatureSigner(currentMobileRequest.signer || "") === signer;
 
       stateRef.pendingDataUrl = nextValue;
-      if (nextValue && isSupabaseConfigured()) {
+      if (nextValue && isSupabaseConfigured() && !isMobileSignaturePage) {
         try {
           const signatureUpload = await uploadSignatureImageToSupabaseStorage(docType, person, signer, nextValue);
           signatureStorageRef = String(signatureUpload?.storageRef || "");
@@ -13368,8 +13368,8 @@ function bindSignatureCanvases() {
         const latestPerson = Array.isArray(latestPayload?.personnes)
           ? latestPayload.personnes.find((entry) => String(entry?.id || "") === String(person.id || "")) || person
           : person;
-        try {
-          await saveMobileSignatureRecordToSupabase({
+        setTimeout(() => {
+          saveMobileSignatureRecordToSupabase({
             token: mobileRequestToken,
             personId: person.id,
             docType,
@@ -13379,10 +13379,10 @@ function bindSignatureCanvases() {
             validatedAt,
             storageRef: signatureStorageRef,
             storagePublicUrl: signatureStoragePublicUrl,
+          }).catch((signatureRecordError) => {
+            console.warn("[SUPABASE][SIGNATURE] table signatures non bloquante", signatureRecordError);
           });
-        } catch (signatureRecordError) {
-          console.warn("[SUPABASE][SIGNATURE] table signatures non bloquante", signatureRecordError);
-        }
+        }, 0);
         clearWorkingData();
         state.isDirty = false;
         clearUndoStack();
