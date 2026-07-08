@@ -12709,6 +12709,11 @@ function getSignatureValue(person, docType, signer) {
   if (publicUrl && isSafeArchiveHttpUrl(publicUrl)) {
     return normalizeHttpUrl(publicUrl) || "";
   }
+  const storedRef = String(person.signatures[docType][signer]?.storageRef || "");
+  const storedRefPath = parseStorageSchemePath(storedRef);
+  if (storedRefPath) {
+    return getSupabaseStoragePublicUrl(storedRefPath.bucket, storedRefPath.objectPath) || "";
+  }
   const storageRef = parseStorageSchemePath(rawValue);
   if (storageRef) {
     return getSupabaseStoragePublicUrl(storageRef.bucket, storageRef.objectPath) || "";
@@ -13349,17 +13354,35 @@ function bindSignatureCanvases() {
         markMobileSignatureRequestSigned(currentMobileRequest);
       }
       if (isMobileSignaturePage && getDataBackendMode() === "SUPABASE" && nextValue) {
-        await saveMobileSignatureRecordToSupabase({
-          token: String(currentMobileRequest?.token || getCurrentMobileSignatureToken() || ""),
+        const mobileRequestToken = String(currentMobileRequest?.token || getCurrentMobileSignatureToken() || "");
+        const latestPayload = await saveSupabaseSignatureWithRebase({
           personId: person.id,
           docType,
           signer,
-          person,
           signatureValue: nextValue,
           validatedAt,
           storageRef: signatureStorageRef,
           storagePublicUrl: signatureStoragePublicUrl,
+          mobileRequestToken,
         });
+        const latestPerson = Array.isArray(latestPayload?.personnes)
+          ? latestPayload.personnes.find((entry) => String(entry?.id || "") === String(person.id || "")) || person
+          : person;
+        try {
+          await saveMobileSignatureRecordToSupabase({
+            token: mobileRequestToken,
+            personId: person.id,
+            docType,
+            signer,
+            person: latestPerson,
+            signatureValue: nextValue,
+            validatedAt,
+            storageRef: signatureStorageRef,
+            storagePublicUrl: signatureStoragePublicUrl,
+          });
+        } catch (signatureRecordError) {
+          console.warn("[SUPABASE][SIGNATURE] table signatures non bloquante", signatureRecordError);
+        }
         clearWorkingData();
         state.isDirty = false;
         clearUndoStack();
